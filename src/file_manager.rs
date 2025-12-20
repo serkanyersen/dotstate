@@ -3,7 +3,10 @@ use std::fs;
 // Note: symlink and MetadataExt are used via std::os::unix::fs:: paths
 use std::path::{Path, PathBuf};
 
-/// Manages dotfile operations: scanning, backing up, symlinking
+/// Utility for file operations: scanning dotfiles, copying files/directories, and resolving symlinks.
+///
+/// Note: Symlink creation/management is handled by `SymlinkManager`, not this module.
+/// This module provides low-level file utilities only.
 pub struct FileManager {
     home_dir: PathBuf,
 }
@@ -48,29 +51,6 @@ impl FileManager {
         }
 
         found
-    }
-
-    /// Create a backup of a file by adding .bak extension
-    pub fn backup_file(&self, file_path: &Path) -> Result<PathBuf> {
-        // Create backup path by appending .bak to the filename
-        let file_name = file_path.file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("backup");
-
-        let backup_name = format!("{}.bak", file_name);
-        let backup_path = file_path.parent()
-            .map(|p| p.join(&backup_name))
-            .unwrap_or_else(|| PathBuf::from(&backup_name));
-
-        if file_path.is_file() {
-            fs::copy(file_path, &backup_path)
-                .with_context(|| format!("Failed to backup file: {:?}", file_path))?;
-        } else if file_path.is_dir() {
-            // For directories, create a backup with .bak suffix
-            copy_dir_all(file_path, &backup_path)?;
-        }
-
-        Ok(backup_path)
     }
 
     /// Resolve a symlink to its target, following multiple levels if needed
@@ -145,187 +125,6 @@ impl FileManager {
         Ok(())
     }
 
-    /// Restore original file from backup or repo
-    pub fn restore_original(&self, target: &Path, repo_path: &Path, relative_path: &Path) -> Result<()> {
-        // Determine if target was originally a file or directory BEFORE removing it
-        // This is important because we need to know what type of backup to look for
-        let was_file = if target.exists() && !self.is_symlink(target) {
-            target.is_file()
-        } else {
-            // If it's a symlink or doesn't exist, try to infer from the path
-            // Files typically have extensions, but this is a heuristic
-            target.extension().is_some()
-        };
-
-        // Try to restore from backup first (check BEFORE removing symlink)
-        // Construct backup path using the target's filename
-        let backup_path = if let (Some(file_name), Some(parent)) = (
-            target.file_name().and_then(|n| n.to_str()),
-            target.parent()
-        ) {
-            let backup_name = format!("{}.bak", file_name);
-            Some(parent.join(&backup_name))
-        } else {
-            None
-        };
-
-        // Check if backup exists and restore from it
-        if let Some(backup) = backup_path {
-            if backup.exists() {
-                // Remove symlink/target first
-                if self.is_symlink(target) || target.exists() {
-                    if target.is_dir() {
-                        fs::remove_dir_all(target)
-                            .with_context(|| format!("Failed to remove directory: {:?}", target))?;
-                    } else {
-                        fs::remove_file(target)
-                            .with_context(|| format!("Failed to remove file: {:?}", target))?;
-                    }
-                }
-
-                // Restore from backup
-                if backup.is_file() {
-                    fs::copy(&backup, target)?;
-                    fs::remove_file(&backup)?; // Clean up backup
-                } else if backup.is_dir() {
-                    copy_dir_all(&backup, target)?;
-                    fs::remove_dir_all(&backup)?; // Clean up backup
-                }
-                return Ok(());
-            }
-        }
-
-        // No backup found, remove symlink/target if it exists
-        if self.is_symlink(target) || target.exists() {
-            if target.is_dir() {
-                fs::remove_dir_all(target)
-                    .with_context(|| format!("Failed to remove directory: {:?}", target))?;
-            } else {
-                fs::remove_file(target)
-                    .with_context(|| format!("Failed to remove file: {:?}", target))?;
-            }
-        }
-
-        // If no backup, try to restore from repo
-        let repo_file = repo_path.join(relative_path);
-        if repo_file.exists() {
-            // Determine what type to restore based on what's in the repo
-            if repo_file.is_file() {
-                // Restore as file
-                self.copy_to_repo(&repo_file, target)?;
-            } else if repo_file.is_dir() {
-                // Restore as directory
-                self.copy_to_repo(&repo_file, target)?;
-            }
-        } else {
-            // If neither backup nor repo file exists, create empty file/dir based on original type
-            if let Some(parent) = target.parent() {
-                fs::create_dir_all(parent)?;
-            }
-            if was_file || target.extension().is_some() {
-                // Likely a file
-                fs::File::create(target)?;
-            } else {
-                // Likely a directory
-                fs::create_dir_all(target)?;
-            }
-        }
-
-        Ok(())
-    }
-
-    /// Create a symlink from target to source
-    pub fn create_symlink(&self, source: &Path, target: &Path) -> Result<()> {
-        // Remove existing file/directory if it exists (after backup)
-        if target.exists() {
-            self.backup_file(target)?;
-            if target.is_dir() {
-                fs::remove_dir_all(target)
-                    .with_context(|| format!("Failed to remove directory: {:?}", target))?;
-            } else {
-                fs::remove_file(target)
-                    .with_context(|| format!("Failed to remove file: {:?}", target))?;
-            }
-        }
-
-        // Create parent directories if needed
-        if let Some(parent) = target.parent() {
-            fs::create_dir_all(parent)
-                .with_context(|| format!("Failed to create parent directory: {:?}", parent))?;
-        }
-
-        // Create symlink
-        #[cfg(unix)]
-        {
-            std::os::unix::fs::symlink(source, target)
-                .with_context(|| format!("Failed to create symlink from {:?} to {:?}", source, target))?;
-        }
-
-        #[cfg(windows)]
-        {
-            std::os::windows::fs::symlink_file(source, target)
-                .with_context(|| format!("Failed to create symlink from {:?} to {:?}", source, target))?;
-        }
-
-        Ok(())
-    }
-
-    /// Sync file to repository: handle symlinks, copy original, create new symlink
-    /// Sync file using SymlinkManager for better tracking
-    /// This creates a symlink from home directory to the repo file
-    pub fn sync_file(&self, dotfile: &Dotfile, repo_path: &Path, profile: &str) -> Result<()> {
-        let repo_file_path = repo_path
-            .join(profile)
-            .join(&dotfile.relative_path);
-
-        // Create parent directories in repo
-        if let Some(parent) = repo_file_path.parent() {
-            fs::create_dir_all(parent)
-                .with_context(|| format!("Failed to create repo directory: {:?}", parent))?;
-        }
-
-        // Handle symlinks: resolve to original file
-        let source_path = if self.is_symlink(&dotfile.original_path) {
-            self.resolve_symlink(&dotfile.original_path)?
-        } else {
-            dotfile.original_path.clone()
-        };
-
-        // Copy original file/directory to repo
-        self.copy_to_repo(&source_path, &repo_file_path)?;
-
-        // Create symlink from original location to repo
-        // Note: The old create_symlink method is still used here
-        // SymlinkManager will be used for profile activation/deactivation
-        self.create_symlink(&repo_file_path, &dotfile.original_path)?;
-
-        Ok(())
-    }
-
-    /// Unsync file: remove from repo and restore original
-    pub fn unsync_file(&self, dotfile: &Dotfile, repo_path: &Path, profile: &str) -> Result<()> {
-        let repo_file_path = repo_path
-            .join(profile)
-            .join(&dotfile.relative_path);
-
-        // Restore original file (pass the profile path for restore_original)
-        let repo_relative_path = PathBuf::from(profile).join(&dotfile.relative_path);
-        self.restore_original(&dotfile.original_path, repo_path, &repo_relative_path)?;
-
-        // Remove from repo
-        if repo_file_path.exists() {
-            if repo_file_path.is_dir() {
-                fs::remove_dir_all(&repo_file_path)
-                    .with_context(|| format!("Failed to remove directory from repo: {:?}", repo_file_path))?;
-            } else {
-                fs::remove_file(&repo_file_path)
-                    .with_context(|| format!("Failed to remove file from repo: {:?}", repo_file_path))?;
-            }
-        }
-
-        Ok(())
-    }
-
     /// Get home directory
     #[allow(dead_code)]
     pub fn home_dir(&self) -> &Path {
@@ -360,6 +159,9 @@ pub fn copy_dir_all(src: &Path, dst: &Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::TempDir;
+    use std::fs::File;
+    use std::io::Write;
 
     #[test]
     fn test_file_manager_creation() {
@@ -369,10 +171,266 @@ mod tests {
 
     #[test]
     fn test_scan_dotfiles() {
+        let temp_dir = TempDir::new().unwrap();
+        let home_dir = temp_dir.path();
+
+        // Create a mock FileManager with temp directory as home
+        let fm = FileManager {
+            home_dir: home_dir.to_path_buf(),
+        };
+
+        // Create some test files
+        let test_file1 = home_dir.join(".testrc");
+        File::create(&test_file1).unwrap().write_all(b"test").unwrap();
+
+        // Don't create .nonexistent - it shouldn't be found
+
+        let dotfiles = fm.scan_dotfiles(&[
+            ".testrc".to_string(),
+            ".nonexistent".to_string(),
+        ]);
+
+        assert_eq!(dotfiles.len(), 1);
+        assert_eq!(dotfiles[0].relative_path, PathBuf::from(".testrc"));
+        assert_eq!(dotfiles[0].original_path, test_file1);
+        assert!(!dotfiles[0].synced);
+    }
+
+    #[test]
+    fn test_scan_dotfiles_with_subdirectory() {
+        let temp_dir = TempDir::new().unwrap();
+        let home_dir = temp_dir.path();
+
+        let fm = FileManager {
+            home_dir: home_dir.to_path_buf(),
+        };
+
+        // Create a nested directory
+        let nested_dir = home_dir.join(".config").join("test");
+        std::fs::create_dir_all(&nested_dir).unwrap();
+
+        let dotfiles = fm.scan_dotfiles(&[".config/test".to_string()]);
+
+        assert_eq!(dotfiles.len(), 1);
+        assert_eq!(dotfiles[0].relative_path, PathBuf::from(".config/test"));
+    }
+
+    #[test]
+    fn test_is_symlink() {
+        let temp_dir = TempDir::new().unwrap();
         let fm = FileManager::new().unwrap();
-        let dotfiles = fm.scan_dotfiles(&[".bashrc".to_string(), ".nonexistent".to_string()]);
-        // Results depend on what exists in home directory
-        assert!(dotfiles.len() <= 1);
+
+        // Create a real file
+        let real_file = temp_dir.path().join("real_file");
+        File::create(&real_file).unwrap();
+        assert!(!fm.is_symlink(&real_file));
+
+        // Create a symlink
+        let symlink_target = temp_dir.path().join("target");
+        File::create(&symlink_target).unwrap();
+        let symlink = temp_dir.path().join("symlink");
+        std::os::unix::fs::symlink(&symlink_target, &symlink).unwrap();
+        assert!(fm.is_symlink(&symlink));
+        assert!(!fm.is_symlink(&symlink_target));
+    }
+
+    #[test]
+    fn test_resolve_symlink() {
+        let temp_dir = TempDir::new().unwrap();
+        let fm = FileManager::new().unwrap();
+
+        // Create target file
+        let target = temp_dir.path().join("target");
+        File::create(&target).unwrap().write_all(b"content").unwrap();
+
+        // Create symlink
+        let symlink = temp_dir.path().join("symlink");
+        std::os::unix::fs::symlink(&target, &symlink).unwrap();
+
+        // Resolve symlink
+        let resolved = fm.resolve_symlink(&symlink).unwrap();
+        assert_eq!(resolved, target);
+        assert!(resolved.exists());
+    }
+
+    #[test]
+    fn test_resolve_symlink_chain() {
+        let temp_dir = TempDir::new().unwrap();
+        let fm = FileManager::new().unwrap();
+
+        // Create target
+        let target = temp_dir.path().join("target");
+        File::create(&target).unwrap();
+
+        // Create chain: symlink1 -> symlink2 -> target
+        let symlink2 = temp_dir.path().join("symlink2");
+        std::os::unix::fs::symlink(&target, &symlink2).unwrap();
+
+        let symlink1 = temp_dir.path().join("symlink1");
+        std::os::unix::fs::symlink(&symlink2, &symlink1).unwrap();
+
+        // Resolve should follow the chain
+        let resolved = fm.resolve_symlink(&symlink1).unwrap();
+        assert_eq!(resolved, target);
+    }
+
+    #[test]
+    fn test_resolve_symlink_relative() {
+        let temp_dir = TempDir::new().unwrap();
+        let fm = FileManager::new().unwrap();
+
+        // Create target
+        let target = temp_dir.path().join("target");
+        File::create(&target).unwrap();
+
+        // Create relative symlink
+        let symlink = temp_dir.path().join("symlink");
+        std::os::unix::fs::symlink("target", &symlink).unwrap();
+
+        // Resolve should handle relative paths
+        let resolved = fm.resolve_symlink(&symlink).unwrap();
+        assert!(resolved.exists());
+    }
+
+    #[test]
+    fn test_copy_to_repo_file() {
+        let temp_dir = TempDir::new().unwrap();
+        let fm = FileManager::new().unwrap();
+
+        // Create source file
+        let source = temp_dir.path().join("source.txt");
+        File::create(&source).unwrap().write_all(b"test content").unwrap();
+
+        // Copy to destination
+        let dest = temp_dir.path().join("dest.txt");
+        fm.copy_to_repo(&source, &dest).unwrap();
+
+        // Verify copy
+        assert!(dest.exists());
+        assert!(dest.is_file());
+        let content = std::fs::read_to_string(&dest).unwrap();
+        assert_eq!(content, "test content");
+    }
+
+    #[test]
+    fn test_copy_to_repo_directory() {
+        let temp_dir = TempDir::new().unwrap();
+        let fm = FileManager::new().unwrap();
+
+        // Create source directory with files
+        let source_dir = temp_dir.path().join("source_dir");
+        std::fs::create_dir_all(&source_dir).unwrap();
+
+        let file1 = source_dir.join("file1.txt");
+        File::create(&file1).unwrap().write_all(b"file1").unwrap();
+
+        let nested_dir = source_dir.join("nested");
+        std::fs::create_dir_all(&nested_dir).unwrap();
+        let file2 = nested_dir.join("file2.txt");
+        File::create(&file2).unwrap().write_all(b"file2").unwrap();
+
+        // Copy directory
+        let dest_dir = temp_dir.path().join("dest_dir");
+        fm.copy_to_repo(&source_dir, &dest_dir).unwrap();
+
+        // Verify copy
+        assert!(dest_dir.exists());
+        assert!(dest_dir.is_dir());
+        assert!(dest_dir.join("file1.txt").exists());
+        assert!(dest_dir.join("nested").is_dir());
+        assert!(dest_dir.join("nested/file2.txt").exists());
+
+        let content1 = std::fs::read_to_string(dest_dir.join("file1.txt")).unwrap();
+        assert_eq!(content1, "file1");
+        let content2 = std::fs::read_to_string(dest_dir.join("nested/file2.txt")).unwrap();
+        assert_eq!(content2, "file2");
+    }
+
+    #[test]
+    fn test_copy_to_repo_overwrites_existing() {
+        let temp_dir = TempDir::new().unwrap();
+        let fm = FileManager::new().unwrap();
+
+        // Create existing destination
+        let dest = temp_dir.path().join("dest.txt");
+        File::create(&dest).unwrap().write_all(b"old content").unwrap();
+
+        // Create new source
+        let source = temp_dir.path().join("source.txt");
+        File::create(&source).unwrap().write_all(b"new content").unwrap();
+
+        // Copy should overwrite
+        fm.copy_to_repo(&source, &dest).unwrap();
+
+        let content = std::fs::read_to_string(&dest).unwrap();
+        assert_eq!(content, "new content");
+    }
+
+    #[test]
+    fn test_copy_dir_all() {
+        let temp_dir = TempDir::new().unwrap();
+
+        // Create source structure
+        let source = temp_dir.path().join("source");
+        std::fs::create_dir_all(&source).unwrap();
+
+        File::create(source.join("a.txt")).unwrap().write_all(b"a").unwrap();
+        File::create(source.join("b.txt")).unwrap().write_all(b"b").unwrap();
+
+        let nested = source.join("nested");
+        std::fs::create_dir_all(&nested).unwrap();
+        File::create(nested.join("c.txt")).unwrap().write_all(b"c").unwrap();
+
+        // Copy
+        let dest = temp_dir.path().join("dest");
+        copy_dir_all(&source, &dest).unwrap();
+
+        // Verify
+        assert!(dest.exists());
+        assert!(dest.is_dir());
+        assert_eq!(std::fs::read_to_string(dest.join("a.txt")).unwrap(), "a");
+        assert_eq!(std::fs::read_to_string(dest.join("b.txt")).unwrap(), "b");
+        assert_eq!(std::fs::read_to_string(dest.join("nested/c.txt")).unwrap(), "c");
+    }
+
+    #[test]
+    fn test_resolve_symlink_max_depth() {
+        let temp_dir = TempDir::new().unwrap();
+        let fm = FileManager::new().unwrap();
+
+        // Create a very long symlink chain (should fail at MAX_SYMLINK_DEPTH = 20)
+        let mut current = temp_dir.path().join("target");
+        File::create(&current).unwrap();
+
+        // Create 25 symlinks in a chain
+        for i in 0..25 {
+            let next = temp_dir.path().join(format!("link{}", i));
+            std::os::unix::fs::symlink(&current, &next).unwrap();
+            current = next;
+        }
+
+        // Resolving should fail due to max depth
+        let result = fm.resolve_symlink(&current);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Symlink depth exceeded"));
+    }
+
+    #[test]
+    fn test_scan_dotfiles_empty_list() {
+        let temp_dir = TempDir::new().unwrap();
+        let fm = FileManager {
+            home_dir: temp_dir.path().to_path_buf(),
+        };
+
+        let dotfiles = fm.scan_dotfiles(&[]);
+        assert!(dotfiles.is_empty());
+    }
+
+    #[test]
+    fn test_is_symlink_nonexistent() {
+        let fm = FileManager::new().unwrap();
+        let nonexistent = PathBuf::from("/nonexistent/path/that/does/not/exist");
+        assert!(!fm.is_symlink(&nonexistent));
     }
 }
 
