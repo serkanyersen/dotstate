@@ -33,6 +33,19 @@ impl MenuItem {
         ]
     }
 
+    /// Check if this menu item requires GitHub setup
+    pub fn requires_setup(&self) -> bool {
+        match self {
+            MenuItem::SetupGitHub => false, // Always available
+            _ => true, // All other items require setup
+        }
+    }
+
+    /// Check if this menu item is enabled based on setup status
+    pub fn is_enabled(&self, is_setup: bool) -> bool {
+        !self.requires_setup() || is_setup
+    }
+
     /// Get the icon for this menu item
     pub fn icon(&self) -> &'static str {
         match self {
@@ -128,16 +141,23 @@ pub struct MainMenuComponent {
 impl MainMenuComponent {
     pub fn new(has_changes_to_push: bool) -> Self {
         let mut list_state = ListState::default();
-        list_state.select(Some(0));
+        // Default to SetupGitHub if not set up, otherwise first item
+        let default_item = MenuItem::SetupGitHub;
+        list_state.select(Some(default_item.to_index()));
 
         Self {
-            selected_item: MenuItem::ScanDotfiles,  // Default to first item
+            selected_item: default_item,
             has_changes_to_push,
             list_state,
             clickable_areas: Vec::new(),
             config: None,
             changed_files: Vec::new(),
         }
+    }
+
+    /// Check if the app is set up (GitHub configured)
+    fn is_setup(&self) -> bool {
+        self.config.as_ref().and_then(|c| c.github.as_ref()).is_some()
     }
 
     /// Get the currently selected menu item
@@ -293,6 +313,7 @@ impl Component for MainMenuComponent {
         // Menu items - now using MenuItem enum
         let menu_items = MenuItem::all();
         let selected_index = self.selected_item.to_index();
+        let is_setup = self.is_setup();
 
         let items: Vec<ListItem> = menu_items
             .iter()
@@ -300,18 +321,34 @@ impl Component for MainMenuComponent {
             .map(|(i, menu_item)| {
                 let icon = menu_item.icon();
                 let text = menu_item.text();
-                let color = menu_item.color(self.has_changes_to_push);
+                let is_enabled = menu_item.is_enabled(is_setup);
 
-                let display_text = if *menu_item == MenuItem::PushChanges && self.has_changes_to_push {
+                // Determine color based on enabled state
+                let color = if !is_enabled {
+                    Color::DarkGray  // Disabled items in dark gray
+                } else {
+                    menu_item.color(self.has_changes_to_push)
+                };
+
+                let display_text = if *menu_item == MenuItem::PushChanges && self.has_changes_to_push && is_enabled {
                     format!("{} {} ({} pending)", icon, text, self.changed_files.len())
+                } else if !is_enabled {
+                    format!("{} {} (requires setup)", icon, text)
                 } else {
                     format!("{} {}", icon, text)
                 };
 
                 let style = if i == selected_index {
-                    Style::default()
-                        .fg(color)
-                        .add_modifier(Modifier::BOLD)
+                    if is_enabled {
+                        Style::default()
+                            .fg(color)
+                            .add_modifier(Modifier::BOLD)
+                    } else {
+                        // Disabled items stay gray even when selected
+                        Style::default()
+                            .fg(Color::DarkGray)
+                            .add_modifier(Modifier::BOLD)
+                    }
                 } else {
                     Style::default()
                         .fg(color)
@@ -473,6 +510,7 @@ impl Component for MainMenuComponent {
         let menu_items = MenuItem::all();
         let max_index = menu_items.len().saturating_sub(1);
         let current_index = self.selected_item.to_index();
+        let is_setup = self.is_setup();
 
         match event {
             Event::Key(key) if key.kind == KeyEventKind::Press => {
@@ -502,7 +540,12 @@ impl Component for MainMenuComponent {
                         }
                     }
                     KeyCode::Enter => {
-                        Ok(ComponentAction::Update) // App will handle selection
+                        // Only allow Enter if the selected item is enabled
+                        if self.selected_item.is_enabled(is_setup) {
+                            Ok(ComponentAction::Update) // App will handle selection
+                        } else {
+                            Ok(ComponentAction::None) // Ignore Enter on disabled items
+                        }
                     }
                     KeyCode::Char('q') | KeyCode::Esc => {
                         Ok(ComponentAction::Quit)
@@ -522,7 +565,13 @@ impl Component for MainMenuComponent {
                                 self.selected_item = *menu_item;
                                 let index = menu_item.to_index();
                                 self.list_state.select(Some(index));
-                                return Ok(ComponentAction::Update);
+                                // Only trigger action if item is enabled
+                                if menu_item.is_enabled(is_setup) {
+                                    return Ok(ComponentAction::Update);
+                                } else {
+                                    // Just select it, don't trigger action
+                                    return Ok(ComponentAction::None);
+                                }
                             }
                         }
                     }
