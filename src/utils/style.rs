@@ -2,12 +2,22 @@ use ratatui::prelude::*;
 
 /// Get the border style for a focused pane
 pub fn focused_border_style() -> Style {
-    Style::default().fg(Color::Cyan)
+    Style::default().fg(Color::LightGreen)
 }
 
 /// Get the border style for an unfocused pane
 pub fn unfocused_border_style() -> Style {
-    Style::default()
+    Style::default().fg(Color::White)
+}
+
+/// Get the border style for a disabled input
+pub fn disabled_border_style() -> Style {
+    Style::default().fg(Color::DarkGray)
+}
+
+/// Get the text style for disabled input
+pub fn disabled_text_style() -> Style {
+    Style::default().fg(Color::DarkGray)
 }
 
 /// Get the text style for a focused input field

@@ -110,9 +110,9 @@ impl Config {
     pub fn default() -> Self {
         Self {
             github: None,
-            active_profile: "main".to_string(),
+            active_profile: "Personal".to_string(),
             profiles: vec![Profile {
-                name: "main".to_string(),
+                name: "Personal".to_string(),
                 description: Some("Default profile".to_string()),
             }],
             default_dotfiles: Self::default_dotfile_list(),
@@ -176,7 +176,7 @@ mod tests {
     #[test]
     fn test_config_default() {
         let config = Config::default();
-        assert_eq!(config.active_profile, "main");
+        assert_eq!(config.active_profile, "Personal");
         assert!(!config.default_dotfiles.is_empty());
     }
 

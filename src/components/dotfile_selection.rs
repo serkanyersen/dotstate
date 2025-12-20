@@ -111,6 +111,7 @@ impl DotfileSelectionComponent {
             "Path Input",
             None,
             Alignment::Left,
+            false, // Not disabled
         )?;
 
         // Split list and preview
@@ -279,6 +280,7 @@ impl DotfileSelectionComponent {
             "Custom File Path",
             Some("Enter file path (e.g., ~/.myconfig or /path/to/file)"),
             Alignment::Center,
+            false, // Not disabled
         )?;
 
         let _ = Footer::render(frame, footer_chunk, "Enter: Add File | Esc: Cancel | Tab: Focus/Unfocus")?;

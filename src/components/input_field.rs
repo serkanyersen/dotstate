@@ -1,7 +1,7 @@
 use anyhow::Result;
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Paragraph};
-use crate::utils::{focused_border_style, unfocused_border_style, input_placeholder_style, input_text_style};
+use crate::utils::{focused_border_style, unfocused_border_style, disabled_border_style, disabled_text_style, input_placeholder_style, input_text_style};
 
 /// Common input field component
 pub struct InputField;
@@ -18,6 +18,7 @@ impl InputField {
     /// * `title` - The title/label for the input
     /// * `placeholder` - Placeholder text when input is empty
     /// * `title_alignment` - Alignment of the title (Left or Center)
+    /// * `disabled` - Whether the input is disabled
     ///
     /// # Returns
     /// Result indicating success or failure
@@ -30,6 +31,7 @@ impl InputField {
         title: &str,
         placeholder: Option<&str>,
         title_alignment: Alignment,
+        disabled: bool,
     ) -> Result<()> {
         // Determine display text
         let display_text = if text.is_empty() {
@@ -38,14 +40,18 @@ impl InputField {
             text.to_string()
         };
 
-        // Style based on focus state
-        let border_style = if focused {
+        // Style based on disabled/focus state
+        let border_style = if disabled {
+            disabled_border_style()
+        } else if focused {
             focused_border_style()
         } else {
             unfocused_border_style()
         };
 
-        let text_style = if text.is_empty() {
+        let text_style = if disabled {
+            disabled_text_style()
+        } else if text.is_empty() {
             input_placeholder_style()
         } else {
             input_text_style()
@@ -67,8 +73,8 @@ impl InputField {
 
         frame.render_widget(input_paragraph, area);
 
-        // Set cursor position if focused
-        if focused {
+        // Set cursor position if focused and not disabled
+        if focused && !disabled {
             let clamped_cursor = cursor_pos.min(text.chars().count());
             let x = input_inner.x + clamped_cursor.min(input_inner.width as usize) as u16;
             let y = input_inner.y;

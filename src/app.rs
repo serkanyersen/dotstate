@@ -4,13 +4,12 @@ use crate::file_manager::FileManager;
 use crate::github::GitHubClient;
 use crate::git::GitManager;
 use crate::tui::Tui;
-use crate::ui::{UiState, Screen, GitHubAuthStep};
+use crate::ui::{UiState, Screen, GitHubAuthStep, GitHubAuthField};
 use crate::components::{MainMenuComponent, GitHubAuthComponent, SyncedFilesComponent, MessageComponent, DotfileSelectionComponent, PushChangesComponent, ComponentAction, Component, MenuItem};
-use crossterm::event::{Event, KeyCode, KeyEventKind, MouseButton, MouseEventKind};
+use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tokio::runtime::Runtime;
-use tracing::debug;
 
 /// Main application state
 pub struct App {
@@ -223,7 +222,7 @@ impl App {
                 // Keyboard events handled in app (complex logic)
                 if let Event::Key(key) = event {
                     if key.kind == KeyEventKind::Press {
-                        self.handle_github_auth_input(key.code)?;
+                        self.handle_github_auth_input(key)?;
                         // Sync state to component
                         *self.github_auth_component.get_auth_state_mut() = self.ui_state.github_auth.clone();
                     }
@@ -363,6 +362,23 @@ impl App {
         match selected_item {
             MenuItem::SetupGitHub => {
                 // Setup GitHub Repository
+                // Check if repo is already configured
+                let is_configured = self.config.github.is_some();
+
+                // Initialize auth state with current config values
+                if is_configured {
+                    self.ui_state.github_auth.repo_already_configured = true;
+                    self.ui_state.github_auth.is_editing_token = false;
+                    self.ui_state.github_auth.token_input = String::new(); // Clear for security
+                    // Load existing values
+                    self.ui_state.github_auth.repo_name_input = self.config.repo_name.clone();
+                    self.ui_state.github_auth.repo_location_input = self.config.repo_path.to_string_lossy().to_string();
+                    self.ui_state.github_auth.is_private = true; // Default to private
+                } else {
+                    self.ui_state.github_auth.repo_already_configured = false;
+                    self.ui_state.github_auth.is_editing_token = false;
+                }
+
                 self.ui_state.current_screen = Screen::GitHubAuth;
             }
             MenuItem::ScanDotfiles => {
@@ -441,115 +457,184 @@ impl App {
         }
     }
 
-    fn handle_github_auth_input(&mut self, key_code: KeyCode) -> Result<()> {
+    fn handle_github_auth_input(&mut self, key: KeyEvent) -> Result<()> {
         let auth_state = &mut self.ui_state.github_auth;
         auth_state.error_message = None;
 
         match auth_state.step {
-            GitHubAuthStep::TokenInput => {
-                // Check if input is focused
-                if !auth_state.input_focused {
-                    // Input not focused - handle navigation/help keys
-                    match key_code {
-                        KeyCode::Tab | KeyCode::Char('?') | KeyCode::F(1) => {
-                            auth_state.show_help = !auth_state.show_help;
-                        }
-                        KeyCode::Up if auth_state.show_help => {
-                            if auth_state.help_scroll > 0 {
-                                auth_state.help_scroll -= 1;
-                            }
-                        }
-                        KeyCode::Down if auth_state.show_help => {
-                            auth_state.help_scroll += 1;
-                        }
-                        KeyCode::Enter => {
-                            // Focus input when Enter is pressed
-                            auth_state.input_focused = true;
+            GitHubAuthStep::Input => {
+                // Handle "Update Token" action if repo is configured
+                if auth_state.repo_already_configured && !auth_state.is_editing_token {
+                    match key.code {
+                        KeyCode::Char('u') | KeyCode::Char('U') => {
+                            // Enable token editing
+                            auth_state.is_editing_token = true;
+                            auth_state.token_input = String::new(); // Clear token for new input
+                            auth_state.cursor_position = 0;
+                            auth_state.focused_field = GitHubAuthField::Token;
+                            return Ok(());
                         }
                         KeyCode::Esc => {
                             self.ui_state.current_screen = Screen::MainMenu;
                             *auth_state = Default::default();
+                            return Ok(());
                         }
-                        _ => {}
+                        _ => {
+                            // Ignore other keys when repo is configured and not editing
+                            return Ok(());
+                        }
+                    }
+                }
+
+                // Check for Ctrl+S
+                if key.code == KeyCode::Char('s') && key.modifiers.contains(KeyModifiers::CONTROL) {
+                    if auth_state.repo_already_configured && auth_state.is_editing_token {
+                        // Just update the token
+                        self.update_github_token()?;
+                    } else if !auth_state.repo_already_configured {
+                        // Full setup
+                        self.process_github_setup()?;
                     }
                     return Ok(());
                 }
 
-                // When input is focused, only handle input-related keys
-                match key_code {
-                    // Character input - use text input utility
+                // Normal input handling (new setup or token editing mode)
+                match key.code {
+                    // Tab: Navigate to next field (only if not repo configured)
+                    KeyCode::Tab if !auth_state.repo_already_configured => {
+                        auth_state.focused_field = match auth_state.focused_field {
+                            GitHubAuthField::Token => GitHubAuthField::RepoName,
+                            GitHubAuthField::RepoName => GitHubAuthField::RepoLocation,
+                            GitHubAuthField::RepoLocation => GitHubAuthField::IsPrivate,
+                            GitHubAuthField::IsPrivate => GitHubAuthField::Token,
+                        };
+                        // Reset cursor position to end of new field
+                        auth_state.cursor_position = match auth_state.focused_field {
+                            GitHubAuthField::Token => auth_state.token_input.chars().count(),
+                            GitHubAuthField::RepoName => auth_state.repo_name_input.chars().count(),
+                            GitHubAuthField::RepoLocation => auth_state.repo_location_input.chars().count(),
+                            GitHubAuthField::IsPrivate => 0,
+                        };
+                    }
+                    // BackTab: Navigate to previous field (Shift+Tab) (only if not repo configured)
+                    KeyCode::BackTab if !auth_state.repo_already_configured => {
+                        auth_state.focused_field = match auth_state.focused_field {
+                            GitHubAuthField::Token => GitHubAuthField::IsPrivate,
+                            GitHubAuthField::RepoName => GitHubAuthField::Token,
+                            GitHubAuthField::RepoLocation => GitHubAuthField::RepoName,
+                            GitHubAuthField::IsPrivate => GitHubAuthField::RepoLocation,
+                        };
+                        auth_state.cursor_position = match auth_state.focused_field {
+                            GitHubAuthField::Token => auth_state.token_input.chars().count(),
+                            GitHubAuthField::RepoName => auth_state.repo_name_input.chars().count(),
+                            GitHubAuthField::RepoLocation => auth_state.repo_location_input.chars().count(),
+                            GitHubAuthField::IsPrivate => 0,
+                        };
+                    }
                     KeyCode::Char(c) => {
-                        crate::utils::handle_char_insertion(&mut auth_state.token_input, &mut auth_state.cursor_position, c);
-                        debug!("Received character: '{}' (code: {})", c, c as u32);
-                    }
-                    // Navigation within input - use text input utility
-                    KeyCode::Left | KeyCode::Right | KeyCode::Home | KeyCode::End => {
-                        crate::utils::handle_cursor_movement(&auth_state.token_input, &mut auth_state.cursor_position, key_code);
-                    }
-                    // Editing - use text input utility
-                    KeyCode::Backspace => {
-                        crate::utils::handle_backspace(&mut auth_state.token_input, &mut auth_state.cursor_position);
-                    }
-                    KeyCode::Delete => {
-                        crate::utils::handle_delete(&mut auth_state.token_input, &mut auth_state.cursor_position);
-                    }
-                    // Tab to unfocus input
-                    KeyCode::Tab => {
-                        auth_state.input_focused = false;
-                    }
-                    // Help scroll (only when help is visible)
-                    KeyCode::Up if auth_state.show_help => {
-                        if auth_state.help_scroll > 0 {
-                            auth_state.help_scroll -= 1;
-                        }
-                    }
-                    KeyCode::Down if auth_state.show_help => {
-                        auth_state.help_scroll += 1;
-                    }
-                    KeyCode::Enter => {
-                        // Prevent duplicate processing
-                        if auth_state.step == GitHubAuthStep::Processing {
-                            return Ok(());
-                        }
-
-                        let token = auth_state.token_input.trim();
-                        if token.is_empty() {
-                            auth_state.error_message = Some("Token cannot be empty".to_string());
-                        } else if !token.starts_with("ghp_") {
-                            auth_state.error_message = Some(
-                                "Token format error: GitHub tokens must start with 'ghp_'.\n\
-                                Make sure you copied the entire token from GitHub."
-                                    .to_string()
-                            );
-                        } else if token.len() < 40 {
-                            auth_state.error_message = Some(
-                                format!(
-                                    "Token appears incomplete: {} characters (expected 40+).\n\
-                                    Make sure you copied the entire token from GitHub.",
-                                    token.len()
-                                )
-                            );
+                        // Handle Space for visibility toggle
+                        if c == ' ' && auth_state.focused_field == GitHubAuthField::IsPrivate && !auth_state.repo_already_configured {
+                            auth_state.is_private = !auth_state.is_private;
                         } else {
-                            // Trim and update the token input
-                            auth_state.token_input = token.to_string();
-                            auth_state.cursor_position = auth_state.token_input.len();
-                            // Start processing immediately (no repo name input needed)
-                            self.process_github_setup()?;
+                            // Regular character input (only if not disabled)
+                            match auth_state.focused_field {
+                                GitHubAuthField::Token if !auth_state.repo_already_configured || auth_state.is_editing_token => {
+                                    crate::utils::handle_char_insertion(
+                                        &mut auth_state.token_input,
+                                        &mut auth_state.cursor_position,
+                                        c
+                                    );
+                                }
+                                GitHubAuthField::RepoName if !auth_state.repo_already_configured => {
+                                    crate::utils::handle_char_insertion(
+                                        &mut auth_state.repo_name_input,
+                                        &mut auth_state.cursor_position,
+                                        c
+                                    );
+                                }
+                                GitHubAuthField::RepoLocation if !auth_state.repo_already_configured => {
+                                    crate::utils::handle_char_insertion(
+                                        &mut auth_state.repo_location_input,
+                                        &mut auth_state.cursor_position,
+                                        c
+                                    );
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                    // Navigation within input
+                    KeyCode::Left | KeyCode::Right | KeyCode::Home | KeyCode::End => {
+                        let current_input = match auth_state.focused_field {
+                            GitHubAuthField::Token => &auth_state.token_input,
+                            GitHubAuthField::RepoName => &auth_state.repo_name_input,
+                            GitHubAuthField::RepoLocation => &auth_state.repo_location_input,
+                            GitHubAuthField::IsPrivate => "",
+                        };
+                        crate::utils::handle_cursor_movement(
+                            current_input,
+                            &mut auth_state.cursor_position,
+                            key.code
+                        );
+                    }
+                    // Backspace
+                    KeyCode::Backspace => {
+                        match auth_state.focused_field {
+                            GitHubAuthField::Token => {
+                                crate::utils::handle_backspace(
+                                    &mut auth_state.token_input,
+                                    &mut auth_state.cursor_position
+                                );
+                            }
+                            GitHubAuthField::RepoName => {
+                                crate::utils::handle_backspace(
+                                    &mut auth_state.repo_name_input,
+                                    &mut auth_state.cursor_position
+                                );
+                            }
+                            GitHubAuthField::RepoLocation => {
+                                crate::utils::handle_backspace(
+                                    &mut auth_state.repo_location_input,
+                                    &mut auth_state.cursor_position
+                                );
+                            }
+                            GitHubAuthField::IsPrivate => {}
+                        }
+                    }
+                    // Delete
+                    KeyCode::Delete => {
+                        match auth_state.focused_field {
+                            GitHubAuthField::Token => {
+                                crate::utils::handle_delete(
+                                    &mut auth_state.token_input,
+                                    &mut auth_state.cursor_position
+                                );
+                            }
+                            GitHubAuthField::RepoName => {
+                                crate::utils::handle_delete(
+                                    &mut auth_state.repo_name_input,
+                                    &mut auth_state.cursor_position
+                                );
+                            }
+                            GitHubAuthField::RepoLocation => {
+                                crate::utils::handle_delete(
+                                    &mut auth_state.repo_location_input,
+                                    &mut auth_state.cursor_position
+                                );
+                            }
+                            GitHubAuthField::IsPrivate => {}
                         }
                     }
                     KeyCode::Esc => {
                         self.ui_state.current_screen = Screen::MainMenu;
                         *auth_state = Default::default();
                     }
-                    _ => {
-                        // All other keys are ignored when input is focused
-                        // This prevents accidental triggering of commands
-                    }
+                    _ => {}
                 }
             }
             GitHubAuthStep::Processing => {
                 // Allow user to continue after processing completes
-                match key_code {
+                match key.code {
                     KeyCode::Enter | KeyCode::Char(' ') => {
                         // If setup was successful, go to main menu
                         if auth_state.error_message.is_none() && auth_state.status_message.is_some() {
@@ -566,6 +651,80 @@ impl App {
                 }
             }
         }
+        Ok(())
+    }
+
+    fn update_github_token(&mut self) -> Result<()> {
+        let auth_state = &mut self.ui_state.github_auth;
+        let token = auth_state.token_input.trim().to_string();
+
+        // Validate token format
+        if token.is_empty() {
+            auth_state.error_message = Some("Token cannot be empty".to_string());
+            return Ok(());
+        }
+
+        if !token.starts_with("ghp_") {
+            auth_state.error_message = Some(
+                "Token format error: GitHub tokens must start with 'ghp_'".to_string()
+            );
+            return Ok(());
+        }
+
+        if token.len() < 40 {
+            auth_state.error_message = Some(
+                format!("Token appears incomplete: {} characters (expected 40+)", token.len())
+            );
+            return Ok(());
+        }
+
+        // Validate token with GitHub API
+        auth_state.status_message = Some("Validating token...".to_string());
+
+        let rt = Runtime::new()?;
+        let result = rt.block_on(async {
+            let client = reqwest::Client::new();
+            client
+                .get("https://api.github.com/user")
+                .header("Authorization", format!("Bearer {}", token))
+                .header("User-Agent", "dotstate")
+                .send()
+                .await
+        });
+
+        match result {
+            Ok(response) if response.status().is_success() => {
+                // Token is valid, update config
+                if let Some(github) = &mut self.config.github {
+                    github.token = Some(token.clone());
+                    self.config.save(&crate::utils::get_config_path())?;
+
+                    auth_state.status_message = Some("Token updated successfully!".to_string());
+                    auth_state.is_editing_token = false;
+                    auth_state.token_input = String::new(); // Clear for security
+
+                    // Sync back to component
+                    *self.github_auth_component.get_auth_state_mut() = auth_state.clone();
+                } else {
+                    auth_state.error_message = Some("GitHub configuration not found. Please complete setup first.".to_string());
+                    auth_state.status_message = None;
+                }
+            }
+            Ok(response) => {
+                let status = response.status();
+                auth_state.error_message = Some(
+                    format!("Token validation failed: HTTP {}\nPlease check your token.", status)
+                );
+                auth_state.status_message = None;
+            }
+            Err(e) => {
+                auth_state.error_message = Some(
+                    format!("Network error: {}\nPlease check your internet connection.", e)
+                );
+                auth_state.status_message = None;
+            }
+        }
+
         Ok(())
     }
 
@@ -598,7 +757,7 @@ impl App {
                     if token.len() >= 10 { &token[..10] } else { &token }
                 )
             );
-            auth_state.step = GitHubAuthStep::TokenInput;
+            auth_state.step = GitHubAuthStep::Input;
             return Ok(());
         }
 
@@ -612,7 +771,7 @@ impl App {
                     &token[..token.len().min(10)]
                 )
             );
-            auth_state.step = GitHubAuthStep::TokenInput;
+            auth_state.step = GitHubAuthStep::Input;
             return Ok(());
         }
 
@@ -649,7 +808,7 @@ impl App {
                         }
                         Err(e) => {
                             auth_state.error_message = Some(format!("Failed to clone repository: {}", e));
-                            auth_state.step = GitHubAuthStep::TokenInput;
+                            auth_state.step = GitHubAuthStep::Input;
                             return Ok(());
                         }
                     }
@@ -696,7 +855,7 @@ impl App {
                         }
                         Err(e) => {
                             auth_state.error_message = Some(format!("Failed to create repository: {}", e));
-                            auth_state.step = GitHubAuthStep::TokenInput;
+                            auth_state.step = GitHubAuthStep::Input;
                             return Ok(());
                         }
                     }
@@ -715,7 +874,7 @@ impl App {
                 // Verify config was saved
                 if !self.config_path.exists() {
                     auth_state.error_message = Some("Warning: Config file was not created. Please check permissions.".to_string());
-                    auth_state.step = GitHubAuthStep::TokenInput;
+                    auth_state.step = GitHubAuthStep::Input;
                     return Ok(());
                 }
 
@@ -729,7 +888,7 @@ impl App {
                 let error_msg = format!("Authentication failed: {}", e);
                 auth_state.error_message = Some(error_msg);
                 auth_state.status_message = None;
-                auth_state.step = GitHubAuthStep::TokenInput;
+                auth_state.step = GitHubAuthStep::Input;
                 // Don't clear the token input so user can see what they entered
             }
         }
@@ -897,7 +1056,7 @@ impl App {
                 // Check if click is in GitHub auth screen
                 if self.ui_state.current_screen == Screen::GitHubAuth {
                     match auth_state.step {
-                        GitHubAuthStep::TokenInput => {
+                        GitHubAuthStep::Input => {
                             // Check if click is in token input area (roughly row 4-6, column 2-78)
                             // This is approximate - we'd need to track exact widget positions for precision
                             // For now, clicking anywhere in the left half focuses token input
@@ -1769,5 +1928,6 @@ impl App {
         Ok(())
     }
 }
+
 
 

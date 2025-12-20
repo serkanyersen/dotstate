@@ -18,32 +18,54 @@ pub enum Screen {
 #[derive(Debug, Clone)]
 pub struct GitHubAuthState {
     pub token_input: String,
+    pub repo_name_input: String,
+    pub repo_location_input: String,
+    pub is_private: bool,
     pub step: GitHubAuthStep,
     pub error_message: Option<String>,
     pub status_message: Option<String>,
-    pub show_help: bool,
     pub help_scroll: usize,
-    pub cursor_position: usize, // For token input
+    pub cursor_position: usize, // For current input
     pub input_focused: bool, // Whether input is currently focused
+    pub focused_field: GitHubAuthField, // Which field is currently focused
+    pub is_editing_token: bool, // Whether we're in "edit token" mode
+    pub repo_already_configured: bool, // Whether repo was already set up
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GitHubAuthField {
+    Token,
+    RepoName,
+    RepoLocation,
+    IsPrivate,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GitHubAuthStep {
-    TokenInput,
+    Input,
     Processing,
 }
 
 impl Default for GitHubAuthState {
     fn default() -> Self {
+        let default_repo_path = dirs::home_dir()
+            .unwrap_or_else(|| std::path::PathBuf::from("."))
+            .join(".dotstate");
+
         Self {
             token_input: String::new(),
-            step: GitHubAuthStep::TokenInput,
+            repo_name_input: "dotstate-storage".to_string(),
+            repo_location_input: default_repo_path.to_string_lossy().to_string(),
+            is_private: true, // Private by default
+            step: GitHubAuthStep::Input,
             error_message: None,
             status_message: None,
-            show_help: true,
             help_scroll: 0,
             cursor_position: 0,
             input_focused: true, // Input starts focused
+            focused_field: GitHubAuthField::Token,
+            is_editing_token: false,
+            repo_already_configured: false,
         }
     }
 }
