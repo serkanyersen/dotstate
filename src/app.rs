@@ -4,7 +4,7 @@ use crate::file_manager::FileManager;
 use crate::github::GitHubClient;
 use crate::git::GitManager;
 use crate::tui::Tui;
-use crate::ui::{UiState, Screen, GitHubAuthStep, GitHubAuthField, ProfileSelectionState};
+use crate::ui::{UiState, Screen, GitHubAuthStep, GitHubAuthField};
 use crate::components::{MainMenuComponent, GitHubAuthComponent, SyncedFilesComponent, MessageComponent, DotfileSelectionComponent, PushChangesComponent, ProfileManagerComponent, ComponentAction, Component, MenuItem};
 use crate::components::profile_manager::ProfilePopupType;
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tokio::runtime::Runtime;
 use tracing::{error, info};
-use ratatui::prelude::*;
+// Frame and Rect are used in function signatures but imported where needed
 
 /// Main application state
 pub struct App {
@@ -433,6 +433,71 @@ impl App {
                         }
                         _ => {}
                     }
+                }
+                return Ok(());
+            }
+            Screen::ProfileSelection => {
+                // Handle profile selection events
+                match event {
+                    Event::Key(key) if key.kind == KeyEventKind::Press => {
+                        let state = &mut self.ui_state.profile_selection;
+                        match key.code {
+                            KeyCode::Up => {
+                                if let Some(current) = state.list_state.selected() {
+                                    if current > 0 {
+                                        state.list_state.select(Some(current - 1));
+                                    } else {
+                                        state.list_state.select(Some(state.profiles.len().saturating_sub(1)));
+                                    }
+                                } else if !state.profiles.is_empty() {
+                                    state.list_state.select(Some(state.profiles.len() - 1));
+                                }
+                            }
+                            KeyCode::Down => {
+                                if let Some(current) = state.list_state.selected() {
+                                    if current < state.profiles.len().saturating_sub(1) {
+                                        state.list_state.select(Some(current + 1));
+                                    } else {
+                                        state.list_state.select(Some(0));
+                                    }
+                                } else if !state.profiles.is_empty() {
+                                    state.list_state.select(Some(0));
+                                }
+                            }
+                            KeyCode::Enter => {
+                                // Activate selected profile
+                                // Clone profile name to release borrow of state
+                                let profile_name = if let Some(selected_idx) = state.list_state.selected() {
+                                    state.profiles.get(selected_idx).cloned()
+                                } else {
+                                    None
+                                };
+
+                                if let Some(profile_name) = profile_name {
+                                    // state borrow ends here, allowing us to borrow self mutably
+                                    if let Err(e) = self.activate_profile_after_setup(&profile_name) {
+                                        error!("Failed to activate profile: {}", e);
+                                        // Show error message
+                                        self.message_component = Some(MessageComponent::new(
+                                            "Activation Failed".to_string(),
+                                            format!("Failed to activate profile '{}': {}", profile_name, e),
+                                            Screen::MainMenu,
+                                        ));
+                                    }
+                                    // Go to main menu
+                                    self.ui_state.current_screen = Screen::MainMenu;
+                                    self.ui_state.profile_selection = Default::default();
+                                }
+                            }
+                            KeyCode::Esc => {
+                                // Skip activation, go to main menu
+                                self.ui_state.current_screen = Screen::MainMenu;
+                                self.ui_state.profile_selection = Default::default();
+                            }
+                            _ => {}
+                        }
+                    }
+                    _ => {}
                 }
                 return Ok(());
             }
@@ -3126,71 +3191,6 @@ impl App {
         manifest.save(&self.config.repo_path)?;
 
         info!("Deleted profile: {}", profile_name);
-        Ok(())
-    }
-
-    /// Render profile selection screen (after GitHub setup)
-    fn render_profile_selection_screen(&mut self, frame: &mut Frame, area: Rect) -> Result<()> {
-        use ratatui::widgets::{Block, Borders, Clear, List, ListItem};
-        use crate::components::header::Header;
-        use crate::components::footer::Footer;
-        use crate::utils::create_standard_layout;
-        use ratatui::style::{Style, Color, Modifier};
-
-        // Clear the entire area first
-        frame.render_widget(Clear, area);
-
-        // Background
-        let background = Block::default()
-            .style(Style::default().bg(Color::Black));
-        frame.render_widget(background, area);
-
-        let (header_chunk, content_chunk, footer_chunk) = create_standard_layout(area, 5, 2);
-
-        // Header
-        let _ = Header::render(
-            frame,
-            header_chunk,
-            "Select Profile to Activate",
-            "Choose which profile to activate after cloning the repository"
-        )?;
-
-        // Content: List of profiles
-        let state = &mut self.ui_state.profile_selection;
-        // Clone config profiles to avoid borrow checker issues in closure
-        let config_profiles = self.config.profiles.clone();
-        let items: Vec<ListItem> = state.profiles.iter()
-            .map(|name| {
-                let profile = config_profiles.iter().find(|p| p.name == *name);
-                let description = profile.and_then(|p| p.description.as_ref())
-                    .map(|d| format!(" - {}", d))
-                    .unwrap_or_default();
-                let file_count = profile.map(|p| p.synced_files.len()).unwrap_or(0);
-                let file_text = if file_count == 1 {
-                    "1 file".to_string()
-                } else {
-                    format!("{} files", file_count)
-                };
-                ListItem::new(format!("{} {}{}", name, file_text, description))
-            })
-            .collect();
-
-        let list = List::new(items)
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .title("Available Profiles")
-                    .border_style(Style::default().fg(Color::Cyan))
-            )
-            .highlight_style(Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD))
-            .highlight_symbol("> ");
-
-        frame.render_stateful_widget(list, content_chunk, &mut state.list_state);
-
-        // Footer
-        let footer_text = "↑↓: Navigate | Enter: Activate Profile | Esc: Skip";
-        let _ = Footer::render(frame, footer_chunk, footer_text)?;
-
         Ok(())
     }
 

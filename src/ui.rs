@@ -182,6 +182,7 @@ impl Default for PushChangesState {
 pub struct ProfileSelectionState {
     pub profiles: Vec<String>, // List of profile names
     pub list_state: ListState,
+    #[allow(dead_code)] // Reserved for future use
     pub selected_profile: Option<String>, // Selected profile to activate
 }
 
