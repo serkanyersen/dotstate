@@ -25,6 +25,9 @@ pub struct Config {
     /// Whether to create backups before syncing (default: true)
     #[serde(default = "default_backup_enabled")]
     pub backup_enabled: bool,
+    /// Whether the active profile is currently activated (symlinks created)
+    #[serde(default)]
+    pub profile_activated: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -96,6 +99,7 @@ fn default_backup_enabled() -> bool {
 
 impl Config {
     /// Load configuration from file or create default
+    /// If config doesn't exist, attempts to discover profiles from the repo manifest
     pub fn load_or_create(config_path: &Path) -> Result<Self> {
         if config_path.exists() {
             let content = std::fs::read_to_string(config_path)
@@ -115,7 +119,29 @@ impl Config {
 
             Ok(config)
         } else {
-            let config = Self::default();
+            // Config doesn't exist - try to discover profiles from repo
+            let mut config = Self::default();
+
+            // Try to discover profiles from the repo manifest if repo_path exists
+            if config.repo_path.exists() {
+                // Use load_or_backfill to handle repos created before manifest system
+                if let Ok(manifest) = crate::utils::ProfileManifest::load_or_backfill(&config.repo_path) {
+                    // Convert manifest profiles to config profiles
+                    config.profiles = manifest.profiles.into_iter().map(|info| {
+                        Profile {
+                            name: info.name,
+                            description: info.description,
+                            synced_files: Vec::new(), // Will be populated when user syncs files
+                        }
+                    }).collect();
+
+                    // Set active profile to first one if available
+                    if !config.profiles.is_empty() {
+                        config.active_profile = config.profiles[0].name.clone();
+                    }
+                }
+            }
+
             config.save(config_path)?;
             Ok(config)
         }
@@ -161,6 +187,7 @@ impl Config {
                 synced_files: Vec::new(),
             }],
             backup_enabled: true,
+            profile_activated: false,
             repo_path: dirs::home_dir()
                 .unwrap_or_else(|| PathBuf::from("."))
                 .join(".dotstate"),

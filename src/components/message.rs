@@ -40,18 +40,18 @@ impl Component for MessageComponent {
         let (header_chunk, content_chunk, footer_chunk) = create_standard_layout(area, 5, 2);
 
         // Header: Use common header component
-        let description = if self.screen_type == Screen::PushChanges {
-            "Pushing your changes to GitHub repository..."
-        } else {
-            "Pulling latest changes from GitHub repository..."
+        let description = match self.screen_type {
+            Screen::PushChanges => "Pushing your changes to GitHub repository...",
+            Screen::PullChanges => "Pulling latest changes from GitHub repository...",
+            _ => "Important Notice",
         };
         let _ = Header::render(frame, header_chunk, &self.title, description)?;
 
         // Message with styled block - use MessageBox component
-        let message_color = if self.screen_type == Screen::PushChanges {
-            Some(Color::Green) // Success color for push
-        } else {
-            Some(Color::Blue) // Info color for pull
+        let message_color = match self.screen_type {
+            Screen::PushChanges => Some(Color::Green), // Success color for push
+            Screen::PullChanges => Some(Color::Blue), // Info color for pull
+            _ => Some(Color::Yellow), // Warning color for deactivation
         };
 
         MessageBox::render(

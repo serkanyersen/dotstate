@@ -69,6 +69,24 @@ impl App {
     pub fn run(&mut self) -> Result<()> {
         self.tui.enter()?;
 
+        // Check if profile is deactivated and show warning
+        if !self.config.profile_activated && self.config.github.is_some() {
+            // Profile is deactivated - show warning message
+            self.message_component = Some(MessageComponent::new(
+                "Profile Deactivated".to_string(),
+                format!(
+                    "⚠️  Your profile '{}' is currently deactivated.\n\n\
+                    Your symlinks have been removed and original files restored.\n\n\
+                    To reactivate your profile and restore symlinks, run:\n\
+                    \n\
+                    \x1b[1m  dotstate activate\x1b[0m\n\n\
+                    Or press any key to continue to the main menu.",
+                    self.config.active_profile
+                ),
+                Screen::MainMenu,
+            ));
+        }
+
         // Always start with main menu (which is now the welcome screen)
         self.ui_state.current_screen = Screen::MainMenu;
         // Set last_screen to None so first draw will detect the transition
@@ -155,9 +173,14 @@ impl App {
                     let _ = self.main_menu_component.render(frame, area);
                 }
                 Screen::MainMenu => {
-                    // Pass config to main menu for stats
-                    self.main_menu_component.update_config(self.config.clone());
-                    let _ = self.main_menu_component.render(frame, area);
+                    // Show deactivation warning message if present
+                    if let Some(ref mut msg_component) = self.message_component {
+                        let _ = msg_component.render(frame, area);
+                    } else {
+                        // Pass config to main menu for stats
+                        self.main_menu_component.update_config(self.config.clone());
+                        let _ = self.main_menu_component.render(frame, area);
+                    }
                 }
                 Screen::GitHubAuth => {
                     // Sync state back after render (component may update it)
@@ -196,6 +219,21 @@ impl App {
     }
 
     fn handle_event(&mut self, event: Event) -> Result<()> {
+        // Handle message component events first (e.g., deactivation warning on MainMenu)
+        if let Some(ref mut msg_component) = self.message_component {
+            if self.ui_state.current_screen == Screen::MainMenu {
+                let action = msg_component.handle_event(event)?;
+                match action {
+                    ComponentAction::Navigate(Screen::MainMenu) => {
+                        // User dismissed the warning, clear it and show main menu
+                        self.message_component = None;
+                    }
+                    _ => {}
+                }
+                return Ok(());
+            }
+        }
+
         // Let components handle events first (for mouse support)
         match self.ui_state.current_screen {
             Screen::MainMenu => {
@@ -353,9 +391,38 @@ impl App {
                                             state.popup_type = ProfilePopupType::None;
                                         }
                                         KeyCode::Enter => {
-                                            // TODO: Create profile
-                                            info!("Create profile: {}", state.create_name_input);
-                                            state.popup_type = ProfilePopupType::None;
+                                            // Create profile
+                                            if !state.create_name_input.is_empty() {
+                                                let name = state.create_name_input.clone();
+                                                let description = if state.create_description_input.is_empty() {
+                                                    None
+                                                } else {
+                                                    Some(state.create_description_input.clone())
+                                                };
+                                                let copy_from = state.create_copy_from;
+                                                drop(state); // Release borrow
+                                                match self.create_profile(&name, description, copy_from) {
+                                                    Ok(_) => {
+                                                        // Refresh config
+                                                        self.config = Config::load_or_create(&self.config_path)?;
+                                                        self.ui_state.profile_manager.popup_type = ProfilePopupType::None;
+                                                        self.ui_state.profile_manager.create_name_input.clear();
+                                                        self.ui_state.profile_manager.create_description_input.clear();
+                                                        // Refresh list
+                                                        if !self.config.profiles.is_empty() {
+                                                            let new_idx = self.config.profiles.iter()
+                                                                .position(|p| p.name == name)
+                                                                .unwrap_or(self.config.profiles.len() - 1);
+                                                            self.ui_state.profile_manager.list_state.select(Some(new_idx));
+                                                        }
+                                                    }
+                                                    Err(e) => {
+                                                        error!("Failed to create profile: {}", e);
+                                                        // TODO: Show error message in UI
+                                                    }
+                                                }
+                                                return Ok(());
+                                            }
                                         }
                                         KeyCode::Backspace => {
                                             if !state.create_name_input.is_empty() {
@@ -385,14 +452,33 @@ impl App {
                                             state.popup_type = ProfilePopupType::None;
                                         }
                                         KeyCode::Enter => {
-                                            // TODO: Switch profile
+                                            // Switch profile
                                             if let Some(idx) = state.list_state.selected() {
                                                 if let Some(profile) = profiles.get(idx) {
-                                                    info!("Switch to profile: {}", profile.name);
-                                                    // TODO: Implement actual switch
+                                                    let profile_name = profile.name.clone();
+                                                    drop(state); // Release borrow
+                                                    drop(profiles); // Release borrow
+                                                    match self.switch_profile(&profile_name) {
+                                                        Ok(_) => {
+                                                            // Refresh config
+                                                            self.config = Config::load_or_create(&self.config_path)?;
+                                                            self.ui_state.profile_manager.popup_type = ProfilePopupType::None;
+                                                            // Update list selection
+                                                            if !self.config.profiles.is_empty() {
+                                                                let new_idx = self.config.profiles.iter()
+                                                                    .position(|p| p.name == profile_name)
+                                                                    .unwrap_or(0);
+                                                                self.ui_state.profile_manager.list_state.select(Some(new_idx));
+                                                            }
+                                                        }
+                                                        Err(e) => {
+                                                            error!("Failed to switch profile: {}", e);
+                                                            // TODO: Show error message in UI
+                                                        }
+                                                    }
+                                                    return Ok(());
                                                 }
                                             }
-                                            state.popup_type = ProfilePopupType::None;
                                         }
                                         _ => {}
                                     }
@@ -403,12 +489,36 @@ impl App {
                                             state.popup_type = ProfilePopupType::None;
                                         }
                                         KeyCode::Enter => {
-                                            // TODO: Rename profile
+                                            // Rename profile
                                             if !state.rename_input.is_empty() {
-                                                info!("Rename profile to: {}", state.rename_input);
-                                                // TODO: Implement actual rename
+                                                if let Some(idx) = state.list_state.selected() {
+                                                    if let Some(profile) = profiles.get(idx) {
+                                                        let old_name = profile.name.clone();
+                                                        let new_name = state.rename_input.clone();
+                                                        drop(state); // Release borrow
+                                                        drop(profiles); // Release borrow
+                                                        match self.rename_profile(&old_name, &new_name) {
+                                                            Ok(_) => {
+                                                                // Refresh config
+                                                                self.config = Config::load_or_create(&self.config_path)?;
+                                                                self.ui_state.profile_manager.popup_type = ProfilePopupType::None;
+                                                                // Update list selection
+                                                                if !self.config.profiles.is_empty() {
+                                                                    let new_idx = self.config.profiles.iter()
+                                                                        .position(|p| p.name == new_name)
+                                                                        .unwrap_or(0);
+                                                                    self.ui_state.profile_manager.list_state.select(Some(new_idx));
+                                                                }
+                                                            }
+                                                            Err(e) => {
+                                                                error!("Failed to rename profile: {}", e);
+                                                                // TODO: Show error message in UI
+                                                            }
+                                                        }
+                                                        return Ok(());
+                                                    }
+                                                }
                                             }
-                                            state.popup_type = ProfilePopupType::None;
                                         }
                                         KeyCode::Backspace => {
                                             if !state.rename_input.is_empty() {
@@ -438,16 +548,36 @@ impl App {
                                             state.popup_type = ProfilePopupType::None;
                                         }
                                         KeyCode::Enter => {
-                                            // TODO: Delete profile
+                                            // Delete profile
                                             if let Some(idx) = state.list_state.selected() {
                                                 if let Some(profile) = profiles.get(idx) {
                                                     if state.delete_confirm_input == profile.name {
-                                                        info!("Delete profile: {}", profile.name);
-                                                        // TODO: Implement actual delete
+                                                        let profile_name = profile.name.clone();
+                                                        let idx = idx;
+                                                        drop(state); // Release borrow
+                                                        drop(profiles); // Release borrow
+                                                        match self.delete_profile(&profile_name) {
+                                                            Ok(_) => {
+                                                                // Refresh config
+                                                                self.config = Config::load_or_create(&self.config_path)?;
+                                                                self.ui_state.profile_manager.popup_type = ProfilePopupType::None;
+                                                                // Update list selection
+                                                                if !self.config.profiles.is_empty() {
+                                                                    let new_idx = (idx.min(self.config.profiles.len().saturating_sub(1)));
+                                                                    self.ui_state.profile_manager.list_state.select(Some(new_idx));
+                                                                } else {
+                                                                    self.ui_state.profile_manager.list_state.select(None);
+                                                                }
+                                                            }
+                                                            Err(e) => {
+                                                                error!("Failed to delete profile: {}", e);
+                                                                // TODO: Show error message in UI
+                                                            }
+                                                        }
+                                                        return Ok(());
                                                     }
                                                 }
                                             }
-                                            state.popup_type = ProfilePopupType::None;
                                         }
                                         KeyCode::Backspace => {
                                             if !state.delete_confirm_input.is_empty() {
@@ -544,8 +674,39 @@ impl App {
                             _ => {}
                         }
                     }
-                    Event::Mouse(_) => {
-                        // TODO: Mouse support
+                    Event::Mouse(mouse) => {
+                        match mouse.kind {
+                            crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left) => {
+                                // Check if click is in profile list
+                                for (rect, profile_idx) in &state.clickable_areas {
+                                    if mouse.column >= rect.x
+                                        && mouse.column < rect.x + rect.width
+                                        && mouse.row >= rect.y
+                                        && mouse.row < rect.y + rect.height {
+                                        // Select the clicked profile
+                                        state.list_state.select(Some(*profile_idx));
+                                        return Ok(());
+                                    }
+                                }
+                            }
+                            crossterm::event::MouseEventKind::ScrollUp => {
+                                if let Some(selected) = state.list_state.selected() {
+                                    if selected > 0 {
+                                        state.list_state.select(Some(selected - 1));
+                                    }
+                                }
+                            }
+                            crossterm::event::MouseEventKind::ScrollDown => {
+                                if let Some(selected) = state.list_state.selected() {
+                                    if selected < profiles.len().saturating_sub(1) {
+                                        state.list_state.select(Some(selected + 1));
+                                    }
+                                } else if !profiles.is_empty() {
+                                    state.list_state.select(Some(0));
+                                }
+                            }
+                            _ => {}
+                        }
                     }
                     _ => {}
                 }
@@ -1072,6 +1233,17 @@ impl App {
                             // Create initial commit
                             std::fs::write(repo_path.join("README.md"),
                                 format!("# {}\n\nDotfiles managed by dotstate", repo_name))?;
+
+                            // Create profile manifest with default profile
+                            let mut manifest = crate::utils::ProfileManifest {
+                                profiles: vec![crate::utils::ProfileInfo {
+                                    name: self.config.active_profile.clone(),
+                                    description: self.config.profiles.first()
+                                        .and_then(|p| p.description.clone()),
+                                }],
+                            };
+                            manifest.save(&repo_path)?;
+
                             git_mgr.commit_all("Initial commit")?;
 
                             // Get current branch name (should be 'main' after ensure_main_branch)
@@ -2370,6 +2542,206 @@ impl App {
             state.file_browser_list_state.select(Some(0));
         }
 
+        Ok(())
+    }
+
+    /// Create a new profile
+    fn create_profile(&mut self, name: &str, description: Option<String>, copy_from: Option<usize>) -> Result<()> {
+        use crate::utils::{validate_profile_name, sanitize_profile_name};
+        use crate::config::Profile;
+
+        // Validate and sanitize profile name
+        let sanitized_name = sanitize_profile_name(name);
+        if sanitized_name.is_empty() {
+            return Err(anyhow::anyhow!("Profile name cannot be empty"));
+        }
+
+        let existing_names: Vec<String> = self.config.profiles.iter().map(|p| p.name.clone()).collect();
+        if let Err(e) = validate_profile_name(&sanitized_name, &existing_names) {
+            return Err(anyhow::anyhow!("Invalid profile name: {}", e));
+        }
+
+        // Create profile folder in repo
+        let profile_path = self.config.repo_path.join(&sanitized_name);
+        if profile_path.exists() {
+            return Err(anyhow::anyhow!("Profile folder already exists: {:?}", profile_path));
+        }
+
+        std::fs::create_dir_all(&profile_path)
+            .context("Failed to create profile directory")?;
+
+        // Copy files from source profile if specified
+        let synced_files = if let Some(source_idx) = copy_from {
+            if let Some(source_profile) = self.config.profiles.get(source_idx) {
+                let source_profile_path = self.config.repo_path.join(&source_profile.name);
+
+                // Copy all files from source profile
+                for file in &source_profile.synced_files {
+                    let source_file = source_profile_path.join(file);
+                    let dest_file = profile_path.join(file);
+
+                    if source_file.exists() {
+                        // Create parent directories
+                        if let Some(parent) = dest_file.parent() {
+                            std::fs::create_dir_all(parent)?;
+                        }
+
+                        // Copy file or directory
+                        if source_file.is_dir() {
+                            crate::file_manager::copy_dir_all(&source_file, &dest_file)?;
+                        } else {
+                            std::fs::copy(&source_file, &dest_file)?;
+                        }
+                    }
+                }
+
+                source_profile.synced_files.clone()
+            } else {
+                Vec::new()
+            }
+        } else {
+            Vec::new()
+        };
+
+        // Create profile and add to config
+        let profile = Profile::new(sanitized_name.clone(), description.clone());
+        let mut profile = profile;
+        profile.synced_files = synced_files;
+
+        self.config.add_profile(profile);
+        self.config.save(&self.config_path)?;
+
+        // Update profile manifest in repo (backfill if needed)
+        let mut manifest = crate::utils::ProfileManifest::load_or_backfill(&self.config.repo_path)
+            .unwrap_or_else(|_| crate::utils::ProfileManifest { profiles: Vec::new() });
+        manifest.add_profile(sanitized_name.clone(), description);
+        manifest.save(&self.config.repo_path)?;
+
+        info!("Created profile: {}", sanitized_name);
+        Ok(())
+    }
+
+    /// Switch to a different profile
+    fn switch_profile(&mut self, target_profile_name: &str) -> Result<()> {
+        use crate::utils::SymlinkManager;
+
+        // Validate target profile exists
+        let target_profile = self.config.get_profile(target_profile_name)
+            .ok_or_else(|| anyhow::anyhow!("Profile '{}' not found", target_profile_name))?;
+
+        // Don't switch if already active
+        if self.config.active_profile == target_profile_name {
+            return Ok(());
+        }
+
+        let old_profile_name = self.config.active_profile.clone();
+        let repo_path = self.config.repo_path.clone();
+
+        // Use SymlinkManager to switch profiles
+        let mut symlink_mgr = SymlinkManager::new_with_backup(
+            repo_path.clone(),
+            self.config.backup_enabled
+        )?;
+
+        let switch_result = symlink_mgr.switch_profile(
+            &old_profile_name,
+            target_profile_name,
+            &target_profile.synced_files,
+        )?;
+
+        // Update active profile in config
+        self.config.active_profile = target_profile_name.to_string();
+        self.config.save(&self.config_path)?;
+
+        info!("Switched from '{}' to '{}'", old_profile_name, target_profile_name);
+        info!("Removed {} symlinks, created {} symlinks", switch_result.removed.len(), switch_result.created.len());
+
+        Ok(())
+    }
+
+    /// Rename a profile
+    fn rename_profile(&mut self, old_name: &str, new_name: &str) -> Result<()> {
+        use crate::utils::{validate_profile_name, sanitize_profile_name};
+
+        // Validate new name
+        let sanitized_name = sanitize_profile_name(new_name);
+        if sanitized_name.is_empty() {
+            return Err(anyhow::anyhow!("Profile name cannot be empty"));
+        }
+
+        let existing_names: Vec<String> = self.config.profiles.iter()
+            .filter(|p| p.name != old_name)
+            .map(|p| p.name.clone())
+            .collect();
+        if let Err(e) = validate_profile_name(&sanitized_name, &existing_names) {
+            return Err(anyhow::anyhow!("Invalid profile name: {}", e));
+        }
+
+        // Clone values we need before borrowing
+        let repo_path = self.config.repo_path.clone();
+        let was_active = self.config.active_profile == old_name;
+
+        // Get the profile and update name
+        {
+            let profile = self.config.get_profile_mut(old_name)
+                .ok_or_else(|| anyhow::anyhow!("Profile '{}' not found", old_name))?;
+            profile.name = sanitized_name.clone();
+        }
+
+        // Rename profile folder in repo
+        let old_path = repo_path.join(old_name);
+        let new_path = repo_path.join(&sanitized_name);
+
+        if old_path.exists() {
+            std::fs::rename(&old_path, &new_path)
+                .context("Failed to rename profile directory")?;
+        }
+
+        // Update active profile name if this was the active profile
+        if was_active {
+            self.config.active_profile = sanitized_name.clone();
+        }
+
+        self.config.save(&self.config_path)?;
+
+        // Update profile manifest in repo (backfill if needed)
+        let mut manifest = crate::utils::ProfileManifest::load_or_backfill(&self.config.repo_path)
+            .unwrap_or_else(|_| crate::utils::ProfileManifest { profiles: Vec::new() });
+        let _ = manifest.rename_profile(old_name, &sanitized_name);
+        manifest.save(&self.config.repo_path)?;
+
+        info!("Renamed profile from '{}' to '{}'", old_name, sanitized_name);
+        Ok(())
+    }
+
+    /// Delete a profile
+    fn delete_profile(&mut self, profile_name: &str) -> Result<()> {
+        // Cannot delete active profile
+        if self.config.active_profile == profile_name {
+            return Err(anyhow::anyhow!("Cannot delete active profile '{}'. Please switch to another profile first.", profile_name));
+        }
+
+        // Remove profile folder from repo
+        let profile_path = self.config.repo_path.join(profile_name);
+        if profile_path.exists() {
+            std::fs::remove_dir_all(&profile_path)
+                .context("Failed to remove profile directory")?;
+        }
+
+        // Remove from config
+        if !self.config.remove_profile(profile_name) {
+            return Err(anyhow::anyhow!("Profile '{}' not found", profile_name));
+        }
+
+        self.config.save(&self.config_path)?;
+
+        // Update profile manifest in repo (backfill if needed)
+        let mut manifest = crate::utils::ProfileManifest::load_or_backfill(&self.config.repo_path)
+            .unwrap_or_else(|_| crate::utils::ProfileManifest { profiles: Vec::new() });
+        manifest.remove_profile(profile_name);
+        manifest.save(&self.config.repo_path)?;
+
+        info!("Deleted profile: {}", profile_name);
         Ok(())
     }
 }

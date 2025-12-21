@@ -65,16 +65,6 @@ impl ProfileManagerComponent {
     pub fn new() -> Self {
         Self
     }
-
-    /// Get the selected profile index
-    pub fn selected_index(&self, state: &ProfileManagerState) -> Option<usize> {
-        state.list_state.selected()
-    }
-
-    /// Set the selected profile index
-    pub fn set_selected_index(&mut self, state: &mut ProfileManagerState, index: Option<usize>) {
-        state.list_state.select(index);
-    }
 }
 
 impl Component for ProfileManagerComponent {
@@ -98,9 +88,22 @@ impl Component for ProfileManagerComponent {
                     _ => Ok(ComponentAction::None),
                 }
             }
-            Event::Mouse(_) => {
-                // Mouse support will be added
-                Ok(ComponentAction::None)
+            Event::Mouse(mouse) => {
+                match mouse.kind {
+                    MouseEventKind::Down(MouseButton::Left) => {
+                        // Mouse clicks are handled in app.rs where we have access to profiles
+                        Ok(ComponentAction::None)
+                    }
+                    MouseEventKind::ScrollUp => {
+                        // Mouse scroll is handled in app.rs where we have access to state
+                        Ok(ComponentAction::None)
+                    }
+                    MouseEventKind::ScrollDown => {
+                        // Scroll down in list - handled in app.rs
+                        Ok(ComponentAction::None)
+                    }
+                    _ => Ok(ComponentAction::None),
+                }
             }
             _ => Ok(ComponentAction::None),
         }
@@ -201,6 +204,27 @@ impl ProfileManagerComponent {
                     .bg(Color::DarkGray)
                     .add_modifier(Modifier::BOLD)
             );
+
+        // Store clickable areas for mouse support
+        // Each list item is clickable
+        state.clickable_areas.clear();
+        for (idx, _) in profiles.iter().enumerate() {
+            // Calculate the rect for each item (approximate, since List widget handles rendering)
+            // We'll use the full width and estimate height per item
+            let item_height = 1; // Each list item is typically 1 row
+            let item_y = area.y + 1 + idx as u16; // +1 for border, +idx for item position
+            if item_y < area.y + area.height - 1 { // Within visible area
+                state.clickable_areas.push((
+                    Rect {
+                        x: area.x + 1, // +1 for left border
+                        y: item_y,
+                        width: area.width.saturating_sub(2), // -2 for borders
+                        height: item_height,
+                    },
+                    idx,
+                ));
+            }
+        }
 
         // Render with state
         frame.render_stateful_widget(list, area, &mut state.list_state);
