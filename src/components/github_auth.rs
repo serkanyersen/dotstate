@@ -241,6 +241,11 @@ impl GitHubAuthComponent {
                         "",
                         "Default: dotstate-storage",
                         "",
+                        "⚠️ Important for returning users:",
+                        "If you already have a repo with a different",
+                        "name, make sure to enter it here, otherwise",
+                        "a new repo with this name will be created.",
+                        "",
                         "Requirements:",
                         "• Letters, numbers, hyphens, underscores",
                         "• No spaces or special characters",
@@ -342,6 +347,7 @@ impl Component for GitHubAuthComponent {
                 Constraint::Length(3), // Token input
                 Constraint::Length(1), // Spacer
                 Constraint::Length(3), // Repo name input
+                Constraint::Length(2), // Reminder message (only shown for new installs)
                 Constraint::Length(1), // Spacer
                 Constraint::Length(3), // Repo location input
                 Constraint::Length(1), // Spacer
@@ -364,8 +370,18 @@ impl Component for GitHubAuthComponent {
         // Render each field with spacers
         self.render_token_field(frame, left_layout[2])?;
         self.render_repo_name_field(frame, left_layout[4])?;
-        self.render_repo_location_field(frame, left_layout[6])?;
-        self.render_visibility_field(frame, left_layout[8])?;
+
+        // Show reminder message for new installs (when repo is not already configured)
+        if !self.auth_state.repo_already_configured {
+            let reminder_text = "⚠️  If you already had a repo with a different name, make sure to enter it here, otherwise a new repo with this name will be created";
+            let reminder = Paragraph::new(reminder_text)
+                .style(Style::default().fg(Color::Yellow))
+                .wrap(Wrap { trim: true });
+            frame.render_widget(reminder, left_layout[5]);
+        }
+
+        self.render_repo_location_field(frame, left_layout[7])?;
+        self.render_visibility_field(frame, left_layout[9])?;
 
         // Right side: Context-sensitive help
         self.render_help_panel(frame, main_layout[1])?;

@@ -4,7 +4,7 @@ use crate::file_manager::FileManager;
 use crate::github::GitHubClient;
 use crate::git::GitManager;
 use crate::tui::Tui;
-use crate::ui::{UiState, Screen, GitHubAuthStep, GitHubAuthField};
+use crate::ui::{UiState, Screen, GitHubAuthStep, GitHubAuthField, ProfileSelectionState};
 use crate::components::{MainMenuComponent, GitHubAuthComponent, SyncedFilesComponent, MessageComponent, DotfileSelectionComponent, PushChangesComponent, ProfileManagerComponent, ComponentAction, Component, MenuItem};
 use crate::components::profile_manager::ProfilePopupType;
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
@@ -12,6 +12,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tokio::runtime::Runtime;
 use tracing::{error, info};
+use ratatui::prelude::*;
 
 /// Main application state
 pub struct App {
@@ -212,6 +213,66 @@ impl App {
                     if let Err(e) = self.profile_manager_component.render_with_config(frame, area, &self.config, &mut self.ui_state.profile_manager) {
                         eprintln!("Error rendering profile manager: {}", e);
                     }
+                }
+                Screen::ProfileSelection => {
+                    // Render profile selection screen
+                    // Clone config profiles before closure to avoid borrow issues
+                    let config_profiles = self.config.profiles.clone();
+                    let state = &mut self.ui_state.profile_selection;
+
+                    // Build items list
+                    let items: Vec<ListItem> = state.profiles.iter()
+                        .map(|name| {
+                            let profile = config_profiles.iter().find(|p| p.name == *name);
+                            let description = profile.and_then(|p| p.description.as_ref())
+                                .map(|d| format!(" - {}", d))
+                                .unwrap_or_default();
+                            let file_count = profile.map(|p| p.synced_files.len()).unwrap_or(0);
+                            let file_text = if file_count == 1 {
+                                "1 file".to_string()
+                            } else {
+                                format!("{} files", file_count)
+                            };
+                            ListItem::new(format!("{} {}{}", name, file_text, description))
+                        })
+                        .collect();
+
+                    // Render the screen inline
+                    use ratatui::widgets::{Block, Borders, Clear, List, ListItem};
+                    use crate::components::header::Header;
+                    use crate::components::footer::Footer;
+                    use crate::utils::create_standard_layout;
+                    use ratatui::style::{Style, Color, Modifier};
+
+                    frame.render_widget(Clear, area);
+
+                    let background = Block::default()
+                        .style(Style::default().bg(Color::Black));
+                    frame.render_widget(background, area);
+
+                    let (header_chunk, content_chunk, footer_chunk) = create_standard_layout(area, 5, 2);
+
+                    let _ = Header::render(
+                        frame,
+                        header_chunk,
+                        "Select Profile to Activate",
+                        "Choose which profile to activate after cloning the repository"
+                    );
+
+                    let list = List::new(items)
+                        .block(
+                            Block::default()
+                                .borders(Borders::ALL)
+                                .title("Available Profiles")
+                                .border_style(Style::default().fg(Color::Cyan))
+                        )
+                        .highlight_style(Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD))
+                        .highlight_symbol("> ");
+
+                    frame.render_stateful_widget(list, content_chunk, &mut state.list_state);
+
+                    let footer_text = "↑↓: Navigate | Enter: Activate Profile | Esc: Skip";
+                    let _ = Footer::render(frame, footer_chunk, footer_text);
                 }
             }
         })?;
@@ -1314,10 +1375,18 @@ impl App {
                 // Allow user to continue after processing completes
                 match key.code {
                     KeyCode::Enter | KeyCode::Char(' ') => {
-                        // If setup was successful, go to main menu
+                        // If setup was successful, check if we need to select a profile
                         if auth_state.error_message.is_none() && auth_state.status_message.is_some() {
-                            self.ui_state.current_screen = Screen::MainMenu;
-                            *auth_state = Default::default();
+                            // Check if we have profiles to select from (repo was cloned)
+                            if !self.ui_state.profile_selection.profiles.is_empty() &&
+                               auth_state.status_message.as_ref().map(|s| s.contains("Found")).unwrap_or(false) {
+                                // Go to profile selection screen
+                                self.ui_state.current_screen = Screen::ProfileSelection;
+                            } else {
+                                // No profile selection needed, go to main menu
+                                self.ui_state.current_screen = Screen::MainMenu;
+                                *auth_state = Default::default();
+                            }
                         }
                     }
                     KeyCode::Esc => {
@@ -3058,6 +3127,124 @@ impl App {
 
         info!("Deleted profile: {}", profile_name);
         Ok(())
+    }
+
+    /// Render profile selection screen (after GitHub setup)
+    fn render_profile_selection_screen(&mut self, frame: &mut Frame, area: Rect) -> Result<()> {
+        use ratatui::widgets::{Block, Borders, Clear, List, ListItem};
+        use crate::components::header::Header;
+        use crate::components::footer::Footer;
+        use crate::utils::create_standard_layout;
+        use ratatui::style::{Style, Color, Modifier};
+
+        // Clear the entire area first
+        frame.render_widget(Clear, area);
+
+        // Background
+        let background = Block::default()
+            .style(Style::default().bg(Color::Black));
+        frame.render_widget(background, area);
+
+        let (header_chunk, content_chunk, footer_chunk) = create_standard_layout(area, 5, 2);
+
+        // Header
+        let _ = Header::render(
+            frame,
+            header_chunk,
+            "Select Profile to Activate",
+            "Choose which profile to activate after cloning the repository"
+        )?;
+
+        // Content: List of profiles
+        let state = &mut self.ui_state.profile_selection;
+        // Clone config profiles to avoid borrow checker issues in closure
+        let config_profiles = self.config.profiles.clone();
+        let items: Vec<ListItem> = state.profiles.iter()
+            .map(|name| {
+                let profile = config_profiles.iter().find(|p| p.name == *name);
+                let description = profile.and_then(|p| p.description.as_ref())
+                    .map(|d| format!(" - {}", d))
+                    .unwrap_or_default();
+                let file_count = profile.map(|p| p.synced_files.len()).unwrap_or(0);
+                let file_text = if file_count == 1 {
+                    "1 file".to_string()
+                } else {
+                    format!("{} files", file_count)
+                };
+                ListItem::new(format!("{} {}{}", name, file_text, description))
+            })
+            .collect();
+
+        let list = List::new(items)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title("Available Profiles")
+                    .border_style(Style::default().fg(Color::Cyan))
+            )
+            .highlight_style(Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD))
+            .highlight_symbol("> ");
+
+        frame.render_stateful_widget(list, content_chunk, &mut state.list_state);
+
+        // Footer
+        let footer_text = "↑↓: Navigate | Enter: Activate Profile | Esc: Skip";
+        let _ = Footer::render(frame, footer_chunk, footer_text)?;
+
+        Ok(())
+    }
+
+    /// Activate a profile after GitHub setup (includes syncing files from repo)
+    fn activate_profile_after_setup(&mut self, profile_name: &str) -> Result<()> {
+        use crate::utils::SymlinkManager;
+
+        info!("Activating profile '{}' after setup", profile_name);
+
+        // Set as active profile
+        self.config.active_profile = profile_name.to_string();
+        self.config.save(&self.config_path)?;
+
+        // Get profile to activate
+        let profile = self.config.profiles.iter()
+            .find(|p| p.name == profile_name)
+            .ok_or_else(|| anyhow::anyhow!("Profile '{}' not found", profile_name))?;
+
+        // Get files to sync from the profile
+        let files_to_sync = profile.synced_files.clone();
+
+        if files_to_sync.is_empty() {
+            info!("Profile '{}' has no files to sync", profile_name);
+            // Still mark as activated even if no files
+            self.config.profile_activated = true;
+            self.config.save(&self.config_path)?;
+            return Ok(());
+        }
+
+        // Create SymlinkManager with backup enabled (from config)
+        let mut symlink_mgr = SymlinkManager::new_with_backup(
+            self.config.repo_path.clone(),
+            self.config.backup_enabled
+        )?;
+
+        // Activate profile (this will create symlinks and sync files)
+        match symlink_mgr.activate_profile(profile_name, &files_to_sync) {
+            Ok(operations) => {
+                let success_count = operations.iter()
+                    .filter(|op| matches!(op.status, crate::utils::symlink_manager::OperationStatus::Success))
+                    .count();
+                info!("Activated profile '{}' with {} files", profile_name, success_count);
+
+                // Mark as activated
+                self.config.profile_activated = true;
+                self.config.save(&self.config_path)?;
+
+                Ok(())
+            }
+            Err(e) => {
+                error!("Failed to activate profile '{}': {}", profile_name, e);
+                Err(anyhow::anyhow!("Failed to activate profile: {}", e))
+            }
+        }
     }
 }
 

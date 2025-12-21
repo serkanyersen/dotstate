@@ -14,6 +14,7 @@ pub enum Screen {
     PushChanges,
     PullChanges,
     ManageProfiles,
+    ProfileSelection, // For selecting which profile to activate after setup
 }
 
 /// GitHub auth state
@@ -176,6 +177,24 @@ impl Default for PushChangesState {
     }
 }
 
+/// State for profile selection screen (after GitHub setup)
+#[derive(Debug)]
+pub struct ProfileSelectionState {
+    pub profiles: Vec<String>, // List of profile names
+    pub list_state: ListState,
+    pub selected_profile: Option<String>, // Selected profile to activate
+}
+
+impl Default for ProfileSelectionState {
+    fn default() -> Self {
+        Self {
+            profiles: Vec::new(),
+            list_state: ListState::default(),
+            selected_profile: None,
+        }
+    }
+}
+
 /// Application UI state
 #[derive(Debug)]
 pub struct UiState {
@@ -186,6 +205,8 @@ pub struct UiState {
     pub push_changes: PushChangesState,
     pub profile_manager: ProfileManagerState,
     pub has_changes_to_push: bool, // Whether there are uncommitted or unpushed changes
+    /// State for profile selection after GitHub setup
+    pub profile_selection: ProfileSelectionState,
 }
 
 impl UiState {
@@ -198,6 +219,7 @@ impl UiState {
             push_changes: PushChangesState::default(),
             profile_manager: ProfileManagerState::default(),
             has_changes_to_push: false,
+            profile_selection: ProfileSelectionState::default(),
         }
     }
 }
