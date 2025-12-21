@@ -1,3 +1,4 @@
+pub mod backup_manager;
 pub mod layout;
 pub mod path;
 pub mod profile_validation;
@@ -7,6 +8,7 @@ pub mod text;
 pub mod text_input;
 
 // Export utilities that are used
+pub use backup_manager::BackupManager;
 pub use layout::{center_popup, create_standard_layout, create_split_layout};
 pub use path::{expand_path, get_config_path, get_config_dir, get_home_dir};
 pub use profile_validation::{validate_profile_name, sanitize_profile_name, is_safe_profile_name};

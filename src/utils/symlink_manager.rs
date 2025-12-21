@@ -4,6 +4,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use chrono::{DateTime, Utc};
 use tracing::{debug, info, warn, error};
+use crate::utils::BackupManager;
 
 /// Represents a symlink operation (create or remove)
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -87,11 +88,22 @@ pub struct SymlinkManager {
     tracking_file: PathBuf,
     /// Current tracking data
     tracking: SymlinkTracking,
+    /// Whether backups are enabled
+    backup_enabled: bool,
+    /// Backup manager for centralized backups
+    backup_manager: Option<BackupManager>,
+    /// Current backup session directory (if backups are enabled and session started)
+    backup_session: Option<PathBuf>,
 }
 
 impl SymlinkManager {
     /// Create a new SymlinkManager
     pub fn new(repo_path: PathBuf) -> Result<Self> {
+        Self::new_with_backup(repo_path, true)
+    }
+
+    /// Create a new SymlinkManager with backup settings
+    pub fn new_with_backup(repo_path: PathBuf, backup_enabled: bool) -> Result<Self> {
         let config_dir = crate::utils::get_config_dir();
         let tracking_file = config_dir.join("symlinks.json");
 
@@ -105,16 +117,34 @@ impl SymlinkManager {
             SymlinkTracking::default()
         };
 
+        let backup_manager = if backup_enabled {
+            Some(BackupManager::new()?)
+        } else {
+            None
+        };
+
         Ok(Self {
             repo_path,
             tracking_file,
             tracking,
+            backup_enabled,
+            backup_manager,
+            backup_session: None,
         })
     }
 
     /// Activate a profile by creating all its symlinks
     pub fn activate_profile(&mut self, profile_name: &str, files: &[String]) -> Result<Vec<SymlinkOperation>> {
         info!("Activating profile: {}", profile_name);
+
+        // Create backup session if backups are enabled
+        if self.backup_enabled {
+            if let Some(ref backup_mgr) = self.backup_manager {
+                self.backup_session = Some(backup_mgr.create_backup_session()?);
+                info!("Created backup session: {:?}", self.backup_session);
+            }
+        }
+
         let mut operations = Vec::new();
         let profile_path = self.repo_path.join(profile_name);
 
@@ -130,7 +160,7 @@ impl SymlinkManager {
 
             debug!("Creating symlink: {:?} -> {:?}", target, source);
 
-            let operation = self.create_symlink(&source, &target)?;
+            let operation = self.create_symlink(&source, &target, file)?;
             operations.push(operation);
         }
 
@@ -283,7 +313,7 @@ impl SymlinkManager {
     }
 
     /// Create a symlink, backing up any existing file
-    fn create_symlink(&self, source: &Path, target: &Path) -> Result<SymlinkOperation> {
+    fn create_symlink(&self, source: &Path, target: &Path, relative_name: &str) -> Result<SymlinkOperation> {
         let timestamp = Utc::now();
 
         // Check if source exists
@@ -306,7 +336,21 @@ impl SymlinkManager {
                 if metadata.is_symlink() {
                     // It's a symlink - check if it points to the right place
                     if let Ok(existing_target) = fs::read_link(target) {
-                        if existing_target == source {
+                        // Normalize paths for comparison (handle relative vs absolute)
+                        let existing_normalized = if existing_target.is_absolute() {
+                            existing_target.canonicalize().unwrap_or(existing_target)
+                        } else {
+                            // Relative symlink - resolve relative to target's parent
+                            if let Some(parent) = target.parent() {
+                                parent.join(&existing_target).canonicalize().unwrap_or_else(|_| parent.join(&existing_target))
+                            } else {
+                                existing_target
+                            }
+                        };
+
+                        let source_normalized = source.canonicalize().unwrap_or(source.to_path_buf());
+
+                        if existing_normalized == source_normalized {
                             // Already points to the right place, skip
                             return Ok(SymlinkOperation {
                                 source: source.to_path_buf(),
@@ -316,13 +360,44 @@ impl SymlinkManager {
                                 timestamp,
                             });
                         }
+
+                        // Symlink points to wrong place - try to resolve and backup the actual file
+                        // if it exists, then remove the symlink
+                        if existing_normalized.exists() {
+                            // Try to canonicalize, but if it fails (orphaned symlink), use the path as-is
+                            let resolved = existing_normalized.canonicalize().unwrap_or(existing_normalized);
+                            if resolved.exists() {
+                                // The symlink points to an existing file - back it up
+                                if let Some(ref session) = self.backup_session {
+                                    if let Some(ref backup_mgr) = self.backup_manager {
+                                        match backup_mgr.backup_path(session, &resolved, relative_name) {
+                                            Ok(backup) => backup_path = Some(backup),
+                                            Err(e) => {
+                                                warn!("Failed to backup file pointed to by symlink {:?}: {}", target, e);
+                                                // Continue anyway - we'll still remove the symlink
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
-                    // Wrong target or unreadable, remove it
+                    // Remove the symlink (whether we backed up or not)
                     fs::remove_file(target)
                         .with_context(|| format!("Failed to remove existing symlink: {:?}", target))?;
                 } else if metadata.is_file() || metadata.is_dir() {
                     // It's a real file or directory, back it up
-                    backup_path = Some(self.backup_file(target)?);
+                    if let Some(ref session) = self.backup_session {
+                        if let Some(ref backup_mgr) = self.backup_manager {
+                            match backup_mgr.backup_path(session, target, relative_name) {
+                                Ok(backup) => backup_path = Some(backup),
+                                Err(e) => {
+                                    warn!("Failed to backup {:?}: {}", target, e);
+                                    // Continue anyway - we'll still remove/replace the file
+                                }
+                            }
+                        }
+                    }
                     if metadata.is_dir() {
                         fs::remove_dir_all(target)
                             .with_context(|| format!("Failed to remove existing directory: {:?}", target))?;
@@ -409,18 +484,6 @@ impl SymlinkManager {
         })
     }
 
-    /// Create a backup of a file
-    fn backup_file(&self, path: &Path) -> Result<PathBuf> {
-        let backup_path = path.with_extension(
-            format!("{}.bak", path.extension().and_then(|s| s.to_str()).unwrap_or(""))
-        );
-
-        fs::copy(path, &backup_path)
-            .context("Failed to create backup")?;
-
-        debug!("Created backup: {:?}", backup_path);
-        Ok(backup_path)
-    }
 
     /// Attempt to rollback to a profile (used when switch fails)
     fn rollback_to_profile(&mut self, profile_name: &str) -> Result<()> {

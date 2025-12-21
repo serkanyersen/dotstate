@@ -11,8 +11,6 @@ pub struct Config {
     pub active_profile: String,
     /// Available profiles/sets
     pub profiles: Vec<Profile>,
-    /// Default dotfiles to scan
-    pub default_dotfiles: Vec<String>,
     /// Repository root path (where dotfiles are stored locally)
     pub repo_path: PathBuf,
     /// Repository name on GitHub (default: dotstate-storage)
@@ -24,6 +22,9 @@ pub struct Config {
     /// List of synced files (relative paths from home directory)
     #[serde(default)]
     pub synced_files: Vec<String>,
+    /// Whether to create backups before syncing (default: true)
+    #[serde(default = "default_backup_enabled")]
+    pub backup_enabled: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -89,6 +90,10 @@ fn default_branch_name() -> String {
     "main".to_string()
 }
 
+fn default_backup_enabled() -> bool {
+    true
+}
+
 impl Config {
     /// Load configuration from file or create default
     pub fn load_or_create(config_path: &Path) -> Result<Self> {
@@ -105,6 +110,8 @@ impl Config {
             if config.default_branch.is_empty() {
                 config.default_branch = default_branch_name();
             }
+            // backup_enabled defaults to true if not present
+            // (handled by serde default)
 
             Ok(config)
         } else {
@@ -153,7 +160,7 @@ impl Config {
                 description: Some("Default profile".to_string()),
                 synced_files: Vec::new(),
             }],
-            default_dotfiles: Self::default_dotfile_list(),
+            backup_enabled: true,
             repo_path: dirs::home_dir()
                 .unwrap_or_else(|| PathBuf::from("."))
                 .join(".dotstate"),
@@ -163,39 +170,6 @@ impl Config {
         }
     }
 
-    /// Get list of default dotfiles to scan
-    fn default_dotfile_list() -> Vec<String> {
-        vec![
-            // Shell configs
-            ".bashrc".to_string(),
-            ".bash_profile".to_string(),
-            ".zshrc".to_string(),
-            ".zprofile".to_string(),
-            ".zshenv".to_string(),
-            // Terminal customizations
-            ".p10k.zsh".to_string(),
-            ".oh-my-zsh".to_string(),
-            // Editor configs
-            ".vimrc".to_string(),
-            ".config/nvim".to_string(),
-            ".config/nvim/init.vim".to_string(),
-            ".config/nvim/init.lua".to_string(),
-            // Git
-            ".gitconfig".to_string(),
-            ".gitignore_global".to_string(),
-            // Terminal
-            ".tmux.conf".to_string(),
-            ".config/alacritty".to_string(),
-            ".config/kitty".to_string(),
-            // SSH
-            ".ssh/config".to_string(),
-            // Fish shell
-            ".config/fish".to_string(),
-            // Other common configs
-            ".config/wezterm".to_string(),
-            ".config/starship.toml".to_string(),
-        ]
-    }
 
     /// Get the active profile
     #[allow(dead_code)]
@@ -250,7 +224,6 @@ mod tests {
     fn test_config_default() {
         let config = Config::default();
         assert_eq!(config.active_profile, "Personal");
-        assert!(!config.default_dotfiles.is_empty());
     }
 
     #[test]

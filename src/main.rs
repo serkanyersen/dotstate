@@ -4,6 +4,7 @@ mod app;
 mod cli;
 mod components;
 mod config;
+mod dotfile_candidates;
 mod file_manager;
 mod git;
 mod github;

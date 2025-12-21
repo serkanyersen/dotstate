@@ -33,6 +33,13 @@ impl DotfileSelectionComponent {
 
         let selection_state = &mut state.dotfile_selection;
 
+        // Check if unsaved warning popup should be shown
+        if selection_state.show_unsaved_warning {
+            self.render_unsaved_warning_popup(frame, area)?;
+            // Don't render the rest when popup is showing
+            return Ok(());
+        }
+
         // Layout: Title/Description, Content (list + preview), Footer
         let (header_chunk, content_chunk, footer_chunk) = create_standard_layout(area, 5, 2);
 
@@ -295,15 +302,27 @@ impl DotfileSelectionComponent {
         footer_chunk: Rect,
         selection_state: &mut crate::ui::DotfileSelectionState,
     ) -> Result<()> {
-        // Split content into list and preview
-        let (list_area, preview_area_opt) = if selection_state.status_message.is_some() {
+        // Split content into left (list + description) and right (preview)
+        let (left_area, preview_area_opt) = if selection_state.status_message.is_some() {
             (content_chunk, None::<Rect>)
         } else {
             let content_chunks = create_split_layout(content_chunk, &[50, 50]);
             (content_chunks[0], Some(content_chunks[1]))
         };
 
-        // File list using ListState
+        // Split left area into list (top) and description (bottom)
+        let left_chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Min(0),  // List takes remaining space
+                Constraint::Length(4), // Description block (3 lines + 1 border)
+            ])
+            .split(left_area);
+
+        let list_area = left_chunks[0];
+        let description_area = left_chunks[1];
+
+        // File list using ListState - simplified, no descriptions inline
         let items: Vec<ListItem> = selection_state.dotfiles
             .iter()
             .enumerate()
@@ -358,6 +377,44 @@ impl DotfileSelectionComponent {
             list_area,
             &mut selection_state.dotfile_list_scrollbar,
         );
+
+        // Description block
+        if let Some(selected_index) = selection_state.dotfile_list_state.selected() {
+            if selected_index < selection_state.dotfiles.len() {
+                let dotfile = &selection_state.dotfiles[selected_index];
+                let description_text = if let Some(desc) = &dotfile.description {
+                    desc.clone()
+                } else {
+                    format!("No description available for {}", dotfile.relative_path.to_string_lossy())
+                };
+
+                let description_para = Paragraph::new(description_text)
+                    .block(Block::default()
+                        .borders(Borders::ALL)
+                        .title("Description")
+                        .title_alignment(Alignment::Center)
+                        .border_style(unfocused_border_style()))
+                    .wrap(Wrap { trim: true })
+                    .style(Style::default().fg(Color::White));
+                frame.render_widget(description_para, description_area);
+            } else {
+                let empty_desc = Paragraph::new("No file selected")
+                    .block(Block::default()
+                        .borders(Borders::ALL)
+                        .title("Description")
+                        .title_alignment(Alignment::Center)
+                        .border_style(unfocused_border_style()));
+                frame.render_widget(empty_desc, description_area);
+            }
+        } else {
+            let empty_desc = Paragraph::new("No file selected")
+                .block(Block::default()
+                    .borders(Borders::ALL)
+                    .title("Description")
+                    .title_alignment(Alignment::Center)
+                    .border_style(unfocused_border_style()));
+            frame.render_widget(empty_desc, description_area);
+        }
 
         // Preview panel
         if let Some(preview_rect) = preview_area_opt {
@@ -418,18 +475,64 @@ impl DotfileSelectionComponent {
         }
 
         // Footer
+        let backup_status = if selection_state.backup_enabled { "ON" } else { "OFF" };
         let footer_text = if selection_state.status_message.is_some() {
             "Enter: Continue".to_string()
         } else if selection_state.selected_for_sync.is_empty() {
-            "Tab: Switch Focus | ↑↓: Navigate | Space/Enter: Toggle | a: Add Custom File | u/d: Scroll Preview | s: Sync | q/Esc: Back".to_string()
+            format!("Tab: Switch Focus | ↑↓: Navigate | Space/Enter: Toggle | a: Add Custom File | u/d: Scroll Preview | s: Sync | b: Backup ({}) | q/Esc: Back", backup_status)
         } else {
             format!(
-                "Tab: Switch Focus | ↑↓: Navigate | Space/Enter: Toggle | a: Add Custom File | u/d: Scroll Preview | s: Sync ({} selected) | q/Esc: Back",
-                selection_state.selected_for_sync.len()
+                "Tab: Switch Focus | ↑↓: Navigate | Space/Enter: Toggle | a: Add Custom File | u/d: Scroll Preview | s: Sync ({} selected) | b: Backup ({}) | q/Esc: Back",
+                selection_state.selected_for_sync.len(),
+                backup_status
             )
         };
 
         let _ = Footer::render(frame, footer_chunk, &footer_text)?;
+
+        Ok(())
+    }
+
+    /// Render unsaved changes warning popup
+    fn render_unsaved_warning_popup(
+        &self,
+        frame: &mut Frame,
+        area: Rect,
+    ) -> Result<()> {
+        use crate::utils::center_popup;
+        use crate::components::footer::Footer;
+        use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
+        use ratatui::prelude::*;
+
+        let popup_area = center_popup(area, 60, 35);
+        frame.render_widget(Clear, popup_area);
+
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(6), // Warning text
+                Constraint::Min(0),    // Spacer
+                Constraint::Length(2), // Footer
+            ])
+            .split(popup_area);
+
+        let warning_text = "⚠️  Unsaved Changes\n\n\
+            You have unsaved changes to your file selection.\n\
+            What would you like to do?";
+
+        let warning = Paragraph::new(warning_text)
+            .block(Block::default()
+                .borders(Borders::ALL)
+                .title("Unsaved Changes")
+                .title_alignment(Alignment::Center)
+                .border_style(Style::default().fg(Color::Yellow)))
+            .wrap(Wrap { trim: true })
+            .alignment(Alignment::Center);
+        frame.render_widget(warning, chunks[0]);
+
+        // Footer with instructions
+        let footer_text = "S: Save Changes  |  D: Discard Changes  |  Esc: Cancel";
+        Footer::render(frame, chunks[2], footer_text)?;
 
         Ok(())
     }

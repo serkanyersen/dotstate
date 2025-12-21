@@ -5,7 +5,8 @@ use crate::github::GitHubClient;
 use crate::git::GitManager;
 use crate::tui::Tui;
 use crate::ui::{UiState, Screen, GitHubAuthStep, GitHubAuthField};
-use crate::components::{MainMenuComponent, GitHubAuthComponent, SyncedFilesComponent, MessageComponent, DotfileSelectionComponent, PushChangesComponent, ComponentAction, Component, MenuItem};
+use crate::components::{MainMenuComponent, GitHubAuthComponent, SyncedFilesComponent, MessageComponent, DotfileSelectionComponent, PushChangesComponent, ProfileManagerComponent, ComponentAction, Component, MenuItem};
+use crate::components::profile_manager::{ProfilePopupType, ProfileManagerState};
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -30,6 +31,7 @@ pub struct App {
     dotfile_selection_component: DotfileSelectionComponent,
     synced_files_component: SyncedFilesComponent,
     push_changes_component: PushChangesComponent,
+    profile_manager_component: ProfileManagerComponent,
     message_component: Option<MessageComponent>,
 }
 
@@ -59,6 +61,7 @@ impl App {
             dotfile_selection_component: DotfileSelectionComponent::new(),
             synced_files_component: SyncedFilesComponent::new(config_clone),
             push_changes_component: PushChangesComponent::new(),
+            profile_manager_component: ProfileManagerComponent::new(),
             message_component: None,
         })
     }
@@ -179,6 +182,12 @@ impl App {
                 Screen::PullChanges => {
                     if let Some(ref mut msg_component) = self.message_component {
                         let _ = msg_component.render(frame, area);
+                    }
+                }
+                Screen::ManageProfiles => {
+                    // Component handles all rendering including Clear
+                    if let Err(e) = self.profile_manager_component.render_with_config(frame, area, &self.config, &mut self.ui_state.profile_manager) {
+                        eprintln!("Error rendering profile manager: {}", e);
                     }
                 }
             }
@@ -328,6 +337,220 @@ impl App {
                 }
                 return Ok(());
             }
+            Screen::ManageProfiles => {
+                let profiles = &self.config.profiles;
+                let state = &mut self.ui_state.profile_manager;
+
+                // Handle popup events first
+                if state.popup_type != ProfilePopupType::None {
+                    // Handle popup events inline
+                    match event {
+                        Event::Key(key) if key.kind == KeyEventKind::Press => {
+                            match state.popup_type {
+                                ProfilePopupType::Create => {
+                                    match key.code {
+                                        KeyCode::Esc => {
+                                            state.popup_type = ProfilePopupType::None;
+                                        }
+                                        KeyCode::Enter => {
+                                            // TODO: Create profile
+                                            info!("Create profile: {}", state.create_name_input);
+                                            state.popup_type = ProfilePopupType::None;
+                                        }
+                                        KeyCode::Backspace => {
+                                            if !state.create_name_input.is_empty() {
+                                                crate::utils::text_input::handle_backspace(&mut state.create_name_input, &mut state.create_name_cursor);
+                                            }
+                                        }
+                                        KeyCode::Delete => {
+                                            if !state.create_name_input.is_empty() {
+                                                crate::utils::text_input::handle_delete(&mut state.create_name_input, &mut state.create_name_cursor);
+                                            }
+                                        }
+                                        KeyCode::Left => {
+                                            crate::utils::text_input::handle_cursor_movement(&state.create_name_input, &mut state.create_name_cursor, KeyCode::Left);
+                                        }
+                                        KeyCode::Right => {
+                                            crate::utils::text_input::handle_cursor_movement(&state.create_name_input, &mut state.create_name_cursor, KeyCode::Right);
+                                        }
+                                        KeyCode::Char(c) => {
+                                            crate::utils::text_input::handle_char_insertion(&mut state.create_name_input, &mut state.create_name_cursor, c);
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                                ProfilePopupType::Switch => {
+                                    match key.code {
+                                        KeyCode::Esc => {
+                                            state.popup_type = ProfilePopupType::None;
+                                        }
+                                        KeyCode::Enter => {
+                                            // TODO: Switch profile
+                                            if let Some(idx) = state.list_state.selected() {
+                                                if let Some(profile) = profiles.get(idx) {
+                                                    info!("Switch to profile: {}", profile.name);
+                                                    // TODO: Implement actual switch
+                                                }
+                                            }
+                                            state.popup_type = ProfilePopupType::None;
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                                ProfilePopupType::Rename => {
+                                    match key.code {
+                                        KeyCode::Esc => {
+                                            state.popup_type = ProfilePopupType::None;
+                                        }
+                                        KeyCode::Enter => {
+                                            // TODO: Rename profile
+                                            if !state.rename_input.is_empty() {
+                                                info!("Rename profile to: {}", state.rename_input);
+                                                // TODO: Implement actual rename
+                                            }
+                                            state.popup_type = ProfilePopupType::None;
+                                        }
+                                        KeyCode::Backspace => {
+                                            if !state.rename_input.is_empty() {
+                                                crate::utils::text_input::handle_backspace(&mut state.rename_input, &mut state.rename_cursor);
+                                            }
+                                        }
+                                        KeyCode::Delete => {
+                                            if !state.rename_input.is_empty() {
+                                                crate::utils::text_input::handle_delete(&mut state.rename_input, &mut state.rename_cursor);
+                                            }
+                                        }
+                                        KeyCode::Left => {
+                                            crate::utils::text_input::handle_cursor_movement(&state.rename_input, &mut state.rename_cursor, KeyCode::Left);
+                                        }
+                                        KeyCode::Right => {
+                                            crate::utils::text_input::handle_cursor_movement(&state.rename_input, &mut state.rename_cursor, KeyCode::Right);
+                                        }
+                                        KeyCode::Char(c) => {
+                                            crate::utils::text_input::handle_char_insertion(&mut state.rename_input, &mut state.rename_cursor, c);
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                                ProfilePopupType::Delete => {
+                                    match key.code {
+                                        KeyCode::Esc => {
+                                            state.popup_type = ProfilePopupType::None;
+                                        }
+                                        KeyCode::Enter => {
+                                            // TODO: Delete profile
+                                            if let Some(idx) = state.list_state.selected() {
+                                                if let Some(profile) = profiles.get(idx) {
+                                                    if state.delete_confirm_input == profile.name {
+                                                        info!("Delete profile: {}", profile.name);
+                                                        // TODO: Implement actual delete
+                                                    }
+                                                }
+                                            }
+                                            state.popup_type = ProfilePopupType::None;
+                                        }
+                                        KeyCode::Backspace => {
+                                            if !state.delete_confirm_input.is_empty() {
+                                                crate::utils::text_input::handle_backspace(&mut state.delete_confirm_input, &mut state.delete_confirm_cursor);
+                                            }
+                                        }
+                                        KeyCode::Delete => {
+                                            if !state.delete_confirm_input.is_empty() {
+                                                crate::utils::text_input::handle_delete(&mut state.delete_confirm_input, &mut state.delete_confirm_cursor);
+                                            }
+                                        }
+                                        KeyCode::Left => {
+                                            crate::utils::text_input::handle_cursor_movement(&state.delete_confirm_input, &mut state.delete_confirm_cursor, KeyCode::Left);
+                                        }
+                                        KeyCode::Right => {
+                                            crate::utils::text_input::handle_cursor_movement(&state.delete_confirm_input, &mut state.delete_confirm_cursor, KeyCode::Right);
+                                        }
+                                        KeyCode::Char(c) => {
+                                            crate::utils::text_input::handle_char_insertion(&mut state.delete_confirm_input, &mut state.delete_confirm_cursor, c);
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                                ProfilePopupType::None => {}
+                            }
+                        }
+                        _ => {}
+                    }
+                    return Ok(());
+                }
+
+                // Handle main view events
+                match event {
+                    Event::Key(key) if key.kind == KeyEventKind::Press => {
+                        match key.code {
+                            KeyCode::Up => {
+                                if let Some(current) = state.list_state.selected() {
+                                    if current > 0 {
+                                        state.list_state.select(Some(current - 1));
+                                    }
+                                } else if !profiles.is_empty() {
+                                    state.list_state.select(Some(profiles.len() - 1));
+                                }
+                            }
+                            KeyCode::Down => {
+                                if let Some(current) = state.list_state.selected() {
+                                    if current < profiles.len().saturating_sub(1) {
+                                        state.list_state.select(Some(current + 1));
+                                    }
+                                } else if !profiles.is_empty() {
+                                    state.list_state.select(Some(0));
+                                }
+                            }
+                            KeyCode::Enter => {
+                                // Open switch popup
+                                if state.list_state.selected().is_some() {
+                                    state.popup_type = ProfilePopupType::Switch;
+                                }
+                            }
+                            KeyCode::Char('c') | KeyCode::Char('C') => {
+                                // Open create popup
+                                state.popup_type = ProfilePopupType::Create;
+                                state.create_name_input.clear();
+                                state.create_name_cursor = 0;
+                                state.create_description_input.clear();
+                                state.create_description_cursor = 0;
+                                state.create_copy_from = None;
+                            }
+                            KeyCode::Char('r') | KeyCode::Char('R') => {
+                                // Open rename popup
+                                if let Some(idx) = state.list_state.selected() {
+                                    if let Some(profile) = profiles.get(idx) {
+                                        state.popup_type = ProfilePopupType::Rename;
+                                        state.rename_input = profile.name.clone();
+                                        state.rename_cursor = state.rename_input.len();
+                                    }
+                                }
+                            }
+                            KeyCode::Char('d') | KeyCode::Char('D') => {
+                                // Open delete popup
+                                if let Some(idx) = state.list_state.selected() {
+                                    if let Some(profile) = profiles.get(idx) {
+                                        if profile.name != self.config.active_profile {
+                                            state.popup_type = ProfilePopupType::Delete;
+                                            state.delete_confirm_input.clear();
+                                            state.delete_confirm_cursor = 0;
+                                        }
+                                    }
+                                }
+                            }
+                            KeyCode::Esc => {
+                                self.ui_state.current_screen = Screen::MainMenu;
+                            }
+                            _ => {}
+                        }
+                    }
+                    Event::Mouse(_) => {
+                        // TODO: Mouse support
+                    }
+                    _ => {}
+                }
+                return Ok(());
+            }
             _ => {
                 // Fall through to old event handling for other screens
             }
@@ -385,6 +608,11 @@ impl App {
             MenuItem::ScanDotfiles => {
                 // Scan & Select Dotfiles
                 self.scan_dotfiles()?;
+                // Reset state when entering the page
+                self.ui_state.dotfile_selection.show_unsaved_warning = false;
+                self.ui_state.dotfile_selection.status_message = None;
+                // Sync backup_enabled from config
+                self.ui_state.dotfile_selection.backup_enabled = self.config.backup_enabled;
                 self.ui_state.current_screen = Screen::DotfileSelection;
             }
             // MenuItem::ViewSyncedFiles => {
@@ -404,7 +632,11 @@ impl App {
             }
             MenuItem::ManageProfiles => {
                 // Manage Profiles
-                // TODO: Implement
+                self.ui_state.current_screen = Screen::ManageProfiles;
+                // Initialize list state with first profile selected
+                if !self.config.profiles.is_empty() {
+                    self.ui_state.profile_manager.list_state.select(Some(0));
+                }
             }
         }
         Ok(())
@@ -1083,7 +1315,39 @@ impl App {
     fn handle_dotfile_selection_input(&mut self, key_code: KeyCode) -> Result<()> {
         let state = &mut self.ui_state.dotfile_selection;
 
-        // If we're adding a custom file, handle file browser or input
+        // PRIORITY 1: Handle unsaved warning popup FIRST (blocks all other input)
+        if state.show_unsaved_warning {
+            match key_code {
+                KeyCode::Esc => {
+                    // Cancel - close popup and stay on page
+                    state.show_unsaved_warning = false;
+                    return Ok(());
+                }
+                KeyCode::Char('s') | KeyCode::Char('S') => {
+                    // Save changes
+                    state.show_unsaved_warning = false;
+                    drop(state); // Release borrow before calling sync
+                    self.sync_selected_files()?;
+                    self.ui_state.current_screen = Screen::MainMenu;
+                    return Ok(());
+                }
+                KeyCode::Char('d') | KeyCode::Char('D') => {
+                    // Discard changes
+                    state.show_unsaved_warning = false;
+                    drop(state); // Release borrow before calling scan
+                    // Reload selection from config to discard changes
+                    self.scan_dotfiles()?;
+                    self.ui_state.current_screen = Screen::MainMenu;
+                    return Ok(());
+                }
+                _ => {
+                    // Ignore all other keys when popup is showing
+                    return Ok(());
+                }
+            }
+        }
+
+        // PRIORITY 2: Handle custom file input mode
         if state.adding_custom_file {
             if state.file_browser_mode {
                 return self.handle_file_browser_input(key_code);
@@ -1098,11 +1362,35 @@ impl App {
             }
         }
 
-        // Normal dotfile selection input handling
+        // PRIORITY 3: Normal dotfile selection input handling
         use crate::ui::DotfileSelectionFocus;
         match key_code {
             KeyCode::Char('q') | KeyCode::Esc => {
-                self.ui_state.current_screen = Screen::MainMenu;
+                // Check for unsaved changes before leaving
+                // Need to check before using state to avoid borrow conflicts
+                let has_unsaved = {
+                    let currently_selected: std::collections::HashSet<String> = state.selected_for_sync
+                        .iter()
+                        .filter_map(|&idx| {
+                            state.dotfiles.get(idx)
+                                .map(|d| d.relative_path.to_string_lossy().to_string())
+                        })
+                        .collect();
+
+                    let previously_synced: std::collections::HashSet<String> = if let Some(profile) = self.config.get_active_profile() {
+                        profile.synced_files.iter().cloned().collect()
+                    } else {
+                        std::collections::HashSet::new()
+                    };
+
+                    currently_selected != previously_synced
+                };
+
+                if has_unsaved {
+                    state.show_unsaved_warning = true;
+                } else {
+                    self.ui_state.current_screen = Screen::MainMenu;
+                }
             }
             KeyCode::Tab => {
                 // Switch focus between FilesList and Preview
@@ -1232,6 +1520,13 @@ impl App {
                 state.focus = DotfileSelectionFocus::FileBrowserList; // Start with list focused
                 self.refresh_file_browser()?;
             }
+            KeyCode::Char('b') | KeyCode::Char('B') => {
+                // Toggle backup enabled
+                state.backup_enabled = !state.backup_enabled;
+                // Save to config
+                self.config.backup_enabled = state.backup_enabled;
+                self.config.save(&self.config_path)?;
+            }
             _ => {}
         }
 
@@ -1303,12 +1598,6 @@ impl App {
 
                         // Store values we need before releasing borrow
                         let relative_path_clone = relative_path.clone();
-                        let should_rescan = !self.config.default_dotfiles.contains(&relative_path);
-
-                        if should_rescan {
-                            self.config.default_dotfiles.push(relative_path_clone.clone());
-                            self.config.save(&self.config_path)?;
-                        }
 
                         // Re-scan to include the new file
                         self.scan_dotfiles()?;
@@ -1336,11 +1625,37 @@ impl App {
         Ok(())
     }
 
+    /// Check if there are unsaved changes (selected files differ from synced files)
+    fn has_unsaved_changes(&self) -> bool {
+        let state = &self.ui_state.dotfile_selection;
+
+        // Get currently selected file paths
+        let currently_selected: std::collections::HashSet<String> = state.selected_for_sync
+            .iter()
+            .filter_map(|&idx| {
+                state.dotfiles.get(idx)
+                    .map(|d| d.relative_path.to_string_lossy().to_string())
+            })
+            .collect();
+
+        // Get previously synced files from active profile
+        let previously_synced: std::collections::HashSet<String> = if let Some(profile) = self.config.get_active_profile() {
+            profile.synced_files.iter().cloned().collect()
+        } else {
+            std::collections::HashSet::new()
+        };
+
+        // Check if they differ
+        currently_selected != previously_synced
+    }
+
     /// Scan for dotfiles and populate the selection state
     fn scan_dotfiles(&mut self) -> Result<()> {
+        use crate::dotfile_candidates::get_default_dotfile_paths;
+
         let file_manager = crate::file_manager::FileManager::new()?;
-        let dotfile_names = &self.config.default_dotfiles;
-        let mut found = file_manager.scan_dotfiles(dotfile_names);
+        let dotfile_names = get_default_dotfile_paths();
+        let mut found = file_manager.scan_dotfiles(&dotfile_names);
 
         // Mark files that are already synced
         let synced_set: std::collections::HashSet<String> = self.config.synced_files.iter()
@@ -1452,7 +1767,12 @@ impl App {
 
         // Step 2: Use SymlinkManager to activate with all selected files
         if !files_to_sync.is_empty() {
-            let mut symlink_mgr = SymlinkManager::new(repo_path.clone())?;
+            // Use backup_enabled from UI state (which may have been toggled)
+            let backup_enabled = state.backup_enabled;
+            let mut symlink_mgr = SymlinkManager::new_with_backup(
+                repo_path.clone(),
+                backup_enabled
+            )?;
 
             match symlink_mgr.activate_profile(&profile_name, &files_to_sync) {
                 Ok(operations) => {

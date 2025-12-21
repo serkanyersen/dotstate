@@ -1,5 +1,6 @@
 use ratatui::widgets::{ScrollbarState, ListState};
 use crate::file_manager::Dotfile;
+use crate::components::profile_manager::ProfileManagerState;
 use std::path::PathBuf;
 
 /// Application screens
@@ -12,6 +13,7 @@ pub enum Screen {
     ViewSyncedFiles,
     PushChanges,
     PullChanges,
+    ManageProfiles,
 }
 
 /// GitHub auth state
@@ -110,6 +112,8 @@ pub struct DotfileSelectionState {
     pub file_browser_path_cursor: usize, // Cursor position for path input
     pub file_browser_path_focused: bool, // Whether path input is focused
     pub focus: DotfileSelectionFocus, // Which pane currently has focus
+    pub show_unsaved_warning: bool, // Whether to show unsaved changes warning popup
+    pub backup_enabled: bool, // Whether backups are enabled (tracks config value)
 }
 
 impl Default for DotfileSelectionState {
@@ -140,6 +144,8 @@ impl Default for DotfileSelectionState {
             file_browser_path_cursor: 0,
             file_browser_path_focused: false,
             focus: DotfileSelectionFocus::FilesList, // Start with files list focused
+            show_unsaved_warning: false,
+            backup_enabled: true, // Default to enabled
         }
     }
 }
@@ -178,6 +184,7 @@ pub struct UiState {
     pub github_auth: GitHubAuthState,
     pub dotfile_selection: DotfileSelectionState,
     pub push_changes: PushChangesState,
+    pub profile_manager: ProfileManagerState,
     pub has_changes_to_push: bool, // Whether there are uncommitted or unpushed changes
 }
 
@@ -189,6 +196,7 @@ impl UiState {
             github_auth: GitHubAuthState::default(),
             dotfile_selection: DotfileSelectionState::default(),
             push_changes: PushChangesState::default(),
+            profile_manager: ProfileManagerState::default(),
             has_changes_to_push: false,
         }
     }

@@ -19,6 +19,8 @@ pub struct Dotfile {
     pub relative_path: PathBuf,
     /// Whether this file is currently synced
     pub synced: bool,
+    /// Description of the dotfile (if available from default list)
+    pub description: Option<String>,
 }
 
 impl FileManager {
@@ -42,10 +44,15 @@ impl FileManager {
                     .unwrap_or(&path)
                     .to_path_buf();
 
+                // Try to find description from default candidates
+                let description = crate::dotfile_candidates::find_candidate(name)
+                    .map(|c| c.description.to_string());
+
                 found.push(Dotfile {
                     original_path: path.clone(),
                     relative_path: relative,
                     synced: false,
+                    description,
                 });
             }
         }
