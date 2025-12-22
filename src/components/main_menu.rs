@@ -75,13 +75,196 @@ impl MenuItem {
     }
 
     /// Get the explanation text for this menu item
-    pub fn explanation(&self) -> &'static str {
+    pub fn explanation(&self) -> Text<'static> {
         match self {
-            MenuItem::ScanDotfiles => "Manage your dotfiles and configuration files. Select files to add them to your repository, or unselect to restore them.",
-            MenuItem::SyncWithRemote => "Sync with remote repository: commit local changes, pull remote changes (with rebase), and push everything. Keeps your local and remote repositories in sync.",
-            MenuItem::ManageProfiles => "Manage different profiles or sets of dotfiles. Create profiles for work, personal, different operating systems, etc.",
-            MenuItem::ManagePackages => "Manage CLI tools and dependencies for your profile. Check if packages are installed and optionally install missing ones.",
-            MenuItem::SetupGitHub => "Connect your GitHub account and create a repository to store your dotfiles. This will allow you to sync your configuration files across multiple computers.",
+            MenuItem::ScanDotfiles => {
+                let lines = vec![
+                    Line::from(vec![
+                        Span::styled("Manage Your Dotfiles", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+                    ]),
+                    Line::from(""),
+                    Line::from(vec![
+                        Span::raw("Keep your configuration files (like "),
+                        Span::styled(".zshrc", Style::default().fg(Color::Yellow)),
+                        Span::raw(", "),
+                        Span::styled(".vimrc", Style::default().fg(Color::Yellow)),
+                        Span::raw(", "),
+                        Span::styled(".gitconfig", Style::default().fg(Color::Yellow)),
+                        Span::raw(", etc.) synchronized across all your machines. "),
+                    ]),
+                    Line::from(""),
+                    Line::from(vec![
+                        Span::raw("When you select a file, it's automatically "),
+                        Span::styled("copied to your repository", Style::default().fg(Color::Green)),
+                        Span::raw(" and a "),
+                        Span::styled("symlink", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+                        Span::raw(" is created in its place. This means your files are safely backed up and version controlled."),
+                    ]),
+                    Line::from(""),
+                    Line::from(vec![
+                        Span::styled("💡 Tip: ", Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD)),
+                        Span::raw("You can add custom files using the file browser, or use the CLI:\n"),
+                        Span::styled("  dotstate add ~/.myconfig", Style::default().fg(Color::Yellow)),
+                    ]),
+                ];
+                Text::from(lines)
+            }
+            MenuItem::SyncWithRemote => {
+                let repo_name = crate::config::default_repo_name();
+                let lines = vec![
+                    Line::from(vec![
+                        Span::styled("Sync with Remote Repository", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
+                    ]),
+                    Line::from(""),
+                    Line::from(vec![
+                        Span::raw("Keep your dotfiles synchronized across all your devices. This feature "),
+                        Span::styled("commits", Style::default().fg(Color::Cyan)),
+                        Span::raw(" your local changes, "),
+                        Span::styled("pulls", Style::default().fg(Color::Blue)),
+                        Span::raw(" any updates from the remote, and "),
+                        Span::styled("pushes", Style::default().fg(Color::Green)),
+                        Span::raw(" everything back up."),
+                    ]),
+                    Line::from(""),
+                    Line::from(vec![
+                        Span::raw("Perfect for when you've made changes on one computer and want to sync them to another. "),
+                        Span::styled("All changes are automatically merged", Style::default().fg(Color::Green)),
+                        Span::raw(" with your remote repository."),
+                    ]),
+                    Line::from(""),
+                    Line::from(vec![
+                        Span::raw("Your repository is called "),
+                        Span::styled(repo_name.clone(), Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+                        Span::raw(" and should be visible in your GitHub account."),
+                    ]),
+                    Line::from(""),
+                    Line::from(vec![
+                        Span::styled("💡 CLI: ", Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD)),
+                        Span::styled("dotstate sync", Style::default().fg(Color::Yellow)),
+                        Span::raw(" - Same functionality from the command line"),
+                    ]),
+                ];
+                Text::from(lines)
+            }
+            MenuItem::ManageProfiles => {
+                let lines = vec![
+                    Line::from(vec![
+                        Span::styled("Manage Multiple Profiles", Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD)),
+                    ]),
+                    Line::from(""),
+                    Line::from(vec![
+                        Span::raw("Create different sets of dotfiles for different contexts. Perfect for managing "),
+                        Span::styled("work", Style::default().fg(Color::Blue)),
+                        Span::raw(" vs "),
+                        Span::styled("personal", Style::default().fg(Color::Green)),
+                        Span::raw(" configurations, or different "),
+                        Span::styled("operating systems", Style::default().fg(Color::Cyan)),
+                        Span::raw("."),
+                    ]),
+                    Line::from(""),
+                    Line::from(vec![
+                        Span::raw("Example: Switch between a "),
+                        Span::styled("Mac", Style::default().fg(Color::Yellow)),
+                        Span::raw(" profile with macOS-specific settings and a "),
+                        Span::styled("Linux", Style::default().fg(Color::Green)),
+                        Span::raw(" profile for your servers."),
+                    ]),
+                    Line::from(""),
+                    Line::from(vec![
+                        Span::raw("Each profile maintains its own set of synced files and packages, so you can keep everything organized and context-specific."),
+                    ]),
+                    Line::from(""),
+                    Line::from(vec![
+                        Span::styled("💡 CLI: ", Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD)),
+                        Span::styled("dotstate profile list", Style::default().fg(Color::Yellow)),
+                        Span::raw(" - List all profiles\n"),
+                        Span::styled("  dotstate profile switch <name>", Style::default().fg(Color::Yellow)),
+                        Span::raw(" - Switch between profiles"),
+                    ]),
+                ];
+                Text::from(lines)
+            }
+            MenuItem::ManagePackages => {
+                let lines = vec![
+                    Line::from(vec![
+                        Span::styled("Manage CLI Tools & Dependencies", Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD)),
+                    ]),
+                    Line::from(""),
+                    Line::from(vec![
+                        Span::raw("Ensure all your essential command-line tools are installed across your machines. "),
+                        Span::styled("Automatically detect", Style::default().fg(Color::Cyan)),
+                        Span::raw(" which packages are missing and "),
+                        Span::styled("install them with one command", Style::default().fg(Color::Green)),
+                        Span::raw("."),
+                    ]),
+                    Line::from(""),
+                    Line::from(vec![
+                        Span::raw("Great for setting up a new machine quickly! Just sync your dotfiles and install all your tools (like "),
+                        Span::styled("git", Style::default().fg(Color::Yellow)),
+                        Span::raw(", "),
+                        Span::styled("vim", Style::default().fg(Color::Yellow)),
+                        Span::raw(", "),
+                        Span::styled("node", Style::default().fg(Color::Yellow)),
+                        Span::raw(", etc.) in one go."),
+                    ]),
+                    Line::from(""),
+                    Line::from(vec![
+                        Span::raw("Supports both "),
+                        Span::styled("managed packages", Style::default().fg(Color::Green)),
+                        Span::raw(" (auto-detected from common package managers) and "),
+                        Span::styled("custom packages", Style::default().fg(Color::Cyan)),
+                        Span::raw(" with custom installation commands."),
+                    ]),
+                    Line::from(""),
+                    Line::from(vec![
+                        Span::styled("💡 Example: ", Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD)),
+                        Span::raw("Add packages like "),
+                        Span::styled("ripgrep", Style::default().fg(Color::Yellow)),
+                        Span::raw(" or "),
+                        Span::styled("fzf", Style::default().fg(Color::Yellow)),
+                        Span::raw(" to your profile, and they'll be installed automatically on new machines."),
+                    ]),
+                ];
+                Text::from(lines)
+            }
+            MenuItem::SetupGitHub => {
+                let lines = vec![
+                    Line::from(vec![
+                        Span::styled("Connect to GitHub", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+                    ]),
+                    Line::from(""),
+                    Line::from(vec![
+                        Span::raw("Set up cloud backup for your dotfiles! This creates a "),
+                        Span::styled("private or public repository", Style::default().fg(Color::Cyan)),
+                        Span::raw(" on GitHub to store all your configuration files."),
+                    ]),
+                    Line::from(""),
+                    Line::from(vec![
+                        Span::raw("Once connected, you can "),
+                        Span::styled("sync your dotfiles across multiple computers", Style::default().fg(Color::Green)),
+                        Span::raw(", share configurations with your team, or simply have a secure backup in the cloud."),
+                    ]),
+                    Line::from(""),
+                    Line::from(vec![
+                        Span::raw("The setup process will:\n"),
+                        Span::styled("  1. ", Style::default().fg(Color::Yellow)),
+                        Span::raw("Create a GitHub repository\n"),
+                        Span::styled("  2. ", Style::default().fg(Color::Yellow)),
+                        Span::raw("Clone it to your local machine\n"),
+                        Span::styled("  3. ", Style::default().fg(Color::Yellow)),
+                        Span::raw("Set up your first profile"),
+                    ]),
+                    Line::from(""),
+                    Line::from(vec![
+                        Span::styled("💡 Tip: ", Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD)),
+                        Span::raw("You'll need a GitHub Personal Access Token with "),
+                        Span::styled("repo", Style::default().fg(Color::Yellow)),
+                        Span::raw(" scope. Create one at "),
+                        Span::styled("github.com/settings/tokens", Style::default().fg(Color::Cyan)),
+                    ]),
+                ];
+                Text::from(lines)
+            }
         }
     }
 
@@ -98,13 +281,7 @@ impl MenuItem {
 
     /// Get the explanation panel color
     pub fn explanation_color(&self) -> Color {
-        match self {
-            MenuItem::ScanDotfiles => Color::Cyan,
-            MenuItem::SyncWithRemote => Color::Green,
-            MenuItem::ManageProfiles => Color::Magenta,
-            MenuItem::ManagePackages => Color::Blue,
-            MenuItem::SetupGitHub => Color::Cyan,
-        }
+        Color::Cyan
     }
 
     /// Convert from index to MenuItem
@@ -190,7 +367,7 @@ impl MainMenuComponent {
     }
 
     /// Get explanation text for selected menu item
-    fn get_explanation(&self) -> &'static str {
+    fn get_explanation(&self) -> Text<'static> {
         self.selected_item.explanation()
     }
 
@@ -416,7 +593,6 @@ impl Component for MainMenuComponent {
             .padding(ratatui::widgets::Padding::new(1, 1, 1, 1));
 
         let explanation_para = Paragraph::new(self.get_explanation())
-            .style(Style::default().fg(Color::White))
             .wrap(Wrap { trim: true })
             .block(explanation_block);
 

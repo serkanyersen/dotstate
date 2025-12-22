@@ -3976,7 +3976,7 @@ impl App {
         let result = match git_mgr.commit_all("Update dotfiles") {
             Ok(_) => {
                 // Step 2: Pull with rebase
-                self.ui_state.sync_with_remote.sync_progress = Some("Pulling changes from remote (with rebase)...".to_string());
+                self.ui_state.sync_with_remote.sync_progress = Some("Pulling changes from remote...".to_string());
 
                 match git_mgr.pull_with_rebase("origin", &branch, token) {
                     Ok(pulled_count) => {

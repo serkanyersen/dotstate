@@ -42,7 +42,7 @@ impl DotfileSelectionComponent {
             frame,
             header_chunk,
             "dotstate - Manage Files",
-            "Select files to add them to your repository. Unselect files to restore them. Changes are applied immediately."
+            "Add or remove files to your repository. You can also add custom files. We have automatically detected some common dotfiles for you."
         )?;
 
         // Check if confirmation modal is showing
