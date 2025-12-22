@@ -140,6 +140,7 @@ impl ProfileManifest {
     }
 
     /// Update packages for a profile
+    #[allow(dead_code)] // Reserved for future use
     pub fn update_packages(&mut self, profile_name: &str, packages: Vec<Package>) -> Result<()> {
         if let Some(profile) = self.profiles.iter_mut().find(|p| p.name == profile_name) {
             profile.packages = packages;

@@ -41,7 +41,7 @@ pub struct GitHubConfig {
 // Use crate::utils::ProfileManifest and ProfileInfo instead
 
 pub fn default_repo_name() -> String {
-    "dotstate-storage".to_string()
+    "dotstate-storage-test".to_string()
 }
 
 fn default_branch_name() -> String {

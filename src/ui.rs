@@ -47,6 +47,7 @@ pub struct GitHubSetupData {
     pub repo_exists: Option<bool>,
     pub is_private: bool, // Repository visibility (true = private, false = public)
     pub delay_until: Option<std::time::Instant>, // For delays between steps
+    pub is_new_repo: bool, // Whether we're creating a new repo (vs cloning existing)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -278,6 +279,7 @@ pub enum PackagePopupType {
     Add,
     Edit,
     Delete,
+    #[allow(dead_code)] // Reserved for future use
     InstallMissing, // Prompt to install missing packages
 }
 

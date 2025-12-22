@@ -1,6 +1,6 @@
 use anyhow::Result;
-use std::sync::{Arc, mpsc};
-use std::process::{Command, Stdio, Child};
+use std::sync::mpsc;
+use std::process::{Stdio, Child};
 use std::io::{BufRead, BufReader};
 use std::thread;
 use crate::utils::profile_manifest::Package;
@@ -10,6 +10,7 @@ use crate::utils::package_manager::PackageManagerImpl;
 pub struct PackageInstaller;
 
 /// Installation process handle for non-blocking operations
+#[allow(dead_code)] // Reserved for future use
 pub struct InstallationHandle {
     pub child: Child,
     pub output_rx: mpsc::Receiver<String>,
@@ -19,6 +20,7 @@ impl PackageInstaller {
     /// Start installation process (non-blocking)
     /// Returns a handle that can be used to check progress and read output
     /// The caller is responsible for checking if the process is done and reading output
+    #[allow(dead_code)] // Reserved for future use
     pub fn start_install(package: &Package) -> Result<InstallationHandle> {
         // Check if sudo is required and if password is needed
         if PackageManagerImpl::check_sudo_required(&package.manager) {
@@ -69,6 +71,7 @@ impl PackageInstaller {
     }
 
     /// Check if installation process is complete
+    #[allow(dead_code)] // Reserved for future use
     pub fn check_installation_status(handle: &mut InstallationHandle) -> Result<Option<bool>> {
         // Try to wait for the process (non-blocking)
         match handle.child.try_wait()? {
@@ -78,6 +81,7 @@ impl PackageInstaller {
     }
 
     /// Read available output lines (non-blocking)
+    #[allow(dead_code)] // Reserved for future use
     pub fn read_output(handle: &InstallationHandle) -> Vec<String> {
         let mut lines = Vec::new();
         // Try to read all available lines without blocking

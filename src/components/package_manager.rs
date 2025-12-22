@@ -1,12 +1,10 @@
 use anyhow::Result;
-use crossterm::event::Event;
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Wrap};
-use crate::components::component::{Component, ComponentAction};
 use crate::components::header::Header;
 use crate::components::footer;
 use crate::config::Config;
-use crate::utils::{create_standard_layout, center_popup, focused_border_style, unfocused_border_style};
+use crate::utils::{create_standard_layout, center_popup};
 use crate::ui::{PackageManagerState, PackagePopupType, PackageStatus, AddPackageField, InstallationStep};
 use crate::utils::profile_manifest::{Package, PackageManager};
 use crate::utils::package_manager::PackageManagerImpl;
@@ -531,7 +529,7 @@ impl PackageManagerComponent {
                 // Should not happen, but handle it
             }
             InstallationStep::Installing {
-                package_index,
+                package_index: _package_index,
                 package_name,
                 total_packages,
                 packages_to_install,

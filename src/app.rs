@@ -935,42 +935,6 @@ impl App {
                                     }
                                 }
                             }
-                            KeyCode::Char('i') | KeyCode::Char('I') => {
-                                // Start installing missing packages (if not in popup and not already installing)
-                                if state.popup_type == PackagePopupType::None
-                                    && matches!(state.installation_step, InstallationStep::NotStarted)
-                                    && !state.is_checking {
-                                    // Find packages that are not installed
-                                    let mut packages_to_install = Vec::new();
-                                    for (idx, status) in state.package_statuses.iter().enumerate() {
-                                        if matches!(status, PackageStatus::NotInstalled) {
-                                            packages_to_install.push(idx);
-                                        }
-                                    }
-
-                                    if !packages_to_install.is_empty() {
-                                        // Start installation
-                                        if let Some(&first_idx) = packages_to_install.first() {
-                                            let package_name = state.packages[first_idx].name.clone();
-                                            let total = packages_to_install.len();
-                                            let mut install_list = packages_to_install.clone();
-                                            install_list.remove(0);
-
-                                            state.installation_step = InstallationStep::Installing {
-                                                package_index: first_idx,
-                                                package_name,
-                                                total_packages: total,
-                                                packages_to_install: install_list,
-                                                installed: Vec::new(),
-                                                failed: Vec::new(),
-                                                status_rx: None,
-                                            };
-                                            state.installation_output.clear();
-                                            state.installation_delay_until = Some(std::time::Instant::now() + Duration::from_millis(100));
-                                        }
-                                    }
-                                }
-                            }
                             _ => {}
                         }
                     }
@@ -1842,6 +1806,7 @@ impl App {
                             repo_exists: None,
                             is_private: auth_state.is_private,
                             delay_until: Some(std::time::Instant::now() + Duration::from_millis(500)),
+                            is_new_repo: false, // Will be set when we know if repo exists
                         });
                         *self.github_auth_component.get_auth_state_mut() = auth_state.clone();
                     }
@@ -2269,6 +2234,7 @@ impl App {
                 match create_result {
                     Ok(_) => {
                         setup_data.delay_until = Some(std::time::Instant::now() + Duration::from_millis(500));
+                        setup_data.is_new_repo = true; // Mark as new repo creation
                         auth_state.step = GitHubAuthStep::SetupStep(GitHubSetupStep::InitializingRepo);
                         auth_state.status_message = Some("⚙️  Initializing local repository...".to_string());
                         auth_state.setup_data = Some(setup_data); // Save setup_data
@@ -2382,6 +2348,7 @@ impl App {
                 ));
                 // Add delay to show success message before transitioning
                 setup_data.delay_until = Some(std::time::Instant::now() + Duration::from_millis(2000));
+                setup_data.is_new_repo = true; // Mark as new repo creation
                 auth_state.setup_data = Some(setup_data);
                 *self.github_auth_component.get_auth_state_mut() = auth_state.clone();
             }
@@ -2442,19 +2409,44 @@ impl App {
             }
             GitHubSetupStep::Complete => {
                 // Delay complete, transition to next screen
-                if !self.ui_state.profile_selection.profiles.is_empty() {
-                    // Go to profile selection screen
-                    self.ui_state.current_screen = Screen::ProfileSelection;
-                    auth_state.step = GitHubAuthStep::Input; // Reset to input state
-                    auth_state.status_message = None;
+                let profile_count = self.ui_state.profile_selection.profiles.len();
+                let is_new_repo = setup_data.is_new_repo;
+
+                // Determine target screen and whether to scan dotfiles
+                let should_scan_dotfiles = is_new_repo && profile_count == 1;
+                let target_screen = if profile_count > 0 {
+                    if should_scan_dotfiles {
+                        Screen::DotfileSelection
+                    } else {
+                        Screen::ProfileSelection
+                    }
                 } else {
-                    // No profiles, go to main menu
-                    self.ui_state.current_screen = Screen::MainMenu;
-                    auth_state.step = GitHubAuthStep::Input;
-                    auth_state.status_message = None;
-                }
+                    Screen::MainMenu
+                };
+
+                // Update auth_state before dropping borrow
+                auth_state.step = GitHubAuthStep::Input; // Reset to input state
+                auth_state.status_message = None;
                 auth_state.setup_data = None;
                 *self.github_auth_component.get_auth_state_mut() = auth_state.clone();
+
+                // Drop mutable borrow of auth_state before calling scan_dotfiles
+                // Note: drop() on a reference doesn't do anything, but we're explicitly ending the borrow scope
+                let _ = auth_state;
+
+                if should_scan_dotfiles {
+                    // New install with default profile - go directly to dotfile selection
+                    // Sync backup_enabled from config
+                    self.ui_state.dotfile_selection.backup_enabled = self.config.backup_enabled;
+                    // Trigger search for dotfiles
+                    self.scan_dotfiles()?;
+                    // Reset state when entering the page
+                    self.ui_state.dotfile_selection.show_unsaved_warning = false;
+                    self.ui_state.dotfile_selection.status_message = None;
+                }
+
+                self.ui_state.current_screen = target_screen;
+                return Ok(()); // Early return to avoid using auth_state after match
             }
         }
 
@@ -4987,10 +4979,8 @@ impl App {
 
                     // Read available status updates (non-blocking)
                     if let Some(ref rx) = status_rx {
-                        let mut received_count = 0;
                         // Try to read all available updates
                         while let Ok(status) = rx.try_recv() {
-                            received_count += 1;
                             match status {
                                 InstallationStatus::Output(line) => {
                                     // Regular output line
