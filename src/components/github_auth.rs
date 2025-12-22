@@ -134,7 +134,7 @@ impl GitHubAuthComponent {
             cursor_pos,
             is_focused && !is_disabled,
             "Local Path",
-            Some("~/.dotstate"),
+            Some("~/.config/dotstate/storage"),
             Alignment::Left,
             is_disabled,
         )?;
@@ -266,7 +266,7 @@ impl GitHubAuthComponent {
                         "• Git repository data (.git folder)",
                         "• Profile-specific configurations",
                         "",
-                        "Default: ~/.dotstate",
+                        "Default: ~/.config/dotstate/storage",
                         "",
                         "Tips:",
                         "• Use ~ for home directory",

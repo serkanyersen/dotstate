@@ -139,7 +139,9 @@ impl Config {
             profile_activated: true,
             repo_path: dirs::home_dir()
                 .unwrap_or_else(|| PathBuf::from("."))
-                .join(".dotstate"),
+                .join(".config")
+                .join("dotstate")
+                .join("storage"),
             repo_name: default_repo_name(),
             default_branch: "main".to_string(),
         }

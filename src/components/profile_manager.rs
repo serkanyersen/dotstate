@@ -633,7 +633,7 @@ impl ProfileManagerComponent {
                     This will permanently delete:\n\
                     • Profile '{}'\n\
                     • All {} synced files in the repo\n\
-                    • Profile folder: ~/.dotstate/{}/\n\n\
+                    • Profile folder: ~/.config/dotstate/storage/{}/\n\n\
                     Type the profile name to confirm:",
                     p.name,
                     p.synced_files.len(),

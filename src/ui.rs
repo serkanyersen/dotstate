@@ -83,7 +83,9 @@ impl Default for GitHubAuthState {
     fn default() -> Self {
         let default_repo_path = dirs::home_dir()
             .unwrap_or_else(|| std::path::PathBuf::from("."))
-            .join(".dotstate");
+            .join(".config")
+            .join("dotstate")
+            .join("storage");
 
         Self {
             token_input: String::new(),

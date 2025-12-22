@@ -9,7 +9,7 @@ use crate::utils::BackupManager;
 /// Represents a symlink operation (create or remove)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SymlinkOperation {
-    /// Source file in the profile folder (e.g., ~/.dotstate/Personal-Mac/.zshrc)
+    /// Source file in the profile folder (e.g., ~/.config/dotstate/storage/Personal-Mac/.zshrc)
     pub source: PathBuf,
     /// Target symlink location in home directory (e.g., ~/.zshrc)
     pub target: PathBuf,
