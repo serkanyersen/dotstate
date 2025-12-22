@@ -25,6 +25,9 @@ pub struct Config {
     /// Whether the active profile is currently activated (symlinks created)
     #[serde(default)]
     pub profile_activated: bool,
+    /// Custom file paths that the user has added (persists even if removed from sync)
+    #[serde(default)]
+    pub custom_files: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -144,6 +147,7 @@ impl Config {
                 .join("storage"),
             repo_name: default_repo_name(),
             default_branch: "main".to_string(),
+            custom_files: Vec::new(),
         }
     }
 

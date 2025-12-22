@@ -5,6 +5,46 @@ pub fn get_home_dir() -> PathBuf {
     dirs::home_dir().unwrap_or_else(|| PathBuf::from("/"))
 }
 
+/// Check if a path is a git repository
+pub fn is_git_repo(path: &Path) -> bool {
+    if path.is_dir() {
+        path.join(".git").exists()
+    } else {
+        false
+    }
+}
+
+/// Check if a path is safe to add as a custom file/folder
+/// Returns (is_safe, reason_if_not_safe)
+pub fn is_safe_to_add(path: &Path, repo_path: &Path) -> (bool, Option<String>) {
+    let home_dir = get_home_dir();
+
+    // Check if it's the home folder itself
+    if path == home_dir {
+        return (false, Some("Cannot add home folder".to_string()));
+    }
+
+    // Check if it's the root folder
+    if path == Path::new("/") {
+        return (false, Some("Cannot add root folder".to_string()));
+    }
+
+    // Check if it's the storage repo itself
+    if path == repo_path {
+        return (false, Some("Cannot add storage repository folder".to_string()));
+    }
+
+    // Check if it's a parent of the storage repo
+    if let Ok(_) = repo_path.strip_prefix(path) {
+        return (false, Some("Cannot add a parent folder of the storage repository".to_string()));
+    }
+
+    // Check if storage repo is a parent of this path (this is actually OK, but we should warn)
+    // Actually, this is fine - we can add files inside the repo
+
+    (true, None)
+}
+
 /// Get the config directory path (always ~/.config/dotstate, regardless of OS)
 pub fn get_config_dir() -> PathBuf {
     get_home_dir().join(".config").join("dotstate")

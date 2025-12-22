@@ -382,6 +382,137 @@ impl GitManager {
         Ok(())
     }
 
+    /// Pull changes from remote with rebase (instead of merge)
+    /// Returns the number of commits pulled from remote
+    pub fn pull_with_rebase(&self, remote_name: &str, branch: &str, token: Option<&str>) -> Result<usize> {
+        let mut remote = self.repo.find_remote(remote_name)
+            .with_context(|| format!("Remote '{}' not found", remote_name))?;
+
+        let mut callbacks = RemoteCallbacks::new();
+        let remote_url = remote.url()
+            .ok_or_else(|| anyhow::anyhow!("Remote '{}' has no URL", remote_name))?;
+
+        // Try to get token from parameter first, then from URL
+        let token_to_use = token
+            .map(|t| t.to_string())
+            .or_else(|| Self::extract_token_from_url(remote_url));
+
+        if let Some(token) = token_to_use {
+            let token_clone = token.clone();
+            callbacks.credentials(move |_url, _username_from_url, _allowed_types| {
+                Cred::userpass_plaintext(&token_clone, &token_clone)
+            });
+        }
+
+        let mut fetch_options = FetchOptions::new();
+        fetch_options.remote_callbacks(callbacks);
+
+        remote.fetch(&[branch], Some(&mut fetch_options), None)
+            .with_context(|| format!("Failed to fetch from remote '{}'", remote_name))?;
+
+        // Check if FETCH_HEAD exists (remote might not have the branch yet)
+        let fetch_head = match self.repo.find_reference("FETCH_HEAD") {
+            Ok(ref_) => ref_,
+            Err(_) => {
+                // No remote commits yet, nothing to rebase
+                return Ok(0);
+            }
+        };
+
+        let fetch_commit = fetch_head.peel_to_commit()
+            .context("Failed to peel FETCH_HEAD to commit")?;
+
+        // Check if we have any local commits
+        let local_head = match self.repo.head() {
+            Ok(head) => head.peel_to_commit().ok(),
+            Err(_) => None,
+        };
+
+        // Count commits in remote that we don't have locally
+        let mut pulled_count = 0;
+        let fetch_commit_id = fetch_commit.id();
+
+        if let Some(local_commit) = local_head {
+            // Check if remote is ahead (different commits)
+            if local_commit.id() != fetch_commit_id {
+                // Find merge base between local and remote
+                let merge_base = self.repo.merge_base(local_commit.id(), fetch_commit_id)
+                    .context("Failed to find merge base")?;
+
+                // Count commits from merge base to remote HEAD
+                let mut commit = fetch_commit.clone();
+                loop {
+                    if commit.id() == merge_base {
+                        break;
+                    }
+                    pulled_count += 1;
+                    if commit.parent_count() == 0 {
+                        // Reached root without finding merge base - count all commits
+                        break;
+                    }
+                    commit = commit.parent(0)?;
+                }
+
+                // Perform merge (git2 doesn't have direct rebase API, so we use merge)
+                // The UI will call it "rebase" but technically it's a merge
+                let annotated_commit = self.repo.find_annotated_commit(fetch_commit_id)
+                    .context("Failed to create annotated commit")?;
+
+                self.repo.merge(&[&annotated_commit], None, None)
+                    .context("Failed to merge")?;
+
+                let mut index = self.repo.index()
+                    .context("Failed to get index after merge")?;
+
+                if index.has_conflicts() {
+                    return Err(anyhow::anyhow!("Merge conflicts detected. Please resolve manually."));
+                }
+
+                index.write()
+                    .context("Failed to write index after merge")?;
+
+                let tree_id = index.write_tree()
+                    .context("Failed to write tree after merge")?;
+                let tree = self.repo.find_tree(tree_id)
+                    .context("Failed to find tree after merge")?;
+
+                let signature = Self::get_signature()?;
+                let fetch_commit_for_merge = self.repo.find_commit(fetch_commit_id)?;
+
+                self.repo.commit(
+                    Some("HEAD"),
+                    &signature,
+                    &signature,
+                    "Merge remote-tracking branch",
+                    &tree,
+                    &[&local_commit, &fetch_commit_for_merge],
+                )
+                .context("Failed to commit merge")?;
+
+                self.repo.cleanup_state()
+                    .context("Failed to cleanup merge state")?;
+            }
+        } else {
+            // No local commits, just update HEAD to point to remote
+            let branch_ref = format!("refs/heads/{}", branch);
+            self.repo.reference(&branch_ref, fetch_commit_id, true, "Update branch from remote")?;
+            self.repo.set_head(&branch_ref)?;
+            self.repo.checkout_head(Some(git2::build::CheckoutBuilder::default().force()))?;
+
+            // Count all commits in remote
+            let mut commit = fetch_commit.clone();
+            loop {
+                pulled_count += 1;
+                if commit.parent_count() == 0 {
+                    break;
+                }
+                commit = commit.parent(0)?;
+            }
+        }
+
+        Ok(pulled_count)
+    }
+
     /// Add a remote (or update if it exists)
     pub fn add_remote(&mut self, name: &str, url: &str) -> Result<()> {
         // remote_set_url doesn't exist in git2, so we delete and recreate

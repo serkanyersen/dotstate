@@ -6,7 +6,7 @@ use crate::components::component::{Component, ComponentAction};
 use crate::components::header::Header;
 use crate::components::footer::Footer;
 use crate::components::message_box::MessageBox;
-use crate::ui::PushChangesState;
+use crate::ui::SyncWithRemoteState;
 use crate::utils::{create_standard_layout, center_popup, focused_border_style};
 
 /// Push changes component - shows list of changes and allows pushing
@@ -42,7 +42,7 @@ impl PushChangesComponent {
         &mut self,
         frame: &mut Frame,
         area: Rect,
-        state: &mut PushChangesState,
+        state: &mut SyncWithRemoteState,
     ) -> Result<()> {
         // Clear the entire area first
         frame.render_widget(Clear, area);
@@ -55,15 +55,15 @@ impl PushChangesComponent {
         let (header_chunk, content_chunk, footer_chunk) = create_standard_layout(area, 5, 2);
 
         // Header
-        let description = if state.is_pushing {
-            "Pushing changes to GitHub repository..."
+        let description = if state.is_syncing {
+            "Syncing with remote repository..."
         } else {
-            "Review changes before pushing to GitHub"
+            "Review changes before syncing with remote"
         };
         let _ = Header::render(
             frame,
             header_chunk,
-            "dotstate - Push Changes",
+            "dotstate - Sync with Remote",
             description,
         )?;
 
@@ -73,20 +73,30 @@ impl PushChangesComponent {
             let popup_area = center_popup(area, 80, 50);
             frame.render_widget(Clear, popup_area);
 
-            let result_text = state.push_result.as_deref().unwrap_or("Unknown result");
+            let mut result_text = state.sync_result.as_deref().unwrap_or("Unknown result").to_string();
+            // Add pulled changes count if available
+            if let Some(pulled_count) = state.pulled_changes_count {
+                if !result_text.contains("Pulled") {
+                    if pulled_count > 0 {
+                        result_text.push_str(&format!("\n\nPulled {} change(s) from remote.", pulled_count));
+                    } else {
+                        result_text.push_str("\n\nNo changes pulled from remote.");
+                    }
+                }
+            }
             let is_error = result_text.to_lowercase().contains("error")
                 || result_text.to_lowercase().contains("failed");
 
             MessageBox::render(
                 frame,
                 popup_area,
-                result_text,
+                &result_text,
                 None,
                 if is_error { Some(Color::Red) } else { Some(Color::Green) },
             )?;
-        } else if state.is_pushing {
+        } else if state.is_syncing {
             // Show progress message
-            let progress_text = state.push_progress.as_deref().unwrap_or("Processing...");
+            let progress_text = state.sync_progress.as_deref().unwrap_or("Processing...");
             let progress_para = Paragraph::new(progress_text)
                 .style(Style::default().fg(Color::Yellow))
                 .alignment(Alignment::Center)
@@ -102,7 +112,7 @@ impl PushChangesComponent {
             // Show list of changed files
             if state.changed_files.is_empty() {
                 let empty_message = Paragraph::new(
-                    "No changes to push.\n\nAll files are up to date with the remote repository."
+                    "No changes to sync.\n\nAll files are up to date with the remote repository."
                 )
                     .style(Style::default().fg(Color::DarkGray))
                     .wrap(Wrap { trim: true })
@@ -166,12 +176,12 @@ impl PushChangesComponent {
         // Footer
         let footer_text = if state.show_result_popup {
             "Press any key or click to close"
-        } else if state.is_pushing {
-            "Pushing changes..."
+        } else if state.is_syncing {
+            "Syncing with remote..."
         } else if state.changed_files.is_empty() {
             "q/Esc: Back to Main Menu"
         } else {
-            "Enter: Push Changes | ↑↓: Navigate | q/Esc: Back"
+            "Enter: Sync with Remote | ↑↓: Navigate | q/Esc: Back"
         };
         let _ = Footer::render(frame, footer_chunk, footer_text)?;
 

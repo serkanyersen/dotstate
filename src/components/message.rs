@@ -41,16 +41,14 @@ impl Component for MessageComponent {
 
         // Header: Use common header component
         let description = match self.screen_type {
-            Screen::PushChanges => "Pushing your changes to GitHub repository...",
-            Screen::PullChanges => "Pulling latest changes from GitHub repository...",
+            Screen::SyncWithRemote => "Syncing with remote repository...",
             _ => "Important Notice",
         };
         let _ = Header::render(frame, header_chunk, &self.title, description)?;
 
         // Message with styled block - use MessageBox component
         let message_color = match self.screen_type {
-            Screen::PushChanges => Some(Color::Green), // Success color for push
-            Screen::PullChanges => Some(Color::Blue), // Info color for pull
+            Screen::SyncWithRemote => Some(Color::Green), // Success color for sync
             _ => Some(Color::Yellow), // Warning color for deactivation
         };
 

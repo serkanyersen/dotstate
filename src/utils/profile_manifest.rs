@@ -84,8 +84,14 @@ impl ProfileManifest {
         if manifest_path.exists() {
             let content = std::fs::read_to_string(&manifest_path)
                 .with_context(|| format!("Failed to read profile manifest: {:?}", manifest_path))?;
-            let manifest: ProfileManifest = toml::from_str(&content)
+            let mut manifest: ProfileManifest = toml::from_str(&content)
                 .with_context(|| "Failed to parse profile manifest")?;
+
+            // Sort synced_files alphabetically for all profiles to ensure consistent ordering
+            for profile in &mut manifest.profiles {
+                profile.synced_files.sort();
+            }
+
             Ok(manifest)
         } else {
             // Return empty manifest if file doesn't exist
@@ -198,7 +204,10 @@ impl ProfileManifest {
     /// Update synced files for a profile
     pub fn update_synced_files(&mut self, profile_name: &str, synced_files: Vec<String>) -> Result<()> {
         if let Some(profile) = self.profiles.iter_mut().find(|p| p.name == profile_name) {
-            profile.synced_files = synced_files;
+            // Sort alphabetically to ensure consistent ordering and prevent unnecessary diffs
+            let mut sorted_files = synced_files;
+            sorted_files.sort();
+            profile.synced_files = sorted_files;
             Ok(())
         } else {
             Err(anyhow::anyhow!("Profile '{}' not found in manifest", profile_name))

@@ -202,7 +202,7 @@ impl App {
             self.main_menu_component.set_has_changes_to_push(self.ui_state.has_changes_to_push);
             self.main_menu_component.set_selected(self.ui_state.selected_index);
             // Update changed files for status display
-            self.main_menu_component.update_changed_files(self.ui_state.push_changes.changed_files.clone());
+            self.main_menu_component.update_changed_files(self.ui_state.sync_with_remote.changed_files.clone());
         }
 
         // Update GitHub auth component state
@@ -218,26 +218,13 @@ impl App {
         }
 
         // Load changed files when entering PushChanges screen
-        if self.ui_state.current_screen == Screen::PushChanges && !self.ui_state.push_changes.is_pushing {
+        if self.ui_state.current_screen == Screen::SyncWithRemote && !self.ui_state.sync_with_remote.is_syncing {
             // Only load if we don't have files yet
-            if self.ui_state.push_changes.changed_files.is_empty() {
+            if self.ui_state.sync_with_remote.changed_files.is_empty() {
                 self.load_changed_files();
             }
         }
 
-        // Create/update message component if needed (for PullChanges only now)
-        if self.ui_state.current_screen == Screen::PullChanges {
-            let title = "Pull Changes";
-            let message = self.ui_state.dotfile_selection.status_message
-                .as_deref()
-                .unwrap_or("Processing...")
-                .to_string();
-            self.message_component = Some(MessageComponent::new(
-                title.to_string(),
-                message,
-                self.ui_state.current_screen,
-            ));
-        }
 
         // Get profiles from manifest before the draw closure to avoid borrow issues
         let profile_selection_profiles: Vec<crate::utils::ProfileInfo> = if self.ui_state.current_screen == Screen::ProfileSelection {
@@ -293,15 +280,10 @@ impl App {
                 Screen::ViewSyncedFiles => {
                     let _ = self.synced_files_component.render(frame, area);
                 }
-                Screen::PushChanges => {
+                Screen::SyncWithRemote => {
                     // Component handles all rendering including Clear
-                    if let Err(e) = self.push_changes_component.render_with_state(frame, area, &mut self.ui_state.push_changes) {
-                        eprintln!("Error rendering push changes: {}", e);
-                    }
-                }
-                Screen::PullChanges => {
-                    if let Some(ref mut msg_component) = self.message_component {
-                        let _ = msg_component.render(frame, area);
+                    if let Err(e) = self.push_changes_component.render_with_state(frame, area, &mut self.ui_state.sync_with_remote) {
+                        eprintln!("Error rendering sync with remote: {}", e);
                     }
                 }
                 Screen::ManageProfiles => {
@@ -504,54 +486,59 @@ impl App {
                 }
                 return Ok(());
             }
-            Screen::PushChanges => {
+            Screen::SyncWithRemote => {
                 // Handle push changes events
                 if let Event::Key(key) = event {
                     if key.kind == KeyEventKind::Press {
                         match key.code {
                             KeyCode::Enter => {
                                 // Start pushing if not already pushing and we have changes
-                                if !self.ui_state.push_changes.is_pushing
-                                    && !self.ui_state.push_changes.changed_files.is_empty() {
-                                    self.start_push()?;
+                                if !self.ui_state.sync_with_remote.is_syncing
+                                    && !self.ui_state.sync_with_remote.changed_files.is_empty() {
+                                    self.start_sync()?;
                                 }
                             }
                             KeyCode::Char('q') | KeyCode::Esc => {
                                 // Close result popup or go back
-                                if self.ui_state.push_changes.show_result_popup {
-                                    self.ui_state.push_changes.show_result_popup = false;
-                                    self.ui_state.push_changes.push_result = None;
-                                    // Re-check for changes
+                                if self.ui_state.sync_with_remote.show_result_popup {
+                                    // After sync, go directly to main menu
+                                    self.ui_state.sync_with_remote.show_result_popup = false;
+                                    self.ui_state.sync_with_remote.sync_result = None;
+                                    self.ui_state.sync_with_remote.pulled_changes_count = None;
+                                    self.ui_state.current_screen = Screen::MainMenu;
+                                    // Reset sync state
+                                    self.ui_state.sync_with_remote = crate::ui::SyncWithRemoteState::default();
+                                    // Re-check for changes after sync
                                     self.check_changes_to_push();
                                 } else {
                                     self.ui_state.current_screen = Screen::MainMenu;
-                                    // Reset push state
-                                    self.ui_state.push_changes = crate::ui::PushChangesState::default();
+                                    // Reset sync state
+                                    self.ui_state.sync_with_remote = crate::ui::SyncWithRemoteState::default();
                                 }
                             }
                             KeyCode::Up => {
-                                self.ui_state.push_changes.list_state.select_previous();
+                                self.ui_state.sync_with_remote.list_state.select_previous();
                             }
                             KeyCode::Down => {
-                                self.ui_state.push_changes.list_state.select_next();
+                                self.ui_state.sync_with_remote.list_state.select_next();
                             }
                             KeyCode::PageUp => {
-                                if let Some(current) = self.ui_state.push_changes.list_state.selected() {
+                                if let Some(current) = self.ui_state.sync_with_remote.list_state.selected() {
                                     let new_index = current.saturating_sub(10);
-                                    self.ui_state.push_changes.list_state.select(Some(new_index));
+                                    self.ui_state.sync_with_remote.list_state.select(Some(new_index));
                                 }
                             }
                             KeyCode::PageDown => {
-                                if let Some(current) = self.ui_state.push_changes.list_state.selected() {
-                                    let new_index = (current + 10).min(self.ui_state.push_changes.changed_files.len().saturating_sub(1));
-                                    self.ui_state.push_changes.list_state.select(Some(new_index));
+                                if let Some(current) = self.ui_state.sync_with_remote.list_state.selected() {
+                                    let new_index = (current + 10).min(self.ui_state.sync_with_remote.changed_files.len().saturating_sub(1));
+                                    self.ui_state.sync_with_remote.list_state.select(Some(new_index));
                                 }
                             }
                             KeyCode::Home => {
-                                self.ui_state.push_changes.list_state.select_first();
+                                self.ui_state.sync_with_remote.list_state.select_first();
                             }
                             KeyCode::End => {
-                                self.ui_state.push_changes.list_state.select_last();
+                                self.ui_state.sync_with_remote.list_state.select_last();
                             }
                             _ => {}
                         }
@@ -559,35 +546,25 @@ impl App {
                 } else if let Event::Mouse(mouse) = event {
                     // Handle mouse events for list navigation
                     if let MouseEventKind::ScrollUp = mouse.kind {
-                        self.ui_state.push_changes.list_state.select_previous();
+                        self.ui_state.sync_with_remote.list_state.select_previous();
                     } else if let MouseEventKind::ScrollDown = mouse.kind {
-                        self.ui_state.push_changes.list_state.select_next();
+                        self.ui_state.sync_with_remote.list_state.select_next();
                     } else if let MouseEventKind::Down(MouseButton::Left) = mouse.kind {
-                        // Click to push or close popup
-                        if self.ui_state.push_changes.show_result_popup {
-                            self.ui_state.push_changes.show_result_popup = false;
-                            self.ui_state.push_changes.push_result = None;
-                            self.check_changes_to_push();
-                        } else if !self.ui_state.push_changes.is_pushing
-                            && !self.ui_state.push_changes.changed_files.is_empty() {
-                            self.start_push()?;
-                        }
-                    }
-                }
-                return Ok(());
-            }
-            Screen::PullChanges => {
-                if let Some(ref mut msg_component) = self.message_component {
-                    let action = msg_component.handle_event(event)?;
-                    match action {
-                        ComponentAction::Navigate(Screen::MainMenu) => {
+                        // Click to sync or close popup
+                        if self.ui_state.sync_with_remote.show_result_popup {
+                            // After sync, go directly to main menu
+                            self.ui_state.sync_with_remote.show_result_popup = false;
+                            self.ui_state.sync_with_remote.sync_result = None;
+                            self.ui_state.sync_with_remote.pulled_changes_count = None;
                             self.ui_state.current_screen = Screen::MainMenu;
-                            self.ui_state.dotfile_selection.status_message = None;
-                            self.message_component = None;
-                            // Re-check for changes after push/pull
+                            // Reset sync state
+                            self.ui_state.sync_with_remote = crate::ui::SyncWithRemoteState::default();
+                            // Re-check for changes after sync
                             self.check_changes_to_push();
+                        } else if !self.ui_state.sync_with_remote.is_syncing
+                            && !self.ui_state.sync_with_remote.changed_files.is_empty() {
+                            self.start_sync()?;
                         }
-                        _ => {}
                     }
                 }
                 return Ok(());
@@ -1627,10 +1604,9 @@ impl App {
                 self.ui_state.current_screen = Screen::GitHubAuth;
             }
             MenuItem::ScanDotfiles => {
-                // Scan & Select Dotfiles
+                // Manage Files
                 self.scan_dotfiles()?;
                 // Reset state when entering the page
-                self.ui_state.dotfile_selection.show_unsaved_warning = false;
                 self.ui_state.dotfile_selection.status_message = None;
                 // Sync backup_enabled from config
                 self.ui_state.dotfile_selection.backup_enabled = self.config.backup_enabled;
@@ -1640,16 +1616,11 @@ impl App {
             //     // View Synced Files
             //     self.ui_state.current_screen = Screen::ViewSyncedFiles;
             // }
-            MenuItem::PushChanges => {
-                // Push Changes - just navigate, don't push yet
-                self.ui_state.current_screen = Screen::PushChanges;
-                // Reset push state
-                self.ui_state.push_changes = crate::ui::PushChangesState::default();
-            }
-            MenuItem::PullChanges => {
-                // Pull Changes
-                self.ui_state.current_screen = Screen::PullChanges;
-                self.pull_changes()?;
+            MenuItem::SyncWithRemote => {
+                // Sync with Remote - just navigate, don't sync yet
+                self.ui_state.current_screen = Screen::SyncWithRemote;
+                // Reset sync state
+                self.ui_state.sync_with_remote = crate::ui::SyncWithRemoteState::default();
             }
             MenuItem::ManageProfiles => {
                 // Manage Profiles
@@ -1681,7 +1652,7 @@ impl App {
     /// Check for changes to push and update UI state
     fn check_changes_to_push(&mut self) {
         self.ui_state.has_changes_to_push = false;
-        self.ui_state.push_changes.changed_files.clear();
+        self.ui_state.sync_with_remote.changed_files.clear();
 
         // Check if GitHub is configured and repo exists
         if self.config.github.is_none() {
@@ -1702,8 +1673,8 @@ impl App {
         // Get changed files (this includes both uncommitted and unpushed)
         match git_mgr.get_changed_files() {
             Ok(files) => {
-                self.ui_state.push_changes.changed_files = files;
-                self.ui_state.has_changes_to_push = !self.ui_state.push_changes.changed_files.is_empty();
+                self.ui_state.sync_with_remote.changed_files = files;
+                self.ui_state.has_changes_to_push = !self.ui_state.sync_with_remote.changed_files.is_empty();
             }
             Err(_) => {
                 // Fallback to old method if get_changed_files fails
@@ -2441,7 +2412,6 @@ impl App {
                     // Trigger search for dotfiles
                     self.scan_dotfiles()?;
                     // Reset state when entering the page
-                    self.ui_state.dotfile_selection.show_unsaved_warning = false;
                     self.ui_state.dotfile_selection.status_message = None;
                 }
 
@@ -2959,51 +2929,51 @@ impl App {
 
     /// Handle input for dotfile selection screen
     fn handle_dotfile_selection_input(&mut self, key_code: KeyCode) -> Result<()> {
-        // Get profile info before borrowing state
-        let previously_synced: std::collections::HashSet<String> = self.get_active_profile_info()
-            .ok()
-            .flatten()
-            .map(|p| p.synced_files.iter().cloned().collect())
-            .unwrap_or_default();
-
         let state = &mut self.ui_state.dotfile_selection;
 
-        // PRIORITY 1: Handle unsaved warning popup FIRST (blocks all other input)
-        if state.show_unsaved_warning {
+
+        // PRIORITY 1: Handle custom file confirmation modal
+        if state.show_custom_file_confirm {
             match key_code {
-                KeyCode::Esc => {
-                    // Cancel - close popup and stay on page
-                    state.show_unsaved_warning = false;
-                    return Ok(());
-                }
-                KeyCode::Char('s') | KeyCode::Char('S') => {
-                    // Save changes
-                    state.show_unsaved_warning = false;
-                    // Release borrow by ending scope
-                    {
+                KeyCode::Char('y') | KeyCode::Char('Y') | KeyCode::Enter => {
+                    // User confirmed - proceed with sync
+                    let full_path = state.custom_file_confirm_path.clone().unwrap();
+                    let relative_path = state.custom_file_confirm_relative.clone().unwrap();
+
+                    // Close confirmation modal
+                    state.show_custom_file_confirm = false;
+                    state.custom_file_confirm_path = None;
+                    state.custom_file_confirm_relative = None;
+
+                        // Release borrow
                         let _ = state;
+
+                    // Sync the file
+                    if let Err(e) = self.add_custom_file_to_sync(&full_path, &relative_path) {
+                        let state = &mut self.ui_state.dotfile_selection;
+                        state.status_message = Some(format!("Error: Failed to sync file: {}", e));
+                        return Ok(());
                     }
-                    self.sync_selected_files()?;
-                    self.ui_state.current_screen = Screen::MainMenu;
-                    return Ok(());
-                }
-                KeyCode::Char('d') | KeyCode::Char('D') => {
-                    // Discard changes
-                    state.show_unsaved_warning = false;
-                    // Release borrow by ending scope
-                    {
-                        let _ = state;
-                    }
-                    // Reload selection from config to discard changes
+
+                    // Re-scan to refresh the list
                     self.scan_dotfiles()?;
-                    self.ui_state.current_screen = Screen::MainMenu;
-                    return Ok(());
+
+                    // Find and select the file in the list
+                    let state = &mut self.ui_state.dotfile_selection;
+                    if let Some(index) = state.dotfiles.iter().position(|d| d.relative_path.to_string_lossy() == relative_path) {
+                        state.dotfile_list_state.select(Some(index));
+                        state.selected_for_sync.insert(index);
+                    }
                 }
-                _ => {
-                    // Ignore all other keys when popup is showing
-                    return Ok(());
+                KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
+                    // User cancelled - close confirmation modal
+                    state.show_custom_file_confirm = false;
+                    state.custom_file_confirm_path = None;
+                    state.custom_file_confirm_relative = None;
                 }
+                _ => {}
             }
+            return Ok(());
         }
 
         // PRIORITY 2: Handle custom file input mode
@@ -3025,25 +2995,8 @@ impl App {
         use crate::ui::DotfileSelectionFocus;
         match key_code {
             KeyCode::Char('q') | KeyCode::Esc => {
-                // Check for unsaved changes before leaving
-                // Use previously_synced that was obtained before borrowing state
-                let has_unsaved = {
-                    let currently_selected: std::collections::HashSet<String> = state.selected_for_sync
-                        .iter()
-                        .filter_map(|&idx| {
-                            state.dotfiles.get(idx)
-                                .map(|d| d.relative_path.to_string_lossy().to_string())
-                        })
-                        .collect();
-
-                    currently_selected != previously_synced
-                };
-
-                if has_unsaved {
-                    state.show_unsaved_warning = true;
-                } else {
-                    self.ui_state.current_screen = Screen::MainMenu;
-                }
+                // Exit to main menu (changes are already applied immediately)
+                self.ui_state.current_screen = Screen::MainMenu;
             }
             KeyCode::Tab => {
                 // Switch focus between FilesList and Preview
@@ -3082,12 +3035,19 @@ impl App {
                 state.status_message = None;
             }
             KeyCode::Enter => {
-                // Toggle selection
+                // Toggle selection and immediately sync
                 if let Some(selected_index) = state.dotfile_list_state.selected() {
-                    if state.selected_for_sync.contains(&selected_index) {
-                        state.selected_for_sync.remove(&selected_index);
+                    let was_selected = state.selected_for_sync.contains(&selected_index);
+                    // Release state borrow before calling sync function
+                    let dotfile_index = selected_index;
+                    let _ = state;
+
+                    if was_selected {
+                        // Unselect - restore file
+                        self.remove_file_from_sync(dotfile_index)?;
                     } else {
-                        state.selected_for_sync.insert(selected_index);
+                        // Select - add file
+                        self.add_file_to_sync(dotfile_index)?;
                     }
                 }
             }
@@ -3154,11 +3114,6 @@ impl App {
                 }
                 // Note: No "scroll to bottom" for preview as we don't know the total length
             }
-            KeyCode::Char('s') => {
-                // Sync selected files
-                self.sync_selected_files()?;
-                return Ok(());
-            }
             KeyCode::Char('a') => {
                 // Add custom file - start with file browser
                 state.adding_custom_file = true;
@@ -3188,6 +3143,7 @@ impl App {
 
     /// Handle input for adding custom files
     fn handle_custom_file_input(&mut self, key_code: KeyCode) -> Result<()> {
+        use crate::ui::DotfileSelectionFocus;
         let state = &mut self.ui_state.dotfile_selection;
 
         // When input is not focused, only allow Enter to focus or Esc to cancel
@@ -3249,21 +3205,60 @@ impl App {
                             Err(_) => path_str_clone.clone(),
                         };
 
-                        // Store values we need before releasing borrow
+                        // Store paths before releasing borrow
                         let relative_path_clone = relative_path.clone();
+                        let full_path_clone = full_path.clone();
 
-                        // Re-scan to include the new file
-                        self.scan_dotfiles()?;
-
-                        // Re-borrow state to update UI
-                        let state = &mut self.ui_state.dotfile_selection;
-                        if let Some(index) = state.dotfiles.iter().position(|d| d.relative_path.to_string_lossy() == relative_path_clone) {
-                            state.dotfile_list_state.select(Some(index));
-                        }
-
+                        // Close custom input mode
                         state.adding_custom_file = false;
                         state.custom_file_input.clear();
-                        state.status_message = Some(format!("✓ Added custom file: {}", relative_path_clone));
+                        state.custom_file_cursor = 0;
+                        state.focus = DotfileSelectionFocus::FilesList;
+
+                        // Check if it's a git repo (deny if directory is a git repo)
+                        if full_path_clone.is_dir() && crate::utils::is_git_repo(&full_path_clone) {
+                            // Show error message
+                            let state = &mut self.ui_state.dotfile_selection;
+                            state.status_message = Some(format!(
+                                "Error: Cannot sync a git repository. Path contains a .git directory: {}",
+                                full_path_clone.display()
+                            ));
+                            return Ok(());
+                        }
+
+                        // Show confirmation modal
+                        let state = &mut self.ui_state.dotfile_selection;
+                        state.show_custom_file_confirm = true;
+                        state.custom_file_confirm_path = Some(full_path_clone.clone());
+                        state.custom_file_confirm_relative = Some(relative_path_clone.clone());
+                        state.file_browser_mode = false;
+                        state.adding_custom_file = false;
+                        state.file_browser_path_input.clear();
+                        state.file_browser_path_cursor = 0;
+                        state.focus = DotfileSelectionFocus::FilesList;
+
+                        // Re-scan to refresh the list
+                        self.scan_dotfiles()?;
+
+                        // Add custom file to list if it's synced but not in scanned list
+                        let state = &mut self.ui_state.dotfile_selection;
+                        if !state.dotfiles.iter().any(|d| d.relative_path.to_string_lossy() == relative_path_clone) {
+                            // File is synced but not in default list, add it manually
+                            use crate::file_manager::Dotfile;
+                            state.dotfiles.push(Dotfile {
+                                original_path: full_path_clone.clone(),
+                                relative_path: PathBuf::from(&relative_path_clone),
+                                synced: true,
+                                description: None,
+                            });
+                        }
+
+                        // Find and select the file in the list
+                        if let Some(index) = state.dotfiles.iter().position(|d| d.relative_path.to_string_lossy() == relative_path_clone) {
+                            state.dotfile_list_state.select(Some(index));
+                            // Mark as selected for sync
+                            state.selected_for_sync.insert(index);
+                        }
                     }
                 }
             }
@@ -3305,6 +3300,256 @@ impl App {
         currently_selected != previously_synced
     }
 
+    /// Add a single file to sync (copy to repo, create symlink, update manifest)
+    fn add_file_to_sync(&mut self, file_index: usize) -> Result<()> {
+        use crate::utils::SymlinkManager;
+
+        // Get profile info before borrowing state
+        let profile_name = self.config.active_profile.clone();
+        let repo_path = self.config.repo_path.clone();
+        let previously_synced: std::collections::HashSet<String> = self.get_active_profile_info()
+            .ok()
+            .flatten()
+            .map(|p| p.synced_files.iter().cloned().collect())
+            .unwrap_or_default();
+
+        let state = &mut self.ui_state.dotfile_selection;
+        if file_index >= state.dotfiles.len() {
+            return Ok(());
+        }
+
+        let dotfile = &state.dotfiles[file_index];
+        let relative_str = dotfile.relative_path.to_string_lossy().to_string();
+
+        if previously_synced.contains(&relative_str) {
+            // Already synced, just mark as selected
+            state.selected_for_sync.insert(file_index);
+            return Ok(());
+        }
+
+        // Copy file to repo
+        let file_manager = crate::file_manager::FileManager::new()?;
+        let profile_path = repo_path.join(&profile_name);
+        let repo_file_path = profile_path.join(&dotfile.relative_path);
+
+        // Create parent directories
+        if let Some(parent) = repo_file_path.parent() {
+            std::fs::create_dir_all(parent)
+                .context("Failed to create repo directory")?;
+        }
+
+        // Handle symlinks: resolve to original file
+        let source_path = if file_manager.is_symlink(&dotfile.original_path) {
+            file_manager.resolve_symlink(&dotfile.original_path)?
+        } else {
+            dotfile.original_path.clone()
+        };
+
+        // Copy to repo
+        file_manager.copy_to_repo(&source_path, &repo_file_path)
+            .context("Failed to copy file to repo")?;
+
+        // Create symlink using SymlinkManager
+        let backup_enabled = state.backup_enabled;
+        let mut symlink_mgr = SymlinkManager::new_with_backup(repo_path.clone(), backup_enabled)?;
+        symlink_mgr.activate_profile(&profile_name, &[relative_str.clone()])
+            .context("Failed to create symlink")?;
+
+        // Update manifest
+        let mut manifest = crate::utils::ProfileManifest::load_or_backfill(&repo_path)?;
+        let current_files = manifest.profiles.iter()
+            .find(|p| p.name == profile_name)
+            .map(|p| p.synced_files.clone())
+            .unwrap_or_default();
+        if !current_files.contains(&relative_str) {
+            let mut new_files = current_files;
+            new_files.push(relative_str);
+            manifest.update_synced_files(&profile_name, new_files)?;
+            manifest.save(&repo_path)?;
+        }
+
+        // Mark as selected and synced
+        state.selected_for_sync.insert(file_index);
+        state.dotfiles[file_index].synced = true;
+
+        Ok(())
+    }
+
+    /// Add a custom file directly to sync (bypasses scan_dotfiles since custom files aren't in default list)
+    fn add_custom_file_to_sync(&mut self, full_path: &PathBuf, relative_path: &str) -> Result<()> {
+        use crate::utils::SymlinkManager;
+
+        // Get profile info before borrowing state
+        let profile_name = self.config.active_profile.clone();
+        let repo_path = self.config.repo_path.clone();
+        let previously_synced: std::collections::HashSet<String> = self.get_active_profile_info()
+            .ok()
+            .flatten()
+            .map(|p| p.synced_files.iter().cloned().collect())
+            .unwrap_or_default();
+
+        if previously_synced.contains(relative_path) {
+            // Already synced, nothing to do
+            return Ok(());
+        }
+
+        // Copy file to repo
+        let file_manager = crate::file_manager::FileManager::new()?;
+        let profile_path = repo_path.join(&profile_name);
+        let relative_path_buf = PathBuf::from(relative_path);
+        let repo_file_path = profile_path.join(&relative_path_buf);
+
+        // Create parent directories
+        if let Some(parent) = repo_file_path.parent() {
+            std::fs::create_dir_all(parent)
+                .context("Failed to create repo directory")?;
+        }
+
+        // Handle symlinks: resolve to original file
+        let source_path = if file_manager.is_symlink(full_path) {
+            file_manager.resolve_symlink(full_path)?
+        } else {
+            full_path.clone()
+        };
+
+        // Copy to repo
+        file_manager.copy_to_repo(&source_path, &repo_file_path)
+            .context("Failed to copy file to repo")?;
+
+        // Create symlink using SymlinkManager
+        let backup_enabled = self.ui_state.dotfile_selection.backup_enabled;
+        let mut symlink_mgr = SymlinkManager::new_with_backup(repo_path.clone(), backup_enabled)?;
+        symlink_mgr.activate_profile(&profile_name, &[relative_path.to_string()])
+            .context("Failed to create symlink")?;
+
+        // Update manifest
+        let mut manifest = crate::utils::ProfileManifest::load_or_backfill(&repo_path)?;
+        let current_files = manifest.profiles.iter()
+            .find(|p| p.name == profile_name)
+            .map(|p| p.synced_files.clone())
+            .unwrap_or_default();
+        if !current_files.contains(&relative_path.to_string()) {
+            let mut new_files = current_files;
+            new_files.push(relative_path.to_string());
+            manifest.update_synced_files(&profile_name, new_files)?;
+            manifest.save(&repo_path)?;
+        }
+
+        // Check if this is a custom file (not in default dotfile candidates)
+        use crate::dotfile_candidates::get_default_dotfile_paths;
+        let default_paths = get_default_dotfile_paths();
+        let is_custom = !default_paths.iter().any(|p| p == relative_path);
+
+        if is_custom {
+            // Add to config.custom_files if not already there
+            if !self.config.custom_files.contains(&relative_path.to_string()) {
+                self.config.custom_files.push(relative_path.to_string());
+                self.config.save(&self.config_path)?;
+            }
+        }
+
+        // Don't add to dotfiles list here - it will be added after scan_dotfiles() is called
+        // This function only handles the actual syncing (copy, symlink, manifest update)
+        Ok(())
+    }
+
+    /// Remove a single file from sync (restore from repo, remove symlink, update manifest)
+    fn remove_file_from_sync(&mut self, file_index: usize) -> Result<()> {
+        use crate::utils::SymlinkManager;
+
+        // Get profile info before borrowing state
+        let profile_name = self.config.active_profile.clone();
+        let repo_path = self.config.repo_path.clone();
+        let home_dir = crate::utils::get_home_dir();
+        let previously_synced: std::collections::HashSet<String> = self.get_active_profile_info()
+            .ok()
+            .flatten()
+            .map(|p| p.synced_files.iter().cloned().collect())
+            .unwrap_or_default();
+
+        let state = &mut self.ui_state.dotfile_selection;
+        if file_index >= state.dotfiles.len() {
+            return Ok(());
+        }
+
+        let dotfile = &state.dotfiles[file_index];
+        let relative_str = dotfile.relative_path.to_string_lossy().to_string();
+
+        if !previously_synced.contains(&relative_str) {
+            // Not synced, just unmark as selected
+            state.selected_for_sync.remove(&file_index);
+            return Ok(());
+        }
+
+        let target_path = home_dir.join(&dotfile.relative_path);
+        let repo_file_path = repo_path.join(&profile_name).join(&dotfile.relative_path);
+
+        // Restore file from repo if symlink exists
+        if target_path.symlink_metadata().is_ok() {
+            let metadata = target_path.symlink_metadata().unwrap();
+            if metadata.is_symlink() {
+                // Remove symlink
+                std::fs::remove_file(&target_path)
+                    .context("Failed to remove symlink")?;
+
+                // Copy file from repo back to home
+                if repo_file_path.exists() {
+                    if repo_file_path.is_dir() {
+                        crate::file_manager::copy_dir_all(&repo_file_path, &target_path)
+                            .context("Failed to restore directory from repo")?;
+                    } else {
+                        std::fs::copy(&repo_file_path, &target_path)
+                            .context("Failed to restore file from repo")?;
+                    }
+                }
+            }
+        }
+
+        // Update symlink tracking
+        let mut symlink_mgr = SymlinkManager::new(repo_path.clone())?;
+        let remaining_files: Vec<String> = {
+            let manifest = crate::utils::ProfileManifest::load_or_backfill(&repo_path)?;
+            manifest.profiles.iter()
+                .find(|p| p.name == profile_name)
+                .map(|p| p.synced_files.iter()
+                    .filter(|f| f != &&relative_str)
+                    .cloned()
+                    .collect())
+                .unwrap_or_default()
+        };
+
+        // Deactivate and reactivate with remaining files
+        let _ = symlink_mgr.deactivate_profile(&profile_name);
+        if !remaining_files.is_empty() {
+            let _ = symlink_mgr.activate_profile(&profile_name, &remaining_files);
+        }
+
+        // Remove from repo
+        if repo_file_path.exists() {
+            if repo_file_path.is_dir() {
+                std::fs::remove_dir_all(&repo_file_path)
+                    .context("Failed to remove directory from repo")?;
+            } else {
+                std::fs::remove_file(&repo_file_path)
+                    .context("Failed to remove file from repo")?;
+            }
+        }
+
+        // Update manifest
+        let mut manifest = crate::utils::ProfileManifest::load_or_backfill(&repo_path)?;
+        manifest.update_synced_files(&profile_name, remaining_files)?;
+        manifest.save(&repo_path)?;
+
+        // Note: Don't remove from config.custom_files - custom files persist even if removed from sync
+        // This allows users to re-add them easily later
+
+        // Unmark as selected and synced
+        state.selected_for_sync.remove(&file_index);
+        state.dotfiles[file_index].synced = false;
+
+        Ok(())
+    }
+
     /// Scan for dotfiles and populate the selection state
     fn scan_dotfiles(&mut self) -> Result<()> {
         use crate::dotfile_candidates::get_default_dotfile_paths;
@@ -3331,6 +3576,49 @@ impl App {
             }
         }
 
+        // Add any synced files that aren't in the default list (custom files)
+        let synced_files_not_found: Vec<String> = synced_set.iter()
+            .filter(|s| !found.iter().any(|d| d.relative_path.to_string_lossy() == **s))
+            .cloned()
+            .collect();
+
+        let home_dir = crate::utils::get_home_dir();
+        for synced_file in synced_files_not_found {
+            let full_path = home_dir.join(&synced_file);
+            if full_path.exists() {
+                let relative_path_buf = PathBuf::from(&synced_file);
+                let index = found.len();
+                found.push(crate::file_manager::Dotfile {
+                    original_path: full_path,
+                    relative_path: relative_path_buf,
+                    synced: true,
+                    description: None,
+                });
+                selected_indices.insert(index);
+            }
+        }
+
+        // Add custom files from config (even if not synced) - these are known files
+        for custom_file in &self.config.custom_files {
+            if !found.iter().any(|d| d.relative_path.to_string_lossy() == *custom_file) {
+                let full_path = home_dir.join(custom_file);
+                if full_path.exists() {
+                    let relative_path_buf = PathBuf::from(custom_file);
+                    let index = found.len();
+                    let is_synced = synced_set.contains(custom_file);
+                    found.push(crate::file_manager::Dotfile {
+                        original_path: full_path,
+                        relative_path: relative_path_buf,
+                        synced: is_synced,
+                        description: None,
+                    });
+                    if is_synced {
+                        selected_indices.insert(index);
+                    }
+                }
+            }
+        }
+
         self.ui_state.dotfile_selection.dotfiles = found;
         self.ui_state.dotfile_selection.selected_index = 0;
         self.ui_state.dotfile_selection.preview_index = None;
@@ -3348,6 +3636,9 @@ impl App {
     }
 
     /// Sync selected files to repository using SymlinkManager
+    /// NOTE: This function is deprecated. Files are now synced immediately when selected/unselected.
+    /// Kept for reference but should not be used.
+    #[allow(dead_code)]
     fn sync_selected_files(&mut self) -> Result<()> {
         use crate::utils::SymlinkManager;
 
@@ -3607,7 +3898,7 @@ impl App {
 
         // Check if repo exists
         if !repo_path.exists() {
-            self.ui_state.push_changes.changed_files = vec![];
+            self.ui_state.sync_with_remote.changed_files = vec![];
             return;
         }
 
@@ -3615,7 +3906,7 @@ impl App {
         let git_mgr = match GitManager::open_or_init(repo_path) {
             Ok(mgr) => mgr,
             Err(_) => {
-                self.ui_state.push_changes.changed_files = vec![];
+                self.ui_state.sync_with_remote.changed_files = vec![];
                 return;
             }
         };
@@ -3623,26 +3914,26 @@ impl App {
         // Get changed files
         match git_mgr.get_changed_files() {
             Ok(files) => {
-                self.ui_state.push_changes.changed_files = files;
+                self.ui_state.sync_with_remote.changed_files = files;
                 // Select first item if list is not empty
-                if !self.ui_state.push_changes.changed_files.is_empty() {
-                    self.ui_state.push_changes.list_state.select(Some(0));
+                if !self.ui_state.sync_with_remote.changed_files.is_empty() {
+                    self.ui_state.sync_with_remote.list_state.select(Some(0));
                 }
             }
             Err(_) => {
-                self.ui_state.push_changes.changed_files = vec![];
+                self.ui_state.sync_with_remote.changed_files = vec![];
             }
         }
     }
 
     /// Start pushing changes (async operation with progress updates)
-    fn start_push(&mut self) -> Result<()> {
+    fn start_sync(&mut self) -> Result<()> {
         // Check if GitHub is configured
         if self.config.github.is_none() {
-            self.ui_state.push_changes.push_result = Some(
+            self.ui_state.sync_with_remote.sync_result = Some(
                 "Error: GitHub repository not configured.\n\nPlease set up your GitHub repository first from the main menu.".to_string()
             );
-            self.ui_state.push_changes.show_result_popup = true;
+            self.ui_state.sync_with_remote.show_result_popup = true;
             return Ok(());
         }
 
@@ -3650,52 +3941,73 @@ impl App {
 
         // Check if repo exists
         if !repo_path.exists() {
-            self.ui_state.push_changes.push_result = Some(
+            self.ui_state.sync_with_remote.sync_result = Some(
                 format!("Error: Repository not found at {:?}\n\nPlease sync some files first.", repo_path)
             );
-            self.ui_state.push_changes.show_result_popup = true;
+            self.ui_state.sync_with_remote.show_result_popup = true;
             return Ok(());
         }
 
-        // Mark as pushing
-        self.ui_state.push_changes.is_pushing = true;
-        self.ui_state.push_changes.push_progress = Some("Committing changes...".to_string());
+        // Mark as syncing
+        self.ui_state.sync_with_remote.is_syncing = true;
+        self.ui_state.sync_with_remote.sync_progress = Some("Committing changes...".to_string());
 
         // Don't call draw() here - let the main loop handle it
         // The next draw cycle will show the progress
 
-        // Perform commit
+        // Perform sync: commit -> pull with rebase -> push
         let git_mgr = match GitManager::open_or_init(&repo_path) {
             Ok(mgr) => mgr,
             Err(e) => {
-                self.ui_state.push_changes.is_pushing = false;
-                self.ui_state.push_changes.push_progress = None;
-                self.ui_state.push_changes.push_result = Some(format!("Error: Failed to open repository: {}", e));
-                self.ui_state.push_changes.show_result_popup = true;
+                self.ui_state.sync_with_remote.is_syncing = false;
+                self.ui_state.sync_with_remote.sync_progress = None;
+                self.ui_state.sync_with_remote.sync_result = Some(format!("Error: Failed to open repository: {}", e));
+                self.ui_state.sync_with_remote.show_result_popup = true;
                 return Ok(());
             }
         };
 
         let branch = git_mgr.get_current_branch()
             .unwrap_or_else(|| self.config.default_branch.clone());
+        let token = self.config.github.as_ref()
+            .and_then(|gh| gh.token.as_deref());
 
-        // Commit all changes
+        // Step 1: Commit all changes
         let result = match git_mgr.commit_all("Update dotfiles") {
             Ok(_) => {
-                // Update progress
-                self.ui_state.push_changes.push_progress = Some("Pushing to remote...".to_string());
-                // Don't call draw() here - let the main loop handle it
+                // Step 2: Pull with rebase
+                self.ui_state.sync_with_remote.sync_progress = Some("Pulling changes from remote (with rebase)...".to_string());
 
-                // Push to remote - get token from config
-                let token = self.config.github.as_ref()
-                    .and_then(|gh| gh.token.as_deref());
-                match git_mgr.push("origin", &branch, token) {
-                    Ok(_) => {
-                        format!("✓ Successfully pushed changes to GitHub!\n\nBranch: {}\nRepository: {:?}", branch, repo_path)
+                match git_mgr.pull_with_rebase("origin", &branch, token) {
+                    Ok(pulled_count) => {
+                        self.ui_state.sync_with_remote.pulled_changes_count = Some(pulled_count);
+
+                        // Step 3: Push to remote
+                        self.ui_state.sync_with_remote.sync_progress = Some("Pushing to remote...".to_string());
+
+                        match git_mgr.push("origin", &branch, token) {
+                            Ok(_) => {
+                                let mut success_msg = format!("✓ Successfully synced with remote!\n\nBranch: {}\nRepository: {:?}", branch, repo_path);
+                                if pulled_count > 0 {
+                                    success_msg.push_str(&format!("\n\nPulled {} change(s) from remote.", pulled_count));
+                                } else {
+                                    success_msg.push_str("\n\nNo changes pulled from remote.");
+                                }
+                                success_msg
+                            }
+                            Err(e) => {
+                                let mut error_msg = format!("Error: Failed to push to remote: {}", e);
+                                let mut source = e.source();
+                                while let Some(err) = source {
+                                    error_msg.push_str(&format!("\n  Caused by: {}", err));
+                                    source = err.source();
+                                }
+                                error_msg
+                            }
+                        }
                     }
                     Err(e) => {
-                        // Include the full error chain for debugging
-                        let mut error_msg = format!("Error: Failed to push to remote: {}", e);
+                        let mut error_msg = format!("Error: Failed to pull from remote: {}", e);
                         let mut source = e.source();
                         while let Some(err) = source {
                             error_msg.push_str(&format!("\n  Caused by: {}", err));
@@ -3718,15 +4030,16 @@ impl App {
         };
 
         // Update state with result
-        self.ui_state.push_changes.is_pushing = false;
-        self.ui_state.push_changes.push_progress = None;
-        self.ui_state.push_changes.push_result = Some(result);
-        self.ui_state.push_changes.show_result_popup = true;
+        self.ui_state.sync_with_remote.is_syncing = false;
+        self.ui_state.sync_with_remote.sync_progress = None;
+        self.ui_state.sync_with_remote.sync_result = Some(result);
+        self.ui_state.sync_with_remote.show_result_popup = true;
 
         Ok(())
     }
 
-    /// Pull changes from GitHub repository
+    /// Pull changes from GitHub repository (deprecated - use sync instead)
+    #[allow(dead_code)]
     fn pull_changes(&mut self) -> Result<()> {
         // Check if GitHub is configured
         if self.config.github.is_none() {
@@ -3825,18 +4138,41 @@ impl App {
                                 self.refresh_file_browser()?;
                                 return Ok(());
                             } else {
-                                // It's a file - load it into custom file input and close browser
+                                // It's a file - directly sync it
                                 let home_dir = crate::utils::get_home_dir();
                                 let relative_path = full_path.strip_prefix(&home_dir)
                                     .map(|p| p.to_string_lossy().to_string())
                                     .unwrap_or_else(|_| full_path.to_string_lossy().to_string());
+
+                                // Close browser first
                                 state.file_browser_mode = false;
-                                state.custom_file_input = relative_path;
-                                state.custom_file_cursor = state.custom_file_input.len();
-                                state.custom_file_focused = true;
+                                state.adding_custom_file = false;
                                 state.file_browser_path_input.clear();
                                 state.file_browser_path_cursor = 0;
-                                state.focus = DotfileSelectionFocus::CustomInput;
+                                state.focus = DotfileSelectionFocus::FilesList;
+
+                                // Store relative_path before releasing borrow
+                                let relative_path_clone = relative_path.clone();
+
+                        // Release borrow
+                        let _ = state;
+
+                                // Re-scan to include the new file
+                                self.scan_dotfiles()?;
+
+                                // Find the file index and sync it
+                                let file_index = {
+                                    let state = &self.ui_state.dotfile_selection;
+                                    state.dotfiles.iter().position(|d| d.relative_path.to_string_lossy() == relative_path_clone)
+                                };
+
+                                if let Some(index) = file_index {
+                                    // Sync the file immediately
+                                    let _ = self.add_file_to_sync(index);
+                                    // Select the file
+                                    let state = &mut self.ui_state.dotfile_selection;
+                                    state.dotfile_list_state.select(Some(index));
+                                }
                             }
                         }
                     }
@@ -3954,6 +4290,48 @@ impl App {
                                 self.refresh_file_browser()?;
                                 return Ok(());
                             }
+                        } else if selected == Path::new(".") {
+                            // Add current folder
+                            let current_folder = state.file_browser_path.clone();
+                            let home_dir = crate::utils::get_home_dir();
+                            let relative_path = current_folder.strip_prefix(&home_dir)
+                                .map(|p| p.to_string_lossy().to_string())
+                                .unwrap_or_else(|_| current_folder.to_string_lossy().to_string());
+
+                            // Sanity checks
+                            let repo_path = &self.config.repo_path;
+                            let (is_safe, reason) = crate::utils::is_safe_to_add(&current_folder, repo_path);
+                            if !is_safe {
+                                let state = &mut self.ui_state.dotfile_selection;
+                                state.status_message = Some(format!(
+                                    "Error: {}. Path: {}",
+                                    reason.unwrap_or_else(|| "Cannot add this folder".to_string()),
+                                    current_folder.display()
+                                ));
+                                return Ok(());
+                            }
+
+                            // Check if it's a git repo
+                            if crate::utils::is_git_repo(&current_folder) {
+                                let state = &mut self.ui_state.dotfile_selection;
+                                state.status_message = Some(format!(
+                                    "Error: Cannot sync a git repository. Path contains a .git directory: {}",
+                                    current_folder.display()
+                                ));
+                                return Ok(());
+                            }
+
+                            // Show confirmation modal
+                            let state = &mut self.ui_state.dotfile_selection;
+                            state.show_custom_file_confirm = true;
+                            state.custom_file_confirm_path = Some(current_folder.clone());
+                            state.custom_file_confirm_relative = Some(relative_path.clone());
+                            state.file_browser_mode = false;
+                            state.adding_custom_file = false;
+                            state.file_browser_path_input.clear();
+                            state.file_browser_path_cursor = 0;
+                            state.focus = DotfileSelectionFocus::FilesList;
+                            return Ok(());
                         } else {
                             let full_path = if selected.is_absolute() {
                                 selected.clone()
@@ -3970,21 +4348,37 @@ impl App {
                                 self.refresh_file_browser()?;
                                 return Ok(());
                             } else if full_path.is_file() {
-                                // Load file path into custom file input and close browser
+                                // It's a file - directly sync it
                                 let home_dir = crate::utils::get_home_dir();
                                 let relative_path = full_path.strip_prefix(&home_dir)
                                     .map(|p| p.to_string_lossy().to_string())
                                     .unwrap_or_else(|_| full_path.to_string_lossy().to_string());
 
+                                // Close browser first
                                 state.file_browser_mode = false;
-                                state.custom_file_input = relative_path;
-                                state.custom_file_cursor = state.custom_file_input.len();
-                                state.custom_file_focused = true;
-                                // Keep the path input value (don't clear it)
-                                // state.file_browser_path_input stays as is
-                                state.file_browser_path_cursor = state.file_browser_path_input.chars().count();
-                                state.file_browser_path_focused = false;
-                                state.focus = DotfileSelectionFocus::CustomInput;
+                                state.adding_custom_file = false;
+                                state.file_browser_path_input.clear();
+                                state.file_browser_path_cursor = 0;
+                                state.focus = DotfileSelectionFocus::FilesList;
+
+                                // Store paths before releasing borrow
+                                let relative_path_clone = relative_path.clone();
+                                let full_path_clone = full_path.clone();
+
+                        // Release borrow
+                        let _ = state;
+
+                                // Add the file directly to the dotfiles list and sync it
+                                self.add_custom_file_to_sync(&full_path_clone, &relative_path_clone)?;
+
+                                // Re-scan to refresh the list (will include the file if it's in default paths)
+                                self.scan_dotfiles()?;
+
+                                // Find and select the file in the list
+                                let state = &mut self.ui_state.dotfile_selection;
+                                if let Some(index) = state.dotfiles.iter().position(|d| d.relative_path.to_string_lossy() == relative_path_clone) {
+                                    state.dotfile_list_state.select(Some(index));
+                                }
                             }
                         }
                     }
@@ -4008,6 +4402,13 @@ impl App {
             entries.push(PathBuf::from(".."));
         }
 
+        // Add special marker for "add this folder" (only if it's a directory and safe to add)
+        let repo_path = &self.config.repo_path;
+        let (is_safe, _) = crate::utils::is_safe_to_add(path, repo_path);
+        if is_safe && path.is_dir() {
+            entries.push(PathBuf::from(".")); // Special marker for "add this folder"
+        }
+
         // Read directory entries
         if let Ok(entries_iter) = std::fs::read_dir(path) {
             for entry in entries_iter {
@@ -4019,18 +4420,28 @@ impl App {
             }
         }
 
-        // Sort: directories first, then files, both alphabetically
+        // Sort: special entries first (.. and .), then directories, then files, both alphabetically
         entries.sort_by(|a, b| {
-            let a_is_dir = if a == Path::new("..") {
-                true
-            } else {
-                a.is_dir()
-            };
-            let b_is_dir = if b == Path::new("..") {
-                true
-            } else {
-                b.is_dir()
-            };
+            let a_is_special = a == Path::new("..") || a == Path::new(".");
+            let b_is_special = b == Path::new("..") || b == Path::new(".");
+
+            // Special entries come first, with .. before .
+            if a_is_special && b_is_special {
+                if a == Path::new("..") {
+                    return std::cmp::Ordering::Less;
+                } else {
+                    return std::cmp::Ordering::Greater;
+                }
+            }
+            if a_is_special {
+                return std::cmp::Ordering::Less;
+            }
+            if b_is_special {
+                return std::cmp::Ordering::Greater;
+            }
+
+            let a_is_dir = a.is_dir();
+            let b_is_dir = b.is_dir();
 
             match (a_is_dir, b_is_dir) {
                 (true, false) => std::cmp::Ordering::Less,

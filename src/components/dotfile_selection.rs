@@ -33,12 +33,6 @@ impl DotfileSelectionComponent {
 
         let selection_state = &mut state.dotfile_selection;
 
-        // Check if unsaved warning popup should be shown
-        if selection_state.show_unsaved_warning {
-            self.render_unsaved_warning_popup(frame, area)?;
-            // Don't render the rest when popup is showing
-            return Ok(());
-        }
 
         // Layout: Title/Description, Content (list + preview), Footer
         let (header_chunk, content_chunk, footer_chunk) = create_standard_layout(area, 5, 2);
@@ -47,12 +41,16 @@ impl DotfileSelectionComponent {
         let _ = Header::render(
             frame,
             header_chunk,
-            "dotstate - Select Dotfiles to Sync",
-            "Select the dotfiles you want to sync to your repository. Selected files will be copied to the repo and symlinked back to their original locations."
+            "dotstate - Manage Files",
+            "Select files to add them to your repository. Unselect files to restore them. Changes are applied immediately."
         )?;
 
+        // Check if confirmation modal is showing
+        if selection_state.show_custom_file_confirm {
+            self.render_custom_file_confirm(frame, area, selection_state)?;
+        }
         // Check if file browser is active - render as popup
-        if selection_state.file_browser_mode {
+        else if selection_state.file_browser_mode {
             self.render_file_browser(frame, area, selection_state, footer_chunk)?;
         } else if selection_state.adding_custom_file {
             self.render_custom_file_input(frame, content_chunk, footer_chunk, selection_state)?;
@@ -141,6 +139,8 @@ impl DotfileSelectionComponent {
 
                 let name = if path == Path::new("..") {
                     ".. (parent)".to_string()
+                } else if path == Path::new(".") {
+                    ". (add this folder)".to_string()
                 } else {
                     path.file_name()
                         .and_then(|n| n.to_str())
@@ -202,6 +202,9 @@ impl DotfileSelectionComponent {
                     selection_state.file_browser_path.parent()
                         .map(|p| p.to_path_buf())
                         .unwrap_or_else(|| PathBuf::from("/"))
+                } else if selected == Path::new(".") {
+                    // Current folder
+                    selection_state.file_browser_path.clone()
                 } else if selected.is_absolute() {
                     selected.to_path_buf()
                 } else {
@@ -478,14 +481,8 @@ impl DotfileSelectionComponent {
         let backup_status = if selection_state.backup_enabled { "ON" } else { "OFF" };
         let footer_text = if selection_state.status_message.is_some() {
             "Enter: Continue".to_string()
-        } else if selection_state.selected_for_sync.is_empty() {
-            format!("Tab: Switch Focus | ↑↓: Navigate | Space/Enter: Toggle | a: Add Custom File | u/d: Scroll Preview | s: Sync | b: Backup ({}) | q/Esc: Back", backup_status)
         } else {
-            format!(
-                "Tab: Switch Focus | ↑↓: Navigate | Space/Enter: Toggle | a: Add Custom File | u/d: Scroll Preview | s: Sync ({} selected) | b: Backup ({}) | q/Esc: Back",
-                selection_state.selected_for_sync.len(),
-                backup_status
-            )
+            format!("Tab: Switch Focus | ↑↓: Navigate | Space/Enter: Toggle Selection | a: Add Custom File | u/d: Scroll Preview | b: Backup ({}) | q/Esc: Back", backup_status)
         };
 
         let _ = Footer::render(frame, footer_chunk, &footer_text)?;
@@ -493,46 +490,72 @@ impl DotfileSelectionComponent {
         Ok(())
     }
 
-    /// Render unsaved changes warning popup
-    fn render_unsaved_warning_popup(
-        &self,
+    fn render_custom_file_confirm(
+        &mut self,
         frame: &mut Frame,
         area: Rect,
+        selection_state: &crate::ui::DotfileSelectionState,
     ) -> Result<()> {
-        use crate::utils::center_popup;
-        use crate::components::footer::Footer;
-        use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
-        use ratatui::prelude::*;
+        // Dim the background
+        let dim = Block::default()
+            .style(Style::default().bg(Color::Black).fg(Color::DarkGray));
+        frame.render_widget(dim, area);
 
-        let popup_area = center_popup(area, 60, 35);
+        // Create centered popup
+        let popup_area = crate::utils::center_popup(area, 70, 40);
         frame.render_widget(Clear, popup_area);
+
+        let path = selection_state.custom_file_confirm_path.as_ref()
+            .map(|p| p.display().to_string())
+            .unwrap_or_else(|| "Unknown".to_string());
 
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Length(6), // Warning text
-                Constraint::Min(0),    // Spacer
-                Constraint::Length(2), // Footer
+                Constraint::Length(3), // Title
+                Constraint::Length(1), // Spacer
+                Constraint::Length(3), // Path label
+                Constraint::Length(3), // Path value (highlighted)
+                Constraint::Length(1), // Spacer
+                Constraint::Length(3), // Warning message
+                Constraint::Length(1), // Spacer
+                Constraint::Length(1), // Instructions
             ])
             .split(popup_area);
 
-        let warning_text = "⚠️  Unsaved Changes\n\n\
-            You have unsaved changes to your file selection.\n\
-            What would you like to do?";
-
-        let warning = Paragraph::new(warning_text)
+        // Title
+        let title = Paragraph::new("Confirm Add Custom File")
             .block(Block::default()
                 .borders(Borders::ALL)
-                .title("Unsaved Changes")
+                .title("Confirmation")
                 .title_alignment(Alignment::Center)
-                .border_style(Style::default().fg(Color::Yellow)))
-            .wrap(Wrap { trim: true })
-            .alignment(Alignment::Center);
-        frame.render_widget(warning, chunks[0]);
+                .style(Style::default().bg(Color::Black)))
+            .alignment(Alignment::Center)
+            .style(Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD));
+        frame.render_widget(title, chunks[0]);
 
-        // Footer with instructions
-        let footer_text = "S: Save Changes  |  D: Discard Changes  |  Esc: Cancel";
-        Footer::render(frame, chunks[2], footer_text)?;
+        // Path label
+        let path_label = Paragraph::new("Path:")
+            .style(Style::default().fg(Color::White));
+        frame.render_widget(path_label, chunks[2]);
+
+        // Path value (highlighted in different color)
+        let path_value = Paragraph::new(path.as_str())
+            .wrap(Wrap { trim: true })
+            .style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD));
+        frame.render_widget(path_value, chunks[3]);
+
+        // Warning message
+        let warning = Paragraph::new("⚠️  This will move this path to the storage repo and replace it with a symlink.\nMake sure you know what you are doing.")
+            .wrap(Wrap { trim: true })
+            .style(Style::default().fg(Color::Yellow));
+        frame.render_widget(warning, chunks[5]);
+
+        // Instructions
+        let instructions = Paragraph::new("Press Y/Enter to confirm, N/Esc to cancel")
+            .alignment(Alignment::Center)
+            .style(Style::default().fg(Color::DarkGray));
+        frame.render_widget(instructions, chunks[7]);
 
         Ok(())
     }

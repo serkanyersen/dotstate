@@ -15,6 +15,8 @@ pub struct Cli {
 
 #[derive(Subcommand, Debug)]
 pub enum Commands {
+    /// Sync with remote: commit, pull (with rebase), and push
+    Sync,
     /// Push changes to GitHub
     Push,
     /// Pull changes from GitHub
@@ -49,6 +51,7 @@ impl Cli {
     /// Execute the CLI command
     pub fn execute(self) -> Result<()> {
         match self.command {
+            Some(Commands::Sync) => Self::cmd_sync(),
             Some(Commands::Push) => Self::cmd_push(),
             Some(Commands::Pull) => Self::cmd_pull(),
             Some(Commands::List { verbose }) => Self::cmd_list(verbose),
@@ -61,6 +64,46 @@ impl Cli {
                 Ok(())
             }
         }
+    }
+
+    fn cmd_sync() -> Result<()> {
+        let config_path = crate::utils::get_config_path();
+
+        let config = Config::load_or_create(&config_path)
+            .context("Failed to load configuration")?;
+
+        if config.github.is_none() {
+            eprintln!("❌ GitHub not configured. Please run 'dotstate' to set up GitHub sync.");
+            std::process::exit(1);
+        }
+
+        let repo_path = &config.repo_path;
+        let git_mgr = GitManager::open_or_init(repo_path)
+            .context("Failed to open repository")?;
+
+        let branch = git_mgr.get_current_branch()
+            .unwrap_or_else(|| config.default_branch.clone());
+        let token = config.github.as_ref()
+            .and_then(|gh| gh.token.as_deref());
+
+        println!("📝 Committing changes...");
+        git_mgr.commit_all("Update dotfiles")
+            .context("Failed to commit changes")?;
+
+        println!("📥 Pulling changes from remote (with rebase)...");
+        let pulled_count = git_mgr.pull_with_rebase("origin", &branch, token)
+            .context("Failed to pull from remote")?;
+
+        println!("📤 Pushing to GitHub...");
+        git_mgr.push("origin", &branch, token)
+            .context("Failed to push to remote")?;
+
+        if pulled_count > 0 {
+            println!("✅ Successfully synced with remote! Pulled {} change(s) from remote.", pulled_count);
+        } else {
+            println!("✅ Successfully synced with remote! No changes pulled from remote.");
+        }
+        Ok(())
     }
 
     fn cmd_push() -> Result<()> {
@@ -166,19 +209,46 @@ impl Cli {
             return Ok(());
         }
 
+        let home_dir = dirs::home_dir()
+            .context("Failed to get home directory")?;
+        let repo_path = &config.repo_path;
+        let profile_name = &config.active_profile;
+
         println!("Synced files ({}):", synced_files.len());
         for file in synced_files {
+            let symlink_path = home_dir.join(file);
+            let repo_file_path = repo_path.join(profile_name).join(file);
+
             if verbose {
-                let full_path = dirs::home_dir()
-                    .unwrap_or_default()
-                    .join(file);
-                if full_path.exists() {
-                    println!("  ✓ {}", file);
+                let symlink_exists = symlink_path.exists();
+                let repo_file_exists = repo_file_path.exists();
+
+                println!("  {}", file);
+                println!("    Symlink:   {}", symlink_path.display());
+                if symlink_exists {
+                    // Check if it's actually a symlink
+                    if let Ok(metadata) = symlink_path.symlink_metadata() {
+                        if metadata.is_symlink() {
+                            println!("      Status:  ✓ Active symlink");
+                        } else {
+                            println!("      Status:  ⚠ File exists but is not a symlink");
+                        }
+                    } else {
+                        println!("      Status:  ✓ Exists");
+                    }
                 } else {
-                    println!("  ✗ {} (not found)", file);
+                    println!("      Status:  ✗ Not found");
+                }
+                println!("    Storage:   {}", repo_file_path.display());
+                if repo_file_exists {
+                    println!("      Status:  ✓ Exists");
+                } else {
+                    println!("      Status:  ✗ Not found");
                 }
             } else {
                 println!("  {}", file);
+                println!("    Symlink:   {}", symlink_path.display());
+                println!("    Storage:   {}", repo_file_path.display());
             }
         }
 
@@ -186,17 +256,11 @@ impl Cli {
     }
 
     fn cmd_add(path: PathBuf) -> Result<()> {
-        let config_path = crate::utils::get_config_path();
+        use crate::utils::SymlinkManager;
 
+        let config_path = crate::utils::get_config_path();
         let config = Config::load_or_create(&config_path)
             .context("Failed to load configuration")?;
-
-        if !config.profile_activated {
-            eprintln!("⚠️  Profile is not activated. Please activate your profile first:");
-            eprintln!("   dotstate activate");
-            eprintln!("\n   This ensures your symlinks are active before adding files.");
-            std::process::exit(1);
-        }
 
         // Resolve path relative to home directory
         let home = dirs::home_dir()
@@ -213,33 +277,119 @@ impl Cli {
             std::process::exit(1);
         }
 
+        // Sanity checks
+        let repo_path = &config.repo_path;
+        let (is_safe, reason) = crate::utils::is_safe_to_add(&resolved_path, repo_path);
+        if !is_safe {
+            eprintln!("❌ {}", reason.unwrap_or_else(|| "Cannot add this path".to_string()));
+            eprintln!("   Path: {:?}", resolved_path);
+            std::process::exit(1);
+        }
+
+        // Check if it's a git repo (deny if directory is a git repo)
+        if resolved_path.is_dir() && crate::utils::is_git_repo(&resolved_path) {
+            eprintln!("❌ Cannot sync a git repository. Path contains a .git directory: {:?}", resolved_path);
+            eprintln!("   You cannot have a git repository inside a git repository.");
+            std::process::exit(1);
+        }
+
+        // Show confirmation prompt
+        println!("⚠️  Warning: This will move the following path to the storage repo and replace it with a symlink:");
+        println!("   {}", resolved_path.display());
+        println!("\n   Make sure you know what you are doing.");
+        print!("   Continue? [y/N]: ");
+        use std::io::{self, Write};
+        io::stdout().flush().context("Failed to flush stdout")?;
+
+        let mut input = String::new();
+        io::stdin().read_line(&mut input).context("Failed to read input")?;
+
+        let trimmed = input.trim().to_lowercase();
+        if trimmed != "y" && trimmed != "yes" {
+            println!("Cancelled.");
+            return Ok(());
+        }
+
         // Get relative path from home
         let relative_path = resolved_path.strip_prefix(&home)
             .map(|p| p.to_path_buf())
             .unwrap_or_else(|_| resolved_path.clone());
 
         let relative_str = relative_path.to_string_lossy().to_string();
+        let profile_name = config.active_profile.clone();
+        let repo_path = config.repo_path.clone();
 
-        // Add to active profile's synced files in manifest
-        let mut manifest = crate::utils::ProfileManifest::load_or_backfill(&config.repo_path)
+        // Check if already synced
+        let manifest = crate::utils::ProfileManifest::load_or_backfill(&repo_path)
             .context("Failed to load profile manifest")?;
 
-        if let Some(profile) = manifest.profiles.iter_mut().find(|p| p.name == config.active_profile) {
+        if let Some(profile) = manifest.profiles.iter().find(|p| p.name == profile_name) {
             if profile.synced_files.contains(&relative_str) {
                 println!("ℹ️  File is already synced: {}", relative_str);
                 return Ok(());
             }
-            profile.synced_files.push(relative_str.clone());
         } else {
-            eprintln!("❌ Active profile '{}' not found in manifest", config.active_profile);
+            eprintln!("❌ Active profile '{}' not found in manifest", profile_name);
             std::process::exit(1);
         }
 
-        manifest.save(&config.repo_path)
-            .context("Failed to save manifest")?;
+        // Copy file to repo
+        let file_manager = crate::file_manager::FileManager::new()?;
+        let profile_path = repo_path.join(&profile_name);
+        let repo_file_path = profile_path.join(&relative_path);
 
-        println!("✅ Added {} to synced files", relative_str);
-        println!("💡 Run 'dotstate' to sync this file to GitHub");
+        // Create parent directories
+        if let Some(parent) = repo_file_path.parent() {
+            std::fs::create_dir_all(parent)
+                .context("Failed to create repo directory")?;
+        }
+
+        // Handle symlinks: resolve to original file
+        let source_path = if file_manager.is_symlink(&resolved_path) {
+            file_manager.resolve_symlink(&resolved_path)
+                .context("Failed to resolve symlink")?
+        } else {
+            resolved_path.clone()
+        };
+
+        // Copy to repo
+        file_manager.copy_to_repo(&source_path, &repo_file_path)
+            .context("Failed to copy file to repo")?;
+
+        // Create symlink using SymlinkManager
+        let mut symlink_mgr = SymlinkManager::new_with_backup(repo_path.clone(), config.backup_enabled)?;
+        symlink_mgr.activate_profile(&profile_name, &[relative_str.clone()])
+            .context("Failed to create symlink")?;
+
+        // Update manifest
+        let mut manifest = crate::utils::ProfileManifest::load_or_backfill(&repo_path)?;
+        let current_files = manifest.profiles.iter()
+            .find(|p| p.name == profile_name)
+            .map(|p| p.synced_files.clone())
+            .unwrap_or_default();
+        if !current_files.contains(&relative_str) {
+            let mut new_files = current_files;
+            new_files.push(relative_str.clone());
+            manifest.update_synced_files(&profile_name, new_files)?;
+            manifest.save(&repo_path)?;
+        }
+
+        // Check if this is a custom file (not in default dotfile candidates)
+        use crate::dotfile_candidates::get_default_dotfile_paths;
+        let default_paths = get_default_dotfile_paths();
+        let is_custom = !default_paths.iter().any(|p| p == &relative_str);
+
+        if is_custom {
+            // Add to config.custom_files if not already there
+            let mut config = Config::load_or_create(&config_path)
+                .context("Failed to load configuration")?;
+            if !config.custom_files.contains(&relative_str) {
+                config.custom_files.push(relative_str.clone());
+                config.save(&config_path)?;
+            }
+        }
+
+        println!("✅ Added {} to repository and created symlink", relative_str);
         Ok(())
     }
 

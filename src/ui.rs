@@ -11,8 +11,7 @@ pub enum Screen {
     DotfileSelection,
     GitHubAuth,
     ViewSyncedFiles,
-    PushChanges,
-    PullChanges,
+    SyncWithRemote,
     ManageProfiles,
     ProfileSelection, // For selecting which profile to activate after setup
     ManagePackages,
@@ -114,7 +113,8 @@ pub enum DotfileSelectionFocus {
     FileBrowserList,     // File browser list pane is focused
     FileBrowserPreview,  // File browser preview pane is focused
     FileBrowserInput,    // File browser path input is focused
-    CustomInput,         // Custom file input is focused
+    #[allow(dead_code)]
+    CustomInput,         // Custom file input is focused (reserved for future use)
 }
 
 /// Dotfile selection state
@@ -146,8 +146,11 @@ pub struct DotfileSelectionState {
     pub file_browser_path_cursor: usize, // Cursor position for path input
     pub file_browser_path_focused: bool, // Whether path input is focused
     pub focus: DotfileSelectionFocus, // Which pane currently has focus
-    pub show_unsaved_warning: bool, // Whether to show unsaved changes warning popup
     pub backup_enabled: bool, // Whether backups are enabled (tracks config value)
+    // Custom file confirmation modal
+    pub show_custom_file_confirm: bool, // Whether to show confirmation modal
+    pub custom_file_confirm_path: Option<PathBuf>, // Full path to confirm
+    pub custom_file_confirm_relative: Option<String>, // Relative path for confirmation
 }
 
 impl Default for DotfileSelectionState {
@@ -178,32 +181,36 @@ impl Default for DotfileSelectionState {
             file_browser_path_cursor: 0,
             file_browser_path_focused: false,
             focus: DotfileSelectionFocus::FilesList, // Start with files list focused
-            show_unsaved_warning: false,
             backup_enabled: true, // Default to enabled
+            show_custom_file_confirm: false,
+            custom_file_confirm_path: None,
+            custom_file_confirm_relative: None,
         }
     }
 }
 
-/// Push changes state
+/// Sync with remote state
 #[derive(Debug, Clone)]
-pub struct PushChangesState {
+pub struct SyncWithRemoteState {
     pub changed_files: Vec<String>,
-    pub is_pushing: bool,
-    pub push_progress: Option<String>, // Current progress message (e.g., "Committing...", "Pushing...")
-    pub push_result: Option<String>, // Final result message
+    pub is_syncing: bool,
+    pub sync_progress: Option<String>, // Current progress message (e.g., "Committing...", "Pulling...", "Pushing...")
+    pub sync_result: Option<String>, // Final result message
     pub show_result_popup: bool, // Whether to show result popup
+    pub pulled_changes_count: Option<usize>, // Number of changes pulled from remote
     pub list_state: ListState,
     pub scrollbar_state: ScrollbarState,
 }
 
-impl Default for PushChangesState {
+impl Default for SyncWithRemoteState {
     fn default() -> Self {
         Self {
             changed_files: Vec::new(),
-            is_pushing: false,
-            push_progress: None,
-            push_result: None,
+            is_syncing: false,
+            sync_progress: None,
+            sync_result: None,
             show_result_popup: false,
+            pulled_changes_count: None,
             list_state: ListState::default(),
             scrollbar_state: ScrollbarState::new(0),
         }
@@ -381,7 +388,7 @@ pub struct UiState {
     pub selected_index: usize,
     pub github_auth: GitHubAuthState,
     pub dotfile_selection: DotfileSelectionState,
-    pub push_changes: PushChangesState,
+    pub sync_with_remote: SyncWithRemoteState,
     pub profile_manager: ProfileManagerState,
     pub has_changes_to_push: bool, // Whether there are uncommitted or unpushed changes
     /// State for profile selection after GitHub setup
@@ -397,7 +404,7 @@ impl UiState {
             selected_index: 0,
             github_auth: GitHubAuthState::default(),
             dotfile_selection: DotfileSelectionState::default(),
-            push_changes: PushChangesState::default(),
+            sync_with_remote: SyncWithRemoteState::default(),
             profile_manager: ProfileManagerState::default(),
             has_changes_to_push: false,
             profile_selection: ProfileSelectionState::default(),

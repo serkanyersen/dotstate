@@ -13,8 +13,7 @@ use crate::utils::create_standard_layout;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MenuItem {
     ScanDotfiles,
-    PushChanges,
-    PullChanges,
+    SyncWithRemote,
     ManageProfiles,
     ManagePackages,
     SetupGitHub,
@@ -25,8 +24,7 @@ impl MenuItem {
     pub fn all() -> Vec<MenuItem> {
         vec![
             MenuItem::ScanDotfiles,
-            MenuItem::PushChanges,
-            MenuItem::PullChanges,
+            MenuItem::SyncWithRemote,
             MenuItem::ManageProfiles,
             MenuItem::ManagePackages,
             MenuItem::SetupGitHub,
@@ -50,8 +48,7 @@ impl MenuItem {
     pub fn icon(&self) -> &'static str {
         match self {
             MenuItem::ScanDotfiles => "📁",
-            MenuItem::PushChanges => "📤",
-            MenuItem::PullChanges => "📥",
+            MenuItem::SyncWithRemote => "🔄",
             MenuItem::ManageProfiles => "👤",
             MenuItem::ManagePackages => "📦",
             MenuItem::SetupGitHub => "🔧",
@@ -61,9 +58,8 @@ impl MenuItem {
     /// Get the display text for this menu item
     pub fn text(&self) -> &'static str {
         match self {
-            MenuItem::ScanDotfiles => "Scan & Select Dotfiles",
-            MenuItem::PushChanges => "Push Changes",
-            MenuItem::PullChanges => "Pull Changes",
+            MenuItem::ScanDotfiles => "Manage Files",
+            MenuItem::SyncWithRemote => "Sync with Remote",
             MenuItem::ManageProfiles => "Manage Profiles",
             MenuItem::ManagePackages => "Manage Packages",
             MenuItem::SetupGitHub => "Setup GitHub Repository",
@@ -73,7 +69,7 @@ impl MenuItem {
     /// Get the base color for this menu item
     pub fn color(&self, has_changes: bool) -> Color {
         match self {
-            MenuItem::PushChanges if has_changes => Color::Yellow,
+            MenuItem::SyncWithRemote if has_changes => Color::Yellow,
             _ => Color::White,
         }
     }
@@ -81,9 +77,8 @@ impl MenuItem {
     /// Get the explanation text for this menu item
     pub fn explanation(&self) -> &'static str {
         match self {
-            MenuItem::ScanDotfiles => "Scan your home directory for common dotfiles and configuration files. Preview their contents and select which ones you want to sync to GitHub.",
-            MenuItem::PushChanges => "Commit and push any local changes to your GitHub repository. This will update your remote repository with the latest dotfile changes.",
-            MenuItem::PullChanges => "Pull the latest changes from your GitHub repository. This will update your local repository with any changes made on other computers.",
+            MenuItem::ScanDotfiles => "Manage your dotfiles and configuration files. Select files to add them to your repository, or unselect to restore them.",
+            MenuItem::SyncWithRemote => "Sync with remote repository: commit local changes, pull remote changes (with rebase), and push everything. Keeps your local and remote repositories in sync.",
             MenuItem::ManageProfiles => "Manage different profiles or sets of dotfiles. Create profiles for work, personal, different operating systems, etc.",
             MenuItem::ManagePackages => "Manage CLI tools and dependencies for your profile. Check if packages are installed and optionally install missing ones.",
             MenuItem::SetupGitHub => "Connect your GitHub account and create a repository to store your dotfiles. This will allow you to sync your configuration files across multiple computers.",
@@ -94,8 +89,7 @@ impl MenuItem {
     pub fn explanation_icon(&self) -> &'static str {
         match self {
             MenuItem::ScanDotfiles => "💡",
-            MenuItem::PushChanges => "📤",
-            MenuItem::PullChanges => "📥",
+            MenuItem::SyncWithRemote => "🔄",
             MenuItem::ManageProfiles => "👤",
             MenuItem::ManagePackages => "📦",
             MenuItem::SetupGitHub => "🔧",
@@ -106,8 +100,7 @@ impl MenuItem {
     pub fn explanation_color(&self) -> Color {
         match self {
             MenuItem::ScanDotfiles => Color::Cyan,
-            MenuItem::PushChanges => Color::Green,
-            MenuItem::PullChanges => Color::Cyan,
+            MenuItem::SyncWithRemote => Color::Green,
             MenuItem::ManageProfiles => Color::Magenta,
             MenuItem::ManagePackages => Color::Blue,
             MenuItem::SetupGitHub => Color::Cyan,
@@ -336,7 +329,7 @@ impl Component for MainMenuComponent {
                     menu_item.color(self.has_changes_to_push)
                 };
 
-                let display_text = if *menu_item == MenuItem::PushChanges && self.has_changes_to_push && is_enabled {
+                let display_text = if *menu_item == MenuItem::SyncWithRemote && self.has_changes_to_push && is_enabled {
                     format!("{} {} ({} pending)", icon, text, self.changed_files.len())
                 } else if !is_enabled {
                     format!("{} {} (requires setup)", icon, text)
