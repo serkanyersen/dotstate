@@ -15,6 +15,7 @@ pub enum Screen {
     PullChanges,
     ManageProfiles,
     ProfileSelection, // For selecting which profile to activate after setup
+    ManagePackages,
 }
 
 /// GitHub auth state
@@ -44,6 +45,7 @@ pub struct GitHubSetupData {
     pub repo_name: String,
     pub username: Option<String>,
     pub repo_exists: Option<bool>,
+    pub is_private: bool, // Repository visibility (true = private, false = public)
     pub delay_until: Option<std::time::Instant>, // For delays between steps
 }
 
@@ -84,7 +86,7 @@ impl Default for GitHubAuthState {
 
         Self {
             token_input: String::new(),
-            repo_name_input: "dotstate-storage".to_string(),
+            repo_name_input: crate::config::default_repo_name(),
             repo_location_input: default_repo_path.to_string_lossy().to_string(),
             is_private: true, // Private by default
             step: GitHubAuthStep::Input,
@@ -226,6 +228,148 @@ impl Default for ProfileSelectionState {
     }
 }
 
+/// Package manager state
+#[derive(Debug)]
+pub struct PackageManagerState {
+    pub list_state: ListState,
+    pub packages: Vec<crate::utils::profile_manifest::Package>, // From active profile
+    pub popup_type: PackagePopupType,
+    // Checking state
+    pub is_checking: bool,
+    pub checking_index: Option<usize>,
+    pub package_statuses: Vec<PackageStatus>, // Installed/NotInstalled/Error
+    pub checking_delay_until: Option<std::time::Instant>, // Delay between checks for UI responsiveness
+    // Installation state
+    pub installation_step: InstallationStep,
+    pub installation_output: Vec<String>, // Live output from installation
+    pub installation_delay_until: Option<std::time::Instant>, // Delay between installation steps
+    // Add/Edit popup state
+    pub add_name_input: String,
+    pub add_name_cursor: usize,
+    pub add_description_input: String,
+    pub add_description_cursor: usize,
+    pub add_manager: Option<crate::utils::profile_manifest::PackageManager>,
+    pub add_manager_selected: usize, // Index in available managers list
+    pub add_package_name_input: String,
+    pub add_package_name_cursor: usize,
+    pub add_binary_name_input: String,
+    pub add_binary_name_cursor: usize,
+    pub add_install_command_input: String, // For custom only
+    pub add_install_command_cursor: usize,
+    pub add_existence_check_input: String,  // For custom only
+    pub add_existence_check_cursor: usize,
+    pub add_manager_check_input: String,   // Optional fallback
+    pub add_manager_check_cursor: usize,
+    pub add_is_custom: bool, // Whether in custom mode
+    pub add_focused_field: AddPackageField,
+    pub add_editing_index: Option<usize>, // None for add, Some(index) for edit
+    pub available_managers: Vec<crate::utils::profile_manifest::PackageManager>, // OS-filtered list
+    pub manager_list_state: ListState, // For manager selection
+    // Delete popup state
+    pub delete_confirm_input: String,
+    pub delete_confirm_cursor: usize,
+    pub delete_index: Option<usize>,
+}
+
+/// Package popup types
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PackagePopupType {
+    None,
+    Add,
+    Edit,
+    Delete,
+    InstallMissing, // Prompt to install missing packages
+}
+
+/// Package status
+#[derive(Debug, Clone)]
+pub enum PackageStatus {
+    Unknown,
+    Installed,
+    NotInstalled,
+    Error(String), // Error message if check failed
+}
+
+/// Which field is focused in the add/edit package popup
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AddPackageField {
+    Name,
+    Description,
+    Manager,
+    PackageName,      // For managed packages
+    BinaryName,
+    InstallCommand,   // Custom only
+    ExistenceCheck,   // Custom only
+    ManagerCheck,     // Optional fallback
+}
+
+impl Default for PackageManagerState {
+    fn default() -> Self {
+        Self {
+            list_state: ListState::default(),
+            packages: Vec::new(),
+            popup_type: PackagePopupType::None,
+            is_checking: false,
+            checking_index: None,
+            package_statuses: Vec::new(),
+            add_name_input: String::new(),
+            add_name_cursor: 0,
+            add_description_input: String::new(),
+            add_description_cursor: 0,
+            add_manager: None,
+            add_manager_selected: 0,
+            add_package_name_input: String::new(),
+            add_package_name_cursor: 0,
+            add_binary_name_input: String::new(),
+            add_binary_name_cursor: 0,
+            add_install_command_input: String::new(),
+            add_install_command_cursor: 0,
+            add_existence_check_input: String::new(),
+            add_existence_check_cursor: 0,
+            add_manager_check_input: String::new(),
+            add_manager_check_cursor: 0,
+            add_is_custom: false,
+            add_focused_field: AddPackageField::Name,
+            add_editing_index: None,
+            available_managers: Vec::new(),
+            manager_list_state: ListState::default(),
+            delete_confirm_input: String::new(),
+            delete_confirm_cursor: 0,
+            delete_index: None,
+            checking_delay_until: None,
+            installation_step: InstallationStep::NotStarted,
+            installation_output: Vec::new(),
+            installation_delay_until: None,
+        }
+    }
+}
+
+/// Installation state machine
+#[derive(Debug)]
+pub enum InstallationStep {
+    NotStarted,
+    Installing {
+        package_index: usize,
+        package_name: String,
+        total_packages: usize,
+        packages_to_install: Vec<usize>, // Indices of packages that need installation
+        installed: Vec<usize>, // Successfully installed package indices
+        failed: Vec<(usize, String)>, // Failed package indices with error messages
+        status_rx: Option<std::sync::mpsc::Receiver<InstallationStatus>>, // Channel receiver for status updates
+    },
+    Complete {
+        installed: Vec<usize>,
+        failed: Vec<(usize, String)>, // (index, error message)
+    },
+}
+
+/// Installation status message from background thread
+#[derive(Debug, Clone)]
+pub enum InstallationStatus {
+    Output(String), // Output line
+    Complete { success: bool, error: Option<String> }, // Installation complete
+}
+
 /// Application UI state
 #[derive(Debug)]
 pub struct UiState {
@@ -238,6 +382,8 @@ pub struct UiState {
     pub has_changes_to_push: bool, // Whether there are uncommitted or unpushed changes
     /// State for profile selection after GitHub setup
     pub profile_selection: ProfileSelectionState,
+    /// State for package manager
+    pub package_manager: PackageManagerState,
 }
 
 impl UiState {
@@ -251,6 +397,7 @@ impl UiState {
             profile_manager: ProfileManagerState::default(),
             has_changes_to_push: false,
             profile_selection: ProfileSelectionState::default(),
+            package_manager: PackageManagerState::default(),
         }
     }
 }

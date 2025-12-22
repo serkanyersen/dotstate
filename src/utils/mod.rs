@@ -2,6 +2,8 @@ pub mod backup_manager;
 pub mod layout;
 pub mod path;
 pub mod profile_manifest;
+pub mod package_manager;
+pub mod package_installer;
 pub mod profile_validation;
 pub mod style;
 pub mod symlink_manager;

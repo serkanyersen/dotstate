@@ -127,8 +127,12 @@ impl Cli {
         let branch = git_mgr.get_current_branch()
             .unwrap_or_else(|| config.default_branch.clone());
 
+        // Get token from config
+        let token = config.github.as_ref()
+            .and_then(|gh| gh.token.as_deref());
+
         println!("📥 Pulling from GitHub...");
-        git_mgr.pull("origin", &branch)
+        git_mgr.pull("origin", &branch, token)
             .context("Failed to pull from remote")?;
 
         println!("✅ Successfully pulled changes from GitHub!");

@@ -16,6 +16,7 @@ pub enum MenuItem {
     PushChanges,
     PullChanges,
     ManageProfiles,
+    ManagePackages,
     SetupGitHub,
 }
 
@@ -27,6 +28,7 @@ impl MenuItem {
             MenuItem::PushChanges,
             MenuItem::PullChanges,
             MenuItem::ManageProfiles,
+            MenuItem::ManagePackages,
             MenuItem::SetupGitHub,
         ]
     }
@@ -51,6 +53,7 @@ impl MenuItem {
             MenuItem::PushChanges => "📤",
             MenuItem::PullChanges => "📥",
             MenuItem::ManageProfiles => "👤",
+            MenuItem::ManagePackages => "📦",
             MenuItem::SetupGitHub => "🔧",
         }
     }
@@ -62,6 +65,7 @@ impl MenuItem {
             MenuItem::PushChanges => "Push Changes",
             MenuItem::PullChanges => "Pull Changes",
             MenuItem::ManageProfiles => "Manage Profiles",
+            MenuItem::ManagePackages => "Manage Packages",
             MenuItem::SetupGitHub => "Setup GitHub Repository",
         }
     }
@@ -81,6 +85,7 @@ impl MenuItem {
             MenuItem::PushChanges => "Commit and push any local changes to your GitHub repository. This will update your remote repository with the latest dotfile changes.",
             MenuItem::PullChanges => "Pull the latest changes from your GitHub repository. This will update your local repository with any changes made on other computers.",
             MenuItem::ManageProfiles => "Manage different profiles or sets of dotfiles. Create profiles for work, personal, different operating systems, etc.",
+            MenuItem::ManagePackages => "Manage CLI tools and dependencies for your profile. Check if packages are installed and optionally install missing ones.",
             MenuItem::SetupGitHub => "Connect your GitHub account and create a repository to store your dotfiles. This will allow you to sync your configuration files across multiple computers.",
         }
     }
@@ -92,6 +97,7 @@ impl MenuItem {
             MenuItem::PushChanges => "📤",
             MenuItem::PullChanges => "📥",
             MenuItem::ManageProfiles => "👤",
+            MenuItem::ManagePackages => "📦",
             MenuItem::SetupGitHub => "🔧",
         }
     }
@@ -103,6 +109,7 @@ impl MenuItem {
             MenuItem::PushChanges => Color::Green,
             MenuItem::PullChanges => Color::Cyan,
             MenuItem::ManageProfiles => Color::Magenta,
+            MenuItem::ManagePackages => Color::Blue,
             MenuItem::SetupGitHub => Color::Cyan,
         }
     }

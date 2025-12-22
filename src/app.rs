@@ -4,15 +4,17 @@ use crate::file_manager::FileManager;
 use crate::github::GitHubClient;
 use crate::git::GitManager;
 use crate::tui::Tui;
-use crate::ui::{UiState, Screen, GitHubAuthStep, GitHubAuthField, GitHubSetupStep};
+use crate::ui::{UiState, Screen, GitHubAuthStep, GitHubAuthField, GitHubSetupStep, PackageStatus, PackagePopupType, AddPackageField, InstallationStep};
+use crate::utils::profile_manifest::{Package, PackageManager};
 use crate::components::{MainMenuComponent, GitHubAuthComponent, SyncedFilesComponent, MessageComponent, DotfileSelectionComponent, PushChangesComponent, ProfileManagerComponent, ComponentAction, Component, MenuItem};
 use crate::components::profile_manager::ProfilePopupType;
+use crate::components::package_manager::PackageManagerComponent;
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use std::fs;
 use tokio::runtime::Runtime;
-use tracing::{error, info};
+use tracing::{error, info, warn, debug, trace};
 // Frame and Rect are used in function signatures but imported where needed
 
 /// Count files in a directory (recursively)
@@ -68,6 +70,7 @@ pub struct App {
     synced_files_component: SyncedFilesComponent,
     push_changes_component: PushChangesComponent,
     profile_manager_component: ProfileManagerComponent,
+    package_manager_component: PackageManagerComponent,
     message_component: Option<MessageComponent>,
 }
 
@@ -98,6 +101,7 @@ impl App {
             synced_files_component: SyncedFilesComponent::new(config_clone),
             push_changes_component: PushChangesComponent::new(),
             profile_manager_component: ProfileManagerComponent::new(),
+            package_manager_component: PackageManagerComponent::new(),
             message_component: None,
         })
     }
@@ -139,6 +143,37 @@ impl App {
             // Process GitHub setup state machine if active (before polling events)
             if let GitHubAuthStep::SetupStep(_) = self.ui_state.github_auth.step {
                 self.process_github_setup_step()?;
+            }
+
+            // Process package checking if active (before polling events)
+            if self.ui_state.current_screen == Screen::ManagePackages {
+                let state = &mut self.ui_state.package_manager;
+                if state.is_checking {
+                    // Check if we need to wait for a delay
+                    if let Some(delay_until) = state.checking_delay_until {
+                        if std::time::Instant::now() < delay_until {
+                            // Still waiting, don't process yet - continue to next iteration
+                        } else {
+                            // Delay complete, clear it and process check
+                            state.checking_delay_until = None;
+                        }
+                    }
+                    // Process check (delay handled above)
+                    let _ = state; // Release borrow before calling method
+                    self.process_package_check_step()?;
+                }
+
+                // Process installation if active
+                {
+                    let state = &mut self.ui_state.package_manager;
+                    if !matches!(state.installation_step, InstallationStep::NotStarted) {
+                        trace!("Event loop: Processing installation step");
+                    }
+                }
+                // Check again after releasing borrow
+                if !matches!(self.ui_state.package_manager.installation_step, InstallationStep::NotStarted) {
+                    self.process_installation_step()?;
+                }
             }
 
             // Poll for events with 250ms timeout
@@ -214,6 +249,17 @@ impl App {
         // Clone config for main menu to avoid borrow issues in closure
         let config_clone = self.config.clone();
 
+        // Get packages for ManagePackages screen (before closure to avoid borrow issues)
+        let packages_for_manage: Vec<crate::utils::profile_manifest::Package> = if self.ui_state.current_screen == Screen::ManagePackages {
+            self.get_active_profile_info()
+                .ok()
+                .flatten()
+                .map(|p| p.packages.clone())
+                .unwrap_or_default()
+        } else {
+            Vec::new()
+        };
+
         self.tui.terminal_mut().draw(|frame| {
             let area = frame.size();
             match self.ui_state.current_screen {
@@ -270,6 +316,13 @@ impl App {
                         .profiles;
                     if let Err(e) = self.profile_manager_component.render_with_config(frame, area, &config_clone, &profiles, &mut self.ui_state.profile_manager) {
                         eprintln!("Error rendering profile manager: {}", e);
+                    }
+                }
+                Screen::ManagePackages => {
+                    let state = &mut self.ui_state.package_manager;
+                    let config = &config_clone;
+                    if let Err(e) = self.package_manager_component.render_with_state(frame, area, state, config, &packages_for_manage) {
+                        eprintln!("Error rendering package manager: {}", e);
                     }
                 }
                 Screen::ProfileSelection => {
@@ -631,6 +684,292 @@ impl App {
                             KeyCode::Esc => {
                                 // Show warning before exiting
                                 state.show_exit_warning = true;
+                            }
+                            _ => {}
+                        }
+                    }
+                    _ => {}
+                }
+                return Ok(());
+            }
+            Screen::ManagePackages => {
+                // Handle package manager events
+                let state = &mut self.ui_state.package_manager;
+
+                // Handle popup events FIRST - popups capture all events (like profile manager does)
+                if state.popup_type != PackagePopupType::None {
+                    // Handle popup events inline
+                    match event {
+                        Event::Key(key) if key.kind == KeyEventKind::Press => {
+                            match state.popup_type {
+                                PackagePopupType::Add | PackagePopupType::Edit => {
+                                    use crate::ui::AddPackageField;
+                                    match key.code {
+                                        KeyCode::Esc => {
+                                            state.popup_type = PackagePopupType::None;
+                                        }
+                                        KeyCode::Tab => {
+                                            // Switch to next/previous field
+                                            if key.modifiers.contains(KeyModifiers::SHIFT) {
+                                                // Shift+Tab: previous field (go backwards)
+                                                state.add_focused_field = match state.add_focused_field {
+                                                    AddPackageField::Name => {
+                                                        // Wrap to last field
+                                                        if state.add_is_custom {
+                                                            AddPackageField::ExistenceCheck
+                                                        } else {
+                                                            AddPackageField::BinaryName
+                                                        }
+                                                    }
+                                                    AddPackageField::Description => AddPackageField::Name,
+                                                    AddPackageField::Manager => AddPackageField::Description,
+                                                    AddPackageField::PackageName => AddPackageField::Manager,
+                                                    AddPackageField::BinaryName => {
+                                                        if state.add_is_custom {
+                                                            AddPackageField::Manager
+                                                        } else {
+                                                            AddPackageField::PackageName
+                                                        }
+                                                    }
+                                                    AddPackageField::InstallCommand => AddPackageField::BinaryName,
+                                                    AddPackageField::ExistenceCheck => AddPackageField::InstallCommand,
+                                                    AddPackageField::ManagerCheck => {
+                                                        // ManagerCheck is not shown in UI, but exists in enum
+                                                        if state.add_is_custom {
+                                                            AddPackageField::ExistenceCheck
+                                                        } else {
+                                                            AddPackageField::BinaryName
+                                                        }
+                                                    }
+                                                };
+                                            } else {
+                                                // Tab: next field (go forwards)
+                                                state.add_focused_field = match state.add_focused_field {
+                                                    AddPackageField::Name => AddPackageField::Description,
+                                                    AddPackageField::Description => AddPackageField::Manager,
+                                                    AddPackageField::Manager => {
+                                                        if state.add_is_custom {
+                                                            AddPackageField::BinaryName
+                                                        } else {
+                                                            AddPackageField::PackageName
+                                                        }
+                                                    }
+                                                    AddPackageField::PackageName => AddPackageField::BinaryName,
+                                                    AddPackageField::BinaryName => {
+                                                        if state.add_is_custom {
+                                                            AddPackageField::InstallCommand
+                                                        } else {
+                                                            AddPackageField::Name // Wrap around for managed packages
+                                                        }
+                                                    }
+                                                    AddPackageField::InstallCommand => AddPackageField::ExistenceCheck,
+                                                    AddPackageField::ExistenceCheck => AddPackageField::Name, // Wrap around
+                                                    AddPackageField::ManagerCheck => {
+                                                        // ManagerCheck is not shown in UI, but exists in enum
+                                                        AddPackageField::Name
+                                                    }
+                                                };
+                                            }
+                                        }
+                                        KeyCode::Up => {
+                                            if state.add_focused_field == AddPackageField::Manager {
+                                                state.manager_list_state.select_previous();
+                                            }
+                                        }
+                                        KeyCode::Down => {
+                                            if state.add_focused_field == AddPackageField::Manager {
+                                                state.manager_list_state.select_next();
+                                            }
+                                        }
+                                        KeyCode::Enter => {
+                                            // Save package
+                                            // Release borrow before calling method
+                                            let _ = state;
+                                            if self.validate_and_save_package()? {
+                                                self.ui_state.package_manager.popup_type = PackagePopupType::None;
+                                            }
+                                        }
+                                        _ => {
+                                            // Delegate text input to handle_package_popup_event
+                                            self.handle_package_popup_event(event)?;
+                                        }
+                                    }
+                                }
+                                PackagePopupType::Delete => {
+                                    match key.code {
+                                        KeyCode::Esc => {
+                                            state.popup_type = PackagePopupType::None;
+                                            state.delete_index = None;
+                                            state.delete_confirm_input.clear();
+                                            state.delete_confirm_cursor = 0;
+                                        }
+                                        KeyCode::Enter => {
+                                            if state.delete_confirm_input.trim() == "DELETE" {
+                                                if let Some(idx) = state.delete_index {
+                                                    // Release borrow before calling method
+                                                    let _ = state;
+                                                    self.delete_package(idx)?;
+                                                    // Re-borrow after method returns
+                                                    let state = &mut self.ui_state.package_manager;
+                                                    state.popup_type = PackagePopupType::None;
+                                                    state.delete_index = None;
+                                                    state.delete_confirm_input.clear();
+                                                    state.delete_confirm_cursor = 0;
+                                                }
+                                            }
+                                        }
+                                        _ => {
+                                            // Delegate text input to handle_package_popup_event
+                                            self.handle_package_popup_event(event)?;
+                                        }
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
+                        _ => {
+                            // Delegate other events (like text input) to handle_package_popup_event
+                            self.handle_package_popup_event(event)?;
+                        }
+                    }
+                    return Ok(());
+                }
+
+
+                match event {
+                    Event::Key(key) if key.kind == KeyEventKind::Press => {
+                        match key.code {
+                            KeyCode::Esc => {
+                                // Only allow ESC if not checking
+                                if !state.is_checking {
+                                    self.ui_state.current_screen = Screen::MainMenu;
+                                }
+                            }
+                            KeyCode::Up => {
+                                if !state.is_checking {
+                                    state.list_state.select_previous();
+                                }
+                            }
+                            KeyCode::Down => {
+                                if !state.is_checking {
+                                    state.list_state.select_next();
+                                }
+                            }
+                            KeyCode::Char('c') | KeyCode::Char('C') => {
+                                // Start checking packages (if not in popup)
+                                if state.popup_type == PackagePopupType::None && !state.is_checking && !state.packages.is_empty() {
+                                    // Initialize statuses if needed
+                                    if state.package_statuses.len() != state.packages.len() {
+                                        state.package_statuses = vec![PackageStatus::Unknown; state.packages.len()];
+                                    }
+                                    state.is_checking = true;
+                                    state.checking_index = None;
+                                }
+                            }
+                            KeyCode::Char('i') | KeyCode::Char('I') => {
+                                // Start installing missing packages (if not in popup and not already installing)
+                                if state.popup_type == PackagePopupType::None
+                                    && matches!(state.installation_step, InstallationStep::NotStarted)
+                                    && !state.is_checking {
+                                    // Find packages that are not installed
+                                    let mut packages_to_install = Vec::new();
+                                    for (idx, status) in state.package_statuses.iter().enumerate() {
+                                        if matches!(status, PackageStatus::NotInstalled) {
+                                            packages_to_install.push(idx);
+                                        }
+                                    }
+
+                                    if !packages_to_install.is_empty() {
+                                        // Start installation
+                                        if let Some(&first_idx) = packages_to_install.first() {
+                                            let package_name = state.packages[first_idx].name.clone();
+                                            let total = packages_to_install.len();
+                                            let mut install_list = packages_to_install.clone();
+                                            install_list.remove(0);
+
+                                            state.installation_step = InstallationStep::Installing {
+                                                package_index: first_idx,
+                                                package_name,
+                                                total_packages: total,
+                                                packages_to_install: install_list,
+                                                installed: Vec::new(),
+                                                failed: Vec::new(),
+                                                status_rx: None,
+                                            };
+                                            state.installation_output.clear();
+                                            state.installation_delay_until = Some(std::time::Instant::now() + Duration::from_millis(100));
+                                        }
+                                    }
+                                }
+                            }
+                            KeyCode::Char('a') | KeyCode::Char('A') => {
+                                // Add new package
+                                if state.popup_type == PackagePopupType::None && !state.is_checking {
+                                    // Release borrow before calling method
+                                    let _ = state;
+                                    self.start_add_package()?;
+                                }
+                            }
+                            KeyCode::Char('e') | KeyCode::Char('E') => {
+                                // Edit selected package
+                                if state.popup_type == PackagePopupType::None && !state.is_checking {
+                                    if let Some(selected_idx) = state.list_state.selected() {
+                                        if selected_idx < state.packages.len() {
+                                            // Release borrow before calling method
+                                            let _ = state;
+                                            self.start_edit_package(selected_idx)?;
+                                        }
+                                    }
+                                }
+                            }
+                            KeyCode::Char('d') | KeyCode::Char('D') => {
+                                // Delete selected package
+                                if state.popup_type == PackagePopupType::None && !state.is_checking {
+                                    if let Some(selected_idx) = state.list_state.selected() {
+                                        if selected_idx < state.packages.len() {
+                                            state.delete_index = Some(selected_idx);
+                                            state.popup_type = PackagePopupType::Delete;
+                                            state.delete_confirm_input.clear();
+                                            state.delete_confirm_cursor = 0;
+                                        }
+                                    }
+                                }
+                            }
+                            KeyCode::Char('i') | KeyCode::Char('I') => {
+                                // Start installing missing packages (if not in popup and not already installing)
+                                if state.popup_type == PackagePopupType::None
+                                    && matches!(state.installation_step, InstallationStep::NotStarted)
+                                    && !state.is_checking {
+                                    // Find packages that are not installed
+                                    let mut packages_to_install = Vec::new();
+                                    for (idx, status) in state.package_statuses.iter().enumerate() {
+                                        if matches!(status, PackageStatus::NotInstalled) {
+                                            packages_to_install.push(idx);
+                                        }
+                                    }
+
+                                    if !packages_to_install.is_empty() {
+                                        // Start installation
+                                        if let Some(&first_idx) = packages_to_install.first() {
+                                            let package_name = state.packages[first_idx].name.clone();
+                                            let total = packages_to_install.len();
+                                            let mut install_list = packages_to_install.clone();
+                                            install_list.remove(0);
+
+                                            state.installation_step = InstallationStep::Installing {
+                                                package_index: first_idx,
+                                                package_name,
+                                                total_packages: total,
+                                                packages_to_install: install_list,
+                                                installed: Vec::new(),
+                                                failed: Vec::new(),
+                                                status_rx: None,
+                                            };
+                                            state.installation_output.clear();
+                                            state.installation_delay_until = Some(std::time::Instant::now() + Duration::from_millis(100));
+                                        }
+                                    }
+                                }
                             }
                             _ => {}
                         }
@@ -1358,6 +1697,19 @@ impl App {
                     }
                 }
             }
+            MenuItem::ManagePackages => {
+                // Manage Packages
+                self.ui_state.current_screen = Screen::ManagePackages;
+                // Load packages from active profile
+                if let Ok(Some(active_profile)) = self.get_active_profile_info() {
+                    let packages = active_profile.packages.clone();
+                    self.ui_state.package_manager.packages = packages;
+                    self.ui_state.package_manager.package_statuses = vec![PackageStatus::Unknown; self.ui_state.package_manager.packages.len()];
+                    if !self.ui_state.package_manager.packages.is_empty() {
+                        self.ui_state.package_manager.list_state.select(Some(0));
+                    }
+                }
+            }
         }
         Ok(())
     }
@@ -1488,6 +1840,7 @@ impl App {
                             repo_name,
                             username: None,
                             repo_exists: None,
+                            is_private: auth_state.is_private,
                             delay_until: Some(std::time::Instant::now() + Duration::from_millis(500)),
                         });
                         *self.github_auth_component.get_auth_state_mut() = auth_state.clone();
@@ -1907,9 +2260,10 @@ impl App {
                 let token = setup_data.token.clone();
                 let repo_name = setup_data.repo_name.clone();
 
+                let is_private = setup_data.is_private;
                 let create_result = self.runtime.block_on(async {
                     let client = GitHubClient::new(token.clone());
-                    client.create_repo(&repo_name, "My dotfiles managed by dotstate", false).await
+                    client.create_repo(&repo_name, "My dotfiles managed by dotstate", is_private).await
                 });
 
                 match create_result {
@@ -1962,11 +2316,19 @@ impl App {
                     format!("# {}\n\nDotfiles managed by dotstate", repo_name))?;
 
                 // Create profile manifest with default profile
+                // Use "Personal" as default profile name if active_profile is empty
+                let default_profile_name = if self.config.active_profile.is_empty() {
+                    "Personal".to_string()
+                } else {
+                    self.config.active_profile.clone()
+                };
+
                 let manifest = crate::utils::ProfileManifest {
-                    profiles: vec![crate::utils::ProfileInfo {
-                        name: self.config.active_profile.clone(),
+                    profiles: vec![crate::utils::profile_manifest::ProfileInfo {
+                        name: default_profile_name.clone(),
                         description: None, // Default profile, no description yet
                         synced_files: Vec::new(),
+                        packages: Vec::new(),
                     }],
                 };
                 manifest.save(&repo_path)?;
@@ -1975,6 +2337,15 @@ impl App {
 
                 let current_branch = git_mgr.get_current_branch()
                     .unwrap_or_else(|| self.config.default_branch.clone());
+
+                // Before pushing, fetch and merge any remote commits (GitHub might have created an initial commit)
+                // This prevents "NotFastForward" errors
+                if let Err(e) = git_mgr.pull("origin", &current_branch, Some(&token)) {
+                    // If pull fails (e.g., remote branch doesn't exist yet), that's fine - we'll push
+                    info!("Could not pull from remote (this is normal for new repos): {}", e);
+                } else {
+                    info!("Successfully pulled from remote before pushing");
+                }
 
                 git_mgr.push("origin", &current_branch, Some(&token))?;
                 git_mgr.set_upstream_tracking("origin", &current_branch)?;
@@ -1986,20 +2357,32 @@ impl App {
                     token: Some(token.clone()),
                 });
                 self.config.repo_name = repo_name.clone();
+                self.config.active_profile = default_profile_name.clone();
                 self.config.save(&self.config_path)
                     .context("Failed to save configuration")?;
+
+                // Load manifest and populate profile selection state
+                let manifest = crate::utils::ProfileManifest::load_or_backfill(&repo_path)?;
+                self.ui_state.profile_selection.profiles = manifest.profiles.iter()
+                    .map(|p| p.name.clone())
+                    .collect();
+                if !self.ui_state.profile_selection.profiles.is_empty() {
+                    self.ui_state.profile_selection.list_state.select(Some(0));
+                }
 
                 auth_state.status_message = Some("✅ Repository created and initialized successfully".to_string());
                 *self.github_auth_component.get_auth_state_mut() = auth_state.clone();
 
-                // Move to complete (no profiles to discover for new repos)
+                // Move to complete step with delay to show success message
                 auth_state.step = GitHubAuthStep::SetupStep(GitHubSetupStep::Complete);
                 self.config = Config::load_or_create(&self.config_path)?;
                 auth_state.status_message = Some(format!(
-                    "✅ Setup complete!\n\nRepository: {}/{}\nLocal path: {:?}\n\nPress Enter to continue.",
+                    "✅ Setup complete!\n\nRepository: {}/{}\nLocal path: {:?}\n\nPreparing profile selection...",
                     username, repo_name, repo_path
                 ));
-                auth_state.setup_data = None;
+                // Add delay to show success message before transitioning
+                setup_data.delay_until = Some(std::time::Instant::now() + Duration::from_millis(2000));
+                auth_state.setup_data = Some(setup_data);
                 *self.github_auth_component.get_auth_state_mut() = auth_state.clone();
             }
             GitHubSetupStep::DiscoveringProfiles => {
@@ -2217,9 +2600,10 @@ impl App {
                     std::thread::sleep(Duration::from_millis(600));
 
                     // Create repository
+                    let is_private = auth_state.is_private;
                     let create_result = self.runtime.block_on(async {
                         let client = GitHubClient::new(token.clone());
-                        client.create_repo(&repo_name, "My dotfiles managed by dotstate", false).await
+                        client.create_repo(&repo_name, "My dotfiles managed by dotstate", is_private).await
                     });
 
                     match create_result {
@@ -2246,11 +2630,19 @@ impl App {
                                 format!("# {}\n\nDotfiles managed by dotstate", repo_name))?;
 
                             // Create profile manifest with default profile
+                            // Use "Personal" as default profile name if active_profile is empty
+                            let default_profile_name = if self.config.active_profile.is_empty() {
+                                "Personal".to_string()
+                            } else {
+                                self.config.active_profile.clone()
+                            };
+
                             let manifest = crate::utils::ProfileManifest {
-                                profiles: vec![crate::utils::ProfileInfo {
-                                    name: self.config.active_profile.clone(),
+                                profiles: vec![crate::utils::profile_manifest::ProfileInfo {
+                                    name: default_profile_name.clone(),
                                     description: None, // Default profile, no description yet
                                     synced_files: Vec::new(),
+                                    packages: Vec::new(),
                                 }],
                             };
                             manifest.save(&repo_path)?;
@@ -2266,6 +2658,11 @@ impl App {
 
                             // Ensure tracking is set up after push
                             git_mgr.set_upstream_tracking("origin", &current_branch)?;
+
+                            // Update config with default profile name
+                            self.config.active_profile = default_profile_name.clone();
+                            self.config.save(&self.config_path)
+                                .context("Failed to save configuration")?;
 
                             auth_state.status_message = Some(format!("✅ Repository created and initialized successfully"));
                             *self.github_auth_component.get_auth_state_mut() = auth_state.clone();
@@ -3373,7 +3770,10 @@ impl App {
             .unwrap_or_else(|| self.config.default_branch.clone());
 
         // Pull from remote
-        match git_mgr.pull("origin", &branch) {
+        // Get token from config for pull
+        let token = self.config.github.as_ref()
+            .and_then(|gh| gh.token.as_deref());
+        match git_mgr.pull("origin", &branch, token) {
             Ok(_) => {
                 self.ui_state.dotfile_selection.status_message = Some(
                     format!("✓ Successfully pulled changes from GitHub!\n\nBranch: {}\nRepository: {:?}\n\nNote: You may need to re-sync files if the repository structure changed.", branch, repo_path)
@@ -3953,6 +4353,691 @@ impl App {
             }
         }
     }
+
+    /// Start adding a new package
+    fn start_add_package(&mut self) -> Result<()> {
+        let state = &mut self.ui_state.package_manager;
+        use crate::utils::package_manager::PackageManagerImpl;
+
+        state.popup_type = PackagePopupType::Add;
+        state.add_editing_index = None;
+        state.add_name_input.clear();
+        state.add_name_cursor = 0;
+        state.add_description_input.clear();
+        state.add_description_cursor = 0;
+        state.add_package_name_input.clear();
+        state.add_package_name_cursor = 0;
+        state.add_binary_name_input.clear();
+        state.add_binary_name_cursor = 0;
+        state.add_install_command_input.clear();
+        state.add_install_command_cursor = 0;
+        state.add_existence_check_input.clear();
+        state.add_existence_check_cursor = 0;
+        state.add_manager_check_input.clear();
+        state.add_manager_check_cursor = 0;
+        state.add_focused_field = AddPackageField::Name;
+        state.add_is_custom = false;
+
+        // Initialize available managers
+        state.available_managers = PackageManagerImpl::get_available_managers();
+        if !state.available_managers.is_empty() {
+            state.add_manager = Some(state.available_managers[0].clone());
+            state.add_manager_selected = 0;
+            state.manager_list_state.select(Some(0));
+            state.add_is_custom = matches!(state.available_managers[0], PackageManager::Custom);
+        }
+
+        Ok(())
+    }
+
+    /// Start editing an existing package
+    fn start_edit_package(&mut self, index: usize) -> Result<()> {
+        let state = &mut self.ui_state.package_manager;
+        use crate::utils::package_manager::PackageManagerImpl;
+
+        if let Some(package) = state.packages.get(index) {
+            state.popup_type = PackagePopupType::Edit;
+            state.add_editing_index = Some(index);
+            state.add_name_input = package.name.clone();
+            state.add_name_cursor = package.name.chars().count();
+            state.add_description_input = package.description.clone().unwrap_or_default();
+            state.add_description_cursor = state.add_description_input.chars().count();
+            state.add_package_name_input = package.package_name.clone().unwrap_or_default();
+            state.add_package_name_cursor = state.add_package_name_input.chars().count();
+            state.add_binary_name_input = package.binary_name.clone();
+            state.add_binary_name_cursor = package.binary_name.chars().count();
+            state.add_install_command_input = package.install_command.clone().unwrap_or_default();
+            state.add_install_command_cursor = state.add_install_command_input.chars().count();
+            state.add_existence_check_input = package.existence_check.clone().unwrap_or_default();
+            state.add_existence_check_cursor = state.add_existence_check_input.chars().count();
+            state.add_manager_check_input = package.manager_check.clone().unwrap_or_default();
+            state.add_manager_check_cursor = state.add_manager_check_input.chars().count();
+            state.add_manager = Some(package.manager.clone());
+            state.add_is_custom = matches!(package.manager, PackageManager::Custom);
+            state.add_focused_field = AddPackageField::Name;
+
+            // Initialize available managers
+            state.available_managers = PackageManagerImpl::get_available_managers();
+            // Find current manager in list
+            if let Some(pos) = state.available_managers.iter().position(|m| *m == package.manager) {
+                state.add_manager_selected = pos;
+                state.manager_list_state.select(Some(pos));
+            } else {
+                state.add_manager_selected = 0;
+                state.manager_list_state.select(Some(0));
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Process one package check step (non-blocking, called from main event loop)
+    fn process_package_check_step(&mut self) -> Result<()> {
+        let state = &mut self.ui_state.package_manager;
+
+        if state.packages.is_empty() {
+            state.is_checking = false;
+            return Ok(());
+        }
+
+        // Initialize statuses if needed
+        if state.package_statuses.len() != state.packages.len() {
+            state.package_statuses = vec![PackageStatus::Unknown; state.packages.len()];
+        }
+
+        // Find next unchecked package
+        let next_index = state.package_statuses.iter()
+            .position(|s| matches!(s, PackageStatus::Unknown));
+
+        if let Some(index) = next_index {
+            state.checking_index = Some(index);
+            let package = &state.packages[index];
+
+            // Check if package exists (binary check + fallback)
+            // This is a blocking call, but we'll add a delay after it
+            use crate::utils::package_installer::PackageInstaller;
+            use crate::utils::package_manager::PackageManagerImpl;
+
+            match PackageInstaller::check_exists(package) {
+                Ok((true, _)) => {
+                    state.package_statuses[index] = PackageStatus::Installed;
+                }
+                Ok((false, _)) => {
+                    // Package not found - check if manager is installed for installation purposes
+                    if !PackageManagerImpl::is_manager_installed(&package.manager) {
+                        state.package_statuses[index] = PackageStatus::Error(
+                            format!("Package not found and package manager '{:?}' is not installed", package.manager)
+                        );
+                    } else {
+                        state.package_statuses[index] = PackageStatus::NotInstalled;
+                    }
+                }
+                Err(e) => {
+                    state.package_statuses[index] = PackageStatus::Error(e.to_string());
+                }
+            }
+
+            state.checking_index = None;
+
+            // Add a small delay before checking next package (allows UI to update)
+            state.checking_delay_until = Some(std::time::Instant::now() + Duration::from_millis(100));
+        } else {
+            // All packages checked
+            state.is_checking = false;
+            state.checking_delay_until = None;
+        }
+
+        Ok(())
+    }
+
+    /// Handle popup events for package manager (text input and cursor movement only)
+    /// Tab/Esc/Enter are handled inline in the main event handler
+    fn handle_package_popup_event(
+        &mut self,
+        event: Event,
+    ) -> Result<()> {
+        let state = &mut self.ui_state.package_manager;
+        use crate::utils::text_input::{handle_char_insertion, handle_backspace, handle_delete, handle_cursor_movement};
+        use crate::utils::package_manager::PackageManagerImpl;
+        use crossterm::event::{KeyCode, KeyEventKind};
+
+        match state.popup_type {
+            PackagePopupType::Add | PackagePopupType::Edit => {
+                match event {
+                    Event::Key(key) if key.kind == KeyEventKind::Press => {
+                        match key.code {
+                            KeyCode::Left | KeyCode::Right | KeyCode::Home | KeyCode::End => {
+                                // Handle cursor movement in focused field
+                                match state.add_focused_field {
+                                    AddPackageField::Name => {
+                                        handle_cursor_movement(&state.add_name_input, &mut state.add_name_cursor, key.code);
+                                    }
+                                    AddPackageField::Description => {
+                                        handle_cursor_movement(&state.add_description_input, &mut state.add_description_cursor, key.code);
+                                    }
+                                    AddPackageField::PackageName => {
+                                        handle_cursor_movement(&state.add_package_name_input, &mut state.add_package_name_cursor, key.code);
+                                    }
+                                    AddPackageField::BinaryName => {
+                                        handle_cursor_movement(&state.add_binary_name_input, &mut state.add_binary_name_cursor, key.code);
+                                    }
+                                    AddPackageField::InstallCommand => {
+                                        handle_cursor_movement(&state.add_install_command_input, &mut state.add_install_command_cursor, key.code);
+                                    }
+                                    AddPackageField::ExistenceCheck => {
+                                        handle_cursor_movement(&state.add_existence_check_input, &mut state.add_existence_check_cursor, key.code);
+                                    }
+                                    AddPackageField::ManagerCheck => {
+                                        // ManagerCheck is not shown in UI, but exists in enum
+                                    }
+                                    AddPackageField::Manager => {
+                                        // Manager selection handled by Up/Down
+                                    }
+                                }
+                            }
+                            KeyCode::Backspace => {
+                                match state.add_focused_field {
+                                    AddPackageField::Name => {
+                                        handle_backspace(&mut state.add_name_input, &mut state.add_name_cursor);
+                                    }
+                                    AddPackageField::Description => {
+                                        handle_backspace(&mut state.add_description_input, &mut state.add_description_cursor);
+                                    }
+                                    AddPackageField::PackageName => {
+                                        let old_package_name = state.add_package_name_input.clone();
+                                        handle_backspace(&mut state.add_package_name_input, &mut state.add_package_name_cursor);
+                                        // Update binary name suggestion when package name is edited
+                                        let new_suggestion = PackageManagerImpl::suggest_binary_name(&state.add_package_name_input);
+                                        if state.add_binary_name_input.is_empty() || state.add_binary_name_input == PackageManagerImpl::suggest_binary_name(&old_package_name) {
+                                            state.add_binary_name_input = new_suggestion;
+                                            state.add_binary_name_cursor = state.add_binary_name_input.chars().count();
+                                        }
+                                    }
+                                    AddPackageField::BinaryName => {
+                                        handle_backspace(&mut state.add_binary_name_input, &mut state.add_binary_name_cursor);
+                                    }
+                                    AddPackageField::InstallCommand => {
+                                        handle_backspace(&mut state.add_install_command_input, &mut state.add_install_command_cursor);
+                                    }
+                                    AddPackageField::ExistenceCheck => {
+                                        handle_backspace(&mut state.add_existence_check_input, &mut state.add_existence_check_cursor);
+                                    }
+                                    AddPackageField::ManagerCheck => {
+                                        // ManagerCheck is not shown in UI, but exists in enum
+                                    }
+                                    AddPackageField::Manager => {}
+                                }
+                            }
+                            KeyCode::Delete => {
+                                match state.add_focused_field {
+                                    AddPackageField::Name => {
+                                        handle_delete(&mut state.add_name_input, &mut state.add_name_cursor);
+                                    }
+                                    AddPackageField::Description => {
+                                        handle_delete(&mut state.add_description_input, &mut state.add_description_cursor);
+                                    }
+                                    AddPackageField::PackageName => {
+                                        handle_delete(&mut state.add_package_name_input, &mut state.add_package_name_cursor);
+                                    }
+                                    AddPackageField::BinaryName => {
+                                        handle_delete(&mut state.add_binary_name_input, &mut state.add_binary_name_cursor);
+                                    }
+                                    AddPackageField::InstallCommand => {
+                                        handle_delete(&mut state.add_install_command_input, &mut state.add_install_command_cursor);
+                                    }
+                                    AddPackageField::ExistenceCheck => {
+                                        handle_delete(&mut state.add_existence_check_input, &mut state.add_existence_check_cursor);
+                                    }
+                                    AddPackageField::ManagerCheck => {
+                                        // ManagerCheck is not shown in UI, but exists in enum
+                                    }
+                                    AddPackageField::Manager => {}
+                                }
+                            }
+                            KeyCode::Char(c) => {
+                                match state.add_focused_field {
+                                    AddPackageField::Name => {
+                                        handle_char_insertion(&mut state.add_name_input, &mut state.add_name_cursor, c);
+                                    }
+                                    AddPackageField::Description => {
+                                        handle_char_insertion(&mut state.add_description_input, &mut state.add_description_cursor, c);
+                                    }
+                                    AddPackageField::PackageName => {
+                                        handle_char_insertion(&mut state.add_package_name_input, &mut state.add_package_name_cursor, c);
+                                        // Auto-suggest binary name only if it's empty or matches the previous suggestion
+                                        // This allows it to update as user types, but stops if they manually edit it
+                                        let current_suggestion = PackageManagerImpl::suggest_binary_name(&state.add_package_name_input);
+                                        if state.add_binary_name_input.is_empty() || state.add_binary_name_input == PackageManagerImpl::suggest_binary_name(&state.add_package_name_input.chars().take(state.add_package_name_input.chars().count().saturating_sub(1)).collect::<String>()) {
+                                            state.add_binary_name_input = current_suggestion;
+                                            state.add_binary_name_cursor = state.add_binary_name_input.chars().count();
+                                        }
+                                    }
+                                    AddPackageField::BinaryName => {
+                                        handle_char_insertion(&mut state.add_binary_name_input, &mut state.add_binary_name_cursor, c);
+                                    }
+                                    AddPackageField::InstallCommand => {
+                                        handle_char_insertion(&mut state.add_install_command_input, &mut state.add_install_command_cursor, c);
+                                    }
+                                    AddPackageField::ExistenceCheck => {
+                                        handle_char_insertion(&mut state.add_existence_check_input, &mut state.add_existence_check_cursor, c);
+                                    }
+                                    AddPackageField::ManagerCheck => {
+                                        // ManagerCheck is not shown in UI, but exists in enum
+                                    }
+                                    AddPackageField::Manager => {}
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            PackagePopupType::Delete => {
+                match event {
+                    Event::Key(key) if key.kind == KeyEventKind::Press => {
+                        match key.code {
+                            KeyCode::Left | KeyCode::Right | KeyCode::Home | KeyCode::End => {
+                                handle_cursor_movement(&state.delete_confirm_input, &mut state.delete_confirm_cursor, key.code);
+                            }
+                            KeyCode::Backspace => {
+                                handle_backspace(&mut state.delete_confirm_input, &mut state.delete_confirm_cursor);
+                            }
+                            KeyCode::Delete => {
+                                handle_delete(&mut state.delete_confirm_input, &mut state.delete_confirm_cursor);
+                            }
+                            KeyCode::Char(c) => {
+                                handle_char_insertion(&mut state.delete_confirm_input, &mut state.delete_confirm_cursor, c);
+                            }
+                            _ => {}
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            _ => {}
+        }
+
+        Ok(())
+    }
+
+    /// Validate and save package
+    fn validate_and_save_package(&mut self) -> Result<bool> {
+        // Clone data from state before calling methods that need immutable access
+        let (name, description, package_name, binary_name, install_command, existence_check, manager_check, manager, is_custom, edit_idx, active_profile_name) = {
+            let state = &self.ui_state.package_manager;
+            (
+                state.add_name_input.clone(),
+                state.add_description_input.clone(),
+                state.add_package_name_input.clone(),
+                state.add_binary_name_input.clone(),
+                state.add_install_command_input.clone(),
+                state.add_existence_check_input.clone(),
+                state.add_manager_check_input.clone(),
+                state.add_manager.clone(),
+                state.add_is_custom,
+                state.add_editing_index,
+                self.config.active_profile.clone(),
+            )
+        };
+
+        // Validate required fields
+        if name.trim().is_empty() {
+            return Ok(false); // Name is required
+        }
+
+        if binary_name.trim().is_empty() {
+            return Ok(false); // Binary name is required
+        }
+
+        // Validate based on package type
+        if is_custom {
+            // Custom packages require install_command and existence_check
+            if install_command.trim().is_empty() {
+                return Ok(false);
+            }
+            if existence_check.trim().is_empty() {
+                return Ok(false);
+            }
+        } else {
+            // Managed packages require package_name
+            if package_name.trim().is_empty() {
+                return Ok(false);
+            }
+        }
+
+        // Get manager
+        let manager = manager.ok_or_else(|| anyhow::anyhow!("Package manager not selected"))?;
+
+        // Create package
+        let package = Package {
+            name: name.trim().to_string(),
+            description: if description.trim().is_empty() {
+                None
+            } else {
+                Some(description.trim().to_string())
+            },
+            manager: manager.clone(),
+            package_name: if is_custom {
+                None
+            } else {
+                Some(package_name.trim().to_string())
+            },
+            binary_name: binary_name.trim().to_string(),
+            install_command: if is_custom {
+                Some(install_command.trim().to_string())
+            } else {
+                None
+            },
+            existence_check: if is_custom {
+                Some(existence_check.trim().to_string())
+            } else {
+                None
+            },
+            manager_check: if manager_check.trim().is_empty() {
+                None
+            } else {
+                Some(manager_check.trim().to_string())
+            },
+        };
+
+        // Save to manifest
+        let manifest = self.load_manifest()?;
+
+        if let Some(profile) = manifest.profiles.iter().find(|p| p.name == active_profile_name) {
+            let mut packages = profile.packages.clone();
+
+            if let Some(edit_idx) = edit_idx {
+                // Edit existing package
+                if edit_idx < packages.len() {
+                    packages[edit_idx] = package;
+                }
+            } else {
+                // Add new package
+                packages.push(package);
+            }
+
+            // Update manifest
+            let mut updated_manifest = manifest;
+            if let Some(profile) = updated_manifest.profiles.iter_mut().find(|p| p.name == active_profile_name) {
+                profile.packages = packages;
+            }
+            self.save_manifest(&updated_manifest)?;
+
+            // Update state
+            if let Ok(Some(active_profile)) = self.get_active_profile_info() {
+                let state = &mut self.ui_state.package_manager;
+                state.packages = active_profile.packages.clone();
+                state.package_statuses = vec![PackageStatus::Unknown; state.packages.len()];
+                if !state.packages.is_empty() {
+                    // Select the newly added/edited package
+                    let select_idx = if let Some(edit_idx) = edit_idx {
+                        edit_idx.min(state.packages.len().saturating_sub(1))
+                    } else {
+                        state.packages.len().saturating_sub(1)
+                    };
+                    state.list_state.select(Some(select_idx));
+                }
+            }
+
+            Ok(true)
+        } else {
+            Err(anyhow::anyhow!("Active profile '{}' not found", active_profile_name))
+        }
+    }
+
+    /// Delete a package
+    fn delete_package(&mut self, index: usize) -> Result<()> {
+        let active_profile_name = self.config.active_profile.clone();
+        let manifest = self.load_manifest()?;
+
+        if let Some(profile) = manifest.profiles.iter().find(|p| p.name == *active_profile_name) {
+            let mut packages = profile.packages.clone();
+
+            if index < packages.len() {
+                packages.remove(index);
+            }
+
+            // Update manifest
+            let mut updated_manifest = manifest;
+            if let Some(profile) = updated_manifest.profiles.iter_mut().find(|p| p.name == *active_profile_name) {
+                profile.packages = packages;
+            }
+            self.save_manifest(&updated_manifest)?;
+
+            // Update state
+            if let Ok(Some(active_profile)) = self.get_active_profile_info() {
+                let state = &mut self.ui_state.package_manager;
+                state.packages = active_profile.packages.clone();
+                state.package_statuses = vec![PackageStatus::Unknown; state.packages.len()];
+                if !state.packages.is_empty() {
+                    let new_idx = index.min(state.packages.len().saturating_sub(1));
+                    state.list_state.select(Some(new_idx));
+                } else {
+                    state.list_state.select(None);
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Process one installation step (non-blocking, called from main event loop)
+    fn process_installation_step(&mut self) -> Result<()> {
+        use crate::utils::package_manager::PackageManagerImpl;
+
+        let state = &mut self.ui_state.package_manager;
+
+        match &mut state.installation_step {
+            InstallationStep::NotStarted => {
+                // Nothing to do
+                trace!("process_installation_step: NotStarted");
+            }
+            InstallationStep::Installing {
+                package_index,
+                package_name,
+                total_packages: _,
+                packages_to_install,
+                installed,
+                failed,
+                status_rx,
+            } => {
+                trace!("process_installation_step: Installing package_index={}, package_name={}, packages_remaining={}",
+                    package_index, package_name, packages_to_install.len());
+
+                // Check if we need to wait for a delay
+                if let Some(delay_until) = state.installation_delay_until {
+                    if std::time::Instant::now() < delay_until {
+                        // Still waiting, don't process yet
+                        trace!("process_installation_step: Still waiting for delay");
+                        return Ok(());
+                    }
+                    // Delay complete, clear it
+                    trace!("process_installation_step: Delay complete, clearing");
+                    state.installation_delay_until = None;
+                }
+
+                // Get the package being installed
+                if let Some(package) = state.packages.get(*package_index) {
+                    info!("process_installation_step: Processing package: {} (manager: {:?})", package.name, package.manager);
+
+                    // Check if manager is installed
+                    if !PackageManagerImpl::is_manager_installed(&package.manager) {
+                        warn!("process_installation_step: Package manager '{:?}' is not installed", package.manager);
+                        let error_msg = format!(
+                            "Package manager '{:?}' is not installed. {}",
+                            package.manager,
+                            PackageManagerImpl::installation_instructions(&package.manager)
+                        );
+                        failed.push((*package_index, error_msg));
+
+                        // Move to next package
+                        if let Some(&next_idx) = packages_to_install.first() {
+                            *package_index = next_idx;
+                            packages_to_install.remove(0);
+                            *package_name = state.packages[next_idx].name.clone();
+                            state.installation_output.clear();
+                            state.installation_delay_until = Some(std::time::Instant::now() + Duration::from_millis(100));
+                        } else {
+                            // All packages processed
+                            let installed_clone = installed.clone();
+                            let failed_clone = failed.clone();
+                            state.installation_step = InstallationStep::Complete {
+                                installed: installed_clone,
+                                failed: failed_clone,
+                            };
+                        }
+                        return Ok(());
+                    }
+
+                    // Check sudo requirement
+                    if PackageManagerImpl::check_sudo_required(&package.manager) {
+                        warn!("process_installation_step: Sudo password required for package {}", package.name);
+                        let error_msg = "sudo password required. Please run this in a terminal or configure passwordless sudo.".to_string();
+                        failed.push((*package_index, error_msg));
+
+                        // Move to next package
+                        if let Some(&next_idx) = packages_to_install.first() {
+                            *package_index = next_idx;
+                            packages_to_install.remove(0);
+                            *package_name = state.packages[next_idx].name.clone();
+                            state.installation_output.clear();
+                            state.installation_delay_until = Some(std::time::Instant::now() + Duration::from_millis(100));
+                        } else {
+                            // All packages processed
+                            let installed_clone = installed.clone();
+                            let failed_clone = failed.clone();
+                            state.installation_step = InstallationStep::Complete {
+                                installed: installed_clone,
+                                failed: failed_clone,
+                            };
+                        }
+                        return Ok(());
+                    }
+
+                    // Start installation (non-blocking using background thread)
+                    use std::sync::mpsc;
+                    use std::thread;
+                    use crate::ui::InstallationStatus;
+
+                    // Check if we already started this installation
+                    if status_rx.is_none() {
+                        info!("process_installation_step: Starting installation thread for package: {}", package.name);
+                        // Start the installation process in a background thread
+                        let package_clone = package.clone();
+                        let package_name_for_log = package.name.clone();
+                        let (tx, rx) = mpsc::channel();
+
+                        // Spawn thread to run installation
+                        thread::spawn(move || {
+                            info!("Installation thread: Starting installation for package: {}", package_name_for_log);
+                            let mut cmd = PackageManagerImpl::get_install_command_builder(&package_clone);
+                            debug!("Installation thread: Command built, executing...");
+                            match cmd.output() {
+                                Ok(output) => {
+                                    info!("Installation thread: Command executed, exit code: {:?}", output.status.code());
+                                    // Send stdout lines
+                                    if let Ok(stdout_str) = String::from_utf8(output.stdout) {
+                                        let stdout_lines: Vec<_> = stdout_str.lines().filter(|l| !l.trim().is_empty()).collect();
+                                        debug!("Installation thread: Sending {} stdout lines", stdout_lines.len());
+                                        for line in stdout_lines {
+                                            if let Err(e) = tx.send(InstallationStatus::Output(line.to_string())) {
+                                                error!("Installation thread: Failed to send stdout line: {}", e);
+                                            }
+                                        }
+                                    }
+                                    // Send stderr lines
+                                    if let Ok(stderr_str) = String::from_utf8(output.stderr) {
+                                        let stderr_lines: Vec<_> = stderr_str.lines().filter(|l| !l.trim().is_empty()).collect();
+                                        debug!("Installation thread: Sending {} stderr lines", stderr_lines.len());
+                                        for line in stderr_lines {
+                                            if let Err(e) = tx.send(InstallationStatus::Output(format!("[stderr] {}", line))) {
+                                                error!("Installation thread: Failed to send stderr line: {}", e);
+                                            }
+                                        }
+                                    }
+                                    // Send completion status
+                                    if output.status.success() {
+                                        info!("Installation thread: Installation succeeded for {}", package_name_for_log);
+                                        if let Err(e) = tx.send(InstallationStatus::Complete { success: true, error: None }) {
+                                            error!("Installation thread: Failed to send success status: {}", e);
+                                        }
+                                    } else {
+                                        let error_msg = format!("Installation failed with exit code: {}", output.status.code().unwrap_or(-1));
+                                        error!("Installation thread: Installation failed for {}: {}", package_name_for_log, error_msg);
+                                        if let Err(e) = tx.send(InstallationStatus::Complete { success: false, error: Some(error_msg) }) {
+                                            error!("Installation thread: Failed to send failure status: {}", e);
+                                        }
+                                    }
+                                }
+                                Err(e) => {
+                                    error!("Installation thread: Failed to execute command for {}: {}", package_name_for_log, e);
+                                    if let Err(send_err) = tx.send(InstallationStatus::Complete { success: false, error: Some(format!("Failed to execute installation: {}", e)) }) {
+                                        error!("Installation thread: Failed to send error status: {}", send_err);
+                                    }
+                                }
+                            }
+                        });
+
+                        *status_rx = Some(rx);
+                        info!("process_installation_step: Installation thread spawned, channel receiver stored");
+                    } else {
+                        trace!("process_installation_step: Installation already started, checking for updates");
+                    }
+
+                    // Read available status updates (non-blocking)
+                    if let Some(ref rx) = status_rx {
+                        let mut received_count = 0;
+                        // Try to read all available updates
+                        while let Ok(status) = rx.try_recv() {
+                            received_count += 1;
+                            match status {
+                                InstallationStatus::Output(line) => {
+                                    // Regular output line
+                                    trace!("process_installation_step: Received output line: {}", line);
+                                    state.installation_output.push(line);
+                                }
+                                InstallationStatus::Complete { success, error } => {
+                                    info!("process_installation_step: Received completion status: success={}, error={:?}", success, error);
+                                    if success {
+                                        installed.push(*package_index);
+                                    } else {
+                                        failed.push((*package_index, error.unwrap_or_else(|| "Unknown error".to_string())));
+                                    }
+
+                                    // Move to next package
+                                    if let Some(&next_idx) = packages_to_install.first() {
+                                        *package_index = next_idx;
+                                        packages_to_install.remove(0);
+                                        *package_name = state.packages[next_idx].name.clone();
+                                        state.installation_output.clear();
+                                        *status_rx = None;
+                                        state.installation_delay_until = Some(std::time::Instant::now() + Duration::from_millis(100));
+                                    } else {
+                                        // All packages processed
+                                        let installed_clone = installed.clone();
+                                        let failed_clone = failed.clone();
+                                        state.installation_step = InstallationStep::Complete {
+                                            installed: installed_clone,
+                                            failed: failed_clone,
+                                        };
+                                    }
+                                    return Ok(());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            InstallationStep::Complete { installed, failed } => {
+                // Installation complete, do nothing
+                trace!("process_installation_step: Complete - installed: {}, failed: {}", installed.len(), failed.len());
+            }
+        }
+
+        Ok(())
+    }
+
 }
 
 

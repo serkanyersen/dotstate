@@ -2,6 +2,53 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
+/// Package manager types
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum PackageManager {
+    Brew,      // Homebrew (macOS/Linux)
+    Apt,       // Advanced Package Tool (Debian/Ubuntu)
+    Yum,       // Yellowdog Updater Modified (RHEL/CentOS)
+    Dnf,       // Dandified Yum (Fedora)
+    Pacman,    // Arch Linux
+    Snap,      // Snap packages
+    Cargo,     // Rust packages
+    Npm,       // Node.js packages
+    Pip,       // Python packages (pip)
+    Pip3,      // Python packages (pip3)
+    Gem,       // Ruby gems
+    Custom,    // Custom install command
+}
+
+/// Package definition
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Package {
+    /// Display name for the package
+    pub name: String,
+    /// Optional description (cached metadata, not required)
+    #[serde(default)]
+    pub description: Option<String>,
+    /// Package manager type
+    pub manager: PackageManager,
+    /// Package name in the manager (e.g., "eza" for brew)
+    /// None for custom packages
+    #[serde(default)]
+    pub package_name: Option<String>,
+    /// Binary name to check for existence (cached, can be derived but stored for performance)
+    /// For packages with multiple binaries, this is the primary one
+    pub binary_name: String,
+    /// Install command (only for custom packages, derived for managed packages)
+    #[serde(default)]
+    pub install_command: Option<String>,
+    /// Command to check if package exists (only for custom packages, derived for managed packages)
+    #[serde(default)]
+    pub existence_check: Option<String>,
+    /// Optional manager-native check command (fallback when binary_name check fails)
+    /// e.g., "brew list eza" or "dpkg -s git"
+    #[serde(default)]
+    pub manager_check: Option<String>,
+}
+
 /// Profile manifest stored in the repository root
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ProfileManifest {
@@ -19,6 +66,9 @@ pub struct ProfileInfo {
     /// Files synced for this profile (relative paths from home directory)
     #[serde(default)]
     pub synced_files: Vec<String>,
+    /// Packages/dependencies for this profile
+    #[serde(default)]
+    pub packages: Vec<Package>,
 }
 
 impl ProfileManifest {
@@ -89,6 +139,16 @@ impl ProfileManifest {
         Ok(manifest)
     }
 
+    /// Update packages for a profile
+    pub fn update_packages(&mut self, profile_name: &str, packages: Vec<Package>) -> Result<()> {
+        if let Some(profile) = self.profiles.iter_mut().find(|p| p.name == profile_name) {
+            profile.packages = packages;
+            Ok(())
+        } else {
+            Err(anyhow::anyhow!("Profile '{}' not found in manifest", profile_name))
+        }
+    }
+
     /// Load manifest, backfilling from repo if it doesn't exist
     pub fn load_or_backfill(repo_path: &Path) -> Result<Self> {
         let manifest_path = Self::manifest_path(repo_path);
@@ -129,6 +189,7 @@ impl ProfileManifest {
                 name,
                 description,
                 synced_files: Vec::new(),
+                packages: Vec::new(),
             });
         }
     }
@@ -193,6 +254,21 @@ mod tests {
         // Add profiles
         manifest.add_profile("Personal".to_string(), Some("Personal Mac".to_string()));
         manifest.add_profile("Work".to_string(), None);
+
+        // Add packages to a profile
+        let packages = vec![
+            Package {
+                name: "eza".to_string(),
+                description: Some("Modern replacement for ls".to_string()),
+                manager: PackageManager::Brew,
+                package_name: Some("eza".to_string()),
+                binary_name: "eza".to_string(),
+                install_command: None,
+                existence_check: None,
+                manager_check: None,
+            },
+        ];
+        manifest.update_packages("Personal", packages).unwrap();
 
         // Save
         manifest.save(repo_path).unwrap();

@@ -106,7 +106,7 @@ impl GitHubAuthComponent {
             cursor_pos,
             is_focused && !is_disabled,
             "Repository Name",
-            Some("dotstate-storage"),
+            Some(crate::config::default_repo_name().as_str()),
             Alignment::Left,
             is_disabled,
         )?;
@@ -207,6 +207,10 @@ impl GitHubAuthComponent {
             frame.render_widget(error_para, area);
         } else {
             // Context-sensitive help based on focused field
+            // Pre-compute default repo name for use in help text
+            let default_repo_name = crate::config::default_repo_name();
+            let default_repo_name_text = format!("Default: {}", default_repo_name);
+
             let (title, help_lines) = match self.auth_state.focused_field {
                 GitHubAuthField::Token => (
                     "GitHub Token",
@@ -239,7 +243,7 @@ impl GitHubAuthComponent {
                         "• Be created if it doesn't exist",
                         "• Sync across all your computers",
                         "",
-                        "Default: dotstate-storage",
+                        &default_repo_name_text,
                         "",
                         "⚠️ Important for returning users:",
                         "If you already have a repo with a different",

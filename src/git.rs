@@ -278,24 +278,106 @@ impl GitManager {
     }
 
     /// Pull from remote
-    pub fn pull(&self, remote_name: &str, branch: &str) -> Result<()> {
+    pub fn pull(&self, remote_name: &str, branch: &str, token: Option<&str>) -> Result<()> {
         let mut remote = self.repo.find_remote(remote_name)
             .with_context(|| format!("Remote '{}' not found", remote_name))?;
 
-        remote.fetch(&[branch], None, None)
+        let mut callbacks = RemoteCallbacks::new();
+        let remote_url = remote.url()
+            .ok_or_else(|| anyhow::anyhow!("Remote '{}' has no URL", remote_name))?;
+
+        // Try to get token from parameter first, then from URL
+        let token_to_use = token
+            .map(|t| t.to_string())
+            .or_else(|| Self::extract_token_from_url(remote_url));
+
+        if let Some(token) = token_to_use {
+            let token_clone = token.clone();
+            callbacks.credentials(move |_url, _username_from_url, _allowed_types| {
+                Cred::userpass_plaintext(&token_clone, &token_clone)
+            });
+        }
+
+        let mut fetch_options = FetchOptions::new();
+        fetch_options.remote_callbacks(callbacks);
+
+        remote.fetch(&[branch], Some(&mut fetch_options), None)
             .with_context(|| format!("Failed to fetch from remote '{}'", remote_name))?;
 
-        let fetch_head = self.repo.find_reference("FETCH_HEAD")
-            .context("Failed to find FETCH_HEAD")?;
+        // Check if FETCH_HEAD exists (remote might not have the branch yet)
+        let fetch_head = match self.repo.find_reference("FETCH_HEAD") {
+            Ok(ref_) => ref_,
+            Err(_) => {
+                // No remote commits yet, nothing to merge
+                return Ok(());
+            }
+        };
+
         let fetch_commit = fetch_head.peel_to_commit()
             .context("Failed to peel FETCH_HEAD to commit")?;
 
-        // Convert commit to annotated commit for merge
-        let annotated_commit = self.repo.find_annotated_commit(fetch_commit.id())
-            .context("Failed to create annotated commit")?;
+        // Check if we have any local commits
+        let local_head = match self.repo.head() {
+            Ok(head) => head.peel_to_commit().ok(),
+            Err(_) => None,
+        };
 
-        self.repo.merge(&[&annotated_commit], None, None)
-            .context("Failed to merge")?;
+        // If we have local commits and remote commits, we need to merge
+        if let Some(local_commit) = local_head {
+            // Check if remote is ahead (different commits)
+            if local_commit.id() != fetch_commit.id() {
+                // Convert commit to annotated commit for merge
+                let annotated_commit = self.repo.find_annotated_commit(fetch_commit.id())
+                    .context("Failed to create annotated commit")?;
+
+                // Perform the merge
+                self.repo.merge(&[&annotated_commit], None, None)
+                    .context("Failed to merge")?;
+
+                // Get the index after merge
+                let mut index = self.repo.index()
+                    .context("Failed to get index after merge")?;
+
+                // Check if merge resulted in conflicts
+                if index.has_conflicts() {
+                    return Err(anyhow::anyhow!("Merge conflicts detected. Please resolve manually."));
+                }
+
+                // Write the index after merge
+                index.write()
+                    .context("Failed to write index after merge")?;
+
+                // Create merge commit
+                let tree_id = index.write_tree()
+                    .context("Failed to write tree after merge")?;
+                let tree = self.repo.find_tree(tree_id)
+                    .context("Failed to find tree after merge")?;
+
+                // Get signature for commit
+                let signature = Self::get_signature()?;
+
+                // Create merge commit with both parents
+                self.repo.commit(
+                    Some("HEAD"),
+                    &signature,
+                    &signature,
+                    "Merge remote-tracking branch",
+                    &tree,
+                    &[&local_commit, &fetch_commit],
+                )
+                .context("Failed to commit merge")?;
+
+                // Clean up merge state
+                self.repo.cleanup_state()
+                    .context("Failed to cleanup merge state")?;
+            }
+        } else {
+            // No local commits, just update HEAD to point to remote
+            let branch_ref = format!("refs/heads/{}", branch);
+            self.repo.reference(&branch_ref, fetch_commit.id(), true, "Update branch from remote")?;
+            self.repo.set_head(&branch_ref)?;
+            self.repo.checkout_head(Some(git2::build::CheckoutBuilder::default().force()))?;
+        }
 
         Ok(())
     }

@@ -30,7 +30,8 @@ struct CreateRepoRequest {
     name: String,
     description: String,
     private: bool,
-    auto_init: bool,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    auto_init: bool, // Set to false - we'll create our own initial commit
 }
 
 impl GitHubClient {
@@ -166,7 +167,7 @@ impl GitHubClient {
             name: name.to_string(),
             description: description.to_string(),
             private,
-            auto_init: true,
+            auto_init: false, // Don't auto-initialize - we'll create our own initial commit
         };
 
         let url = "https://api.github.com/user/repos";
@@ -183,7 +184,7 @@ impl GitHubClient {
         info!("Authorization header: token {}", token_preview);
         info!("User-Agent: dotstate");
         info!("Accept: application/vnd.github.v3+json");
-        info!("Request body: name={}, description={}, private={}, auto_init=true", name, description, private);
+        info!("Request body: name={}, description={}, private={}, auto_init=false", name, description, private);
 
         let response = self
             .http_client

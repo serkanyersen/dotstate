@@ -40,7 +40,7 @@ pub struct GitHubConfig {
 // Profile struct removed - profiles are now stored in the repository manifest (.dotstate-profiles.toml)
 // Use crate::utils::ProfileManifest and ProfileInfo instead
 
-fn default_repo_name() -> String {
+pub fn default_repo_name() -> String {
     "dotstate-storage".to_string()
 }
 
@@ -136,11 +136,11 @@ impl Config {
             github: None,
             active_profile: String::new(),
             backup_enabled: true,
-            profile_activated: false,
+            profile_activated: true,
             repo_path: dirs::home_dir()
                 .unwrap_or_else(|| PathBuf::from("."))
                 .join(".dotstate"),
-            repo_name: "dotstate-storage".to_string(),
+            repo_name: default_repo_name(),
             default_branch: "main".to_string(),
         }
     }
