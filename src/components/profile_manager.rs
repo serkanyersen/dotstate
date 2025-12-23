@@ -147,7 +147,7 @@ impl ProfileManagerComponent {
         let _ = Header::render(
             frame,
             header_chunk,
-            "dotstate - Manage Profiles",
+            "DotState - Manage Profiles",
             "Manage different profiles for different machines. Each profile has its own set of synced dotfiles."
         )?;
 

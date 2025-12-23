@@ -41,7 +41,7 @@ impl DotfileSelectionComponent {
         let _ = Header::render(
             frame,
             header_chunk,
-            "dotstate - Manage Files",
+            "DotState - Manage Files",
             "Add or remove files to your repository. You can also add custom files. We have automatically detected some common dotfiles for you."
         )?;
 

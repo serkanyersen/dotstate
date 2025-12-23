@@ -5,8 +5,8 @@
 Cargo.lock
 
 # IDE
-.idea/
 .vscode/
+.idea/
 *.swp
 *.swo
 *~
@@ -15,13 +15,13 @@ Cargo.lock
 .DS_Store
 Thumbs.db
 
-# dotstate specific
+# DotState
 .dotstate/
 .config/dotstate/
 
-# Test artifacts
+# Logs
+*.log
+
+# Temporary files
+*.tmp
 *.bak
-
-
-# LLM docs
-.llm_docs/

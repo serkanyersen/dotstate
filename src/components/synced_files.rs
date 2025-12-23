@@ -72,7 +72,7 @@ impl Component for SyncedFilesComponent {
         let _ = Header::render(
             frame,
             header_chunk,
-            "dotstate - View Synced Files",
+            "DotState - View Synced Files",
             "These are the files currently synced to your repository. Files are stored in the repo and symlinked back to their original locations."
         )?;
 

@@ -63,7 +63,7 @@ impl PushChangesComponent {
         let _ = Header::render(
             frame,
             header_chunk,
-            "dotstate - Sync with Remote",
+            "DotState - Sync with Remote",
             description,
         )?;
 

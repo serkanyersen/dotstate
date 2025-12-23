@@ -71,7 +71,7 @@ impl Header {
 
         let description_para = Paragraph::new(description)
             .style(Style::default().fg(Color::White))
-            .alignment(Alignment::Center)
+            .alignment(Alignment::Left)
             .wrap(Wrap { trim: true });
 
         // Render description

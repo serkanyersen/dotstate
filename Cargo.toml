@@ -3,9 +3,14 @@ name = "dotstate"
 version = "0.1.0"
 edition = "2021"
 authors = ["Serkan Yersen"]
-description = "A friendly TUI tool for managing dotfiles with GitHub sync"
+description = "A modern, secure, and user-friendly dotfile manager built with Rust"
 license = "MIT"
 repository = "https://github.com/yourusername/dotstate"
+homepage = "https://github.com/yourusername/dotstate"
+documentation = "https://github.com/yourusername/dotstate"
+keywords = ["dotfiles", "tui", "git", "github", "sync", "configuration"]
+categories = ["command-line-utilities", "development-tools"]
+readme = "README.md"
 
 [dependencies]
 # TUI

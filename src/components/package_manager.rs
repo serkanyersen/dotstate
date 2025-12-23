@@ -56,7 +56,7 @@ impl PackageManagerComponent {
             let layout = create_standard_layout(area, 5, 2);
 
             // Header
-            let _header_height = Header::render(frame, layout.0, "dotstate - Manage Packages", "Manage CLI tools and dependencies for your profile")?;
+            let _header_height = Header::render(frame, layout.0, "DotState - Manage Packages", "Manage CLI tools and dependencies for your profile")?;
 
             // Main content area
             let main_area = layout.1;
@@ -79,7 +79,7 @@ impl PackageManagerComponent {
             } else if !matches!(state.installation_step, InstallationStep::NotStarted) {
                 "Installing packages..."
             } else {
-                "↑↓: Navigate | A: Add | E: Edit | D: Delete | C: Check | I: Install Missing | Esc: Back"
+                "↑↓: Navigate | A: Add | E: Edit | D: Delete | C: Check All | S: Check Selected | I: Install Missing | Esc: Back"
             };
             footer::Footer::render(frame, layout.2, footer_text)?;
         }
@@ -230,7 +230,10 @@ impl PackageManagerComponent {
         state: &mut PackageManagerState,
         _config: &Config,
     ) -> Result<()> {
-        let popup_area = center_popup(area, 70, 50);
+        // Make popup larger to fit all fields, especially for custom packages
+        let popup_width = 80;
+        let popup_height = if state.add_is_custom { 60 } else { 50 };
+        let popup_area = center_popup(area, popup_width, popup_height);
         frame.render_widget(Clear, popup_area);
 
         let title = if state.add_editing_index.is_some() {
@@ -396,47 +399,92 @@ impl PackageManagerComponent {
         area: Rect,
         state: &mut PackageManagerState,
     ) -> Result<()> {
-        use ratatui::widgets::List;
-
         // Initialize available managers if empty
         if state.available_managers.is_empty() {
             state.available_managers = PackageManagerImpl::get_available_managers();
             if !state.available_managers.is_empty() {
                 state.add_manager = Some(state.available_managers[0].clone());
-                state.manager_list_state.select(Some(0));
+                state.add_manager_selected = 0;
             }
         }
 
-        let items: Vec<ListItem> = state.available_managers
+        // Create manager labels with selection state
+        let manager_labels: Vec<(String, bool)> = state.available_managers
             .iter()
-            .map(|m| {
-                let text = format!("{:?}", m);
-                ListItem::new(text)
+            .enumerate()
+            .map(|(idx, manager)| {
+                let is_selected = state.add_manager_selected == idx;
+                let label = format!("{:?}", manager);
+                (label, is_selected)
             })
             .collect();
 
-        let list = List::new(items)
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .title("Package Manager")
-                    .border_style(if state.add_focused_field == AddPackageField::Manager {
-                        crate::utils::focused_border_style()
-                    } else {
-                        crate::utils::unfocused_border_style()
-                    })
-            )
-            .highlight_style(Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD));
+        // Render checkboxes in a horizontal wrapping layout
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .title("Package Manager")
+            .border_style(if state.add_focused_field == AddPackageField::Manager {
+                crate::utils::focused_border_style()
+            } else {
+                crate::utils::unfocused_border_style()
+            });
 
-        frame.render_stateful_widget(list, area, &mut state.manager_list_state);
+        let inner_area = block.inner(area);
+        frame.render_widget(block, area);
 
-        // Update selected manager
-        if let Some(selected_idx) = state.manager_list_state.selected() {
-            if selected_idx < state.available_managers.len() {
-                state.add_manager = Some(state.available_managers[selected_idx].clone());
-                // Auto-detect if custom
-                state.add_is_custom = matches!(state.available_managers[selected_idx], PackageManager::Custom);
+        // Calculate how many checkboxes fit per row and render them
+        let available_width = inner_area.width as usize;
+        let mut current_x = 0;
+        let mut current_y = 0;
+        let line_height = 1;
+
+        for (idx, (label, is_selected)) in manager_labels.iter().enumerate() {
+            // Checkbox format: "[x] Label " or "[ ] Label "
+            let checkbox_marker = if *is_selected { "[x]" } else { "[ ]" };
+            let full_text = format!("{} {} ", checkbox_marker, label);
+            let checkbox_width = full_text.len();
+
+            // Check if we need to wrap to next line
+            if current_x > 0 && (current_x + checkbox_width) > available_width {
+                current_x = 0;
+                current_y += line_height;
             }
+
+            // Check if we have enough vertical space
+            if current_y >= inner_area.height as usize {
+                break; // Don't render if we're out of space
+            }
+
+            let checkbox_area = Rect::new(
+                inner_area.x + current_x as u16,
+                inner_area.y + current_y as u16,
+                checkbox_width.min(available_width - current_x) as u16,
+                line_height as u16,
+            );
+
+            // Create styled text for checkbox
+            let is_focused = state.add_focused_field == AddPackageField::Manager && state.add_manager_selected == idx;
+            let checkbox_style = if is_focused {
+                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+            } else if *is_selected {
+                Style::default().fg(Color::Green)
+            } else {
+                Style::default().fg(Color::White)
+            };
+
+            let checkbox_text = Paragraph::new(full_text)
+                .style(checkbox_style);
+            frame.render_widget(checkbox_text, checkbox_area);
+
+            // Update selected manager if this checkbox is selected
+            if *is_selected {
+                state.add_manager = Some(state.available_managers[idx].clone());
+                state.add_manager_selected = idx;
+                // Auto-detect if custom
+                state.add_is_custom = matches!(state.available_managers[idx], PackageManager::Custom);
+            }
+
+            current_x += checkbox_width;
         }
 
         Ok(())

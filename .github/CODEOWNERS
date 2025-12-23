@@ -1,0 +1,20 @@
+# Code owners for automatic review assignment
+# See: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default owner for everything
+* @yourusername
+
+# Core application files
+/src/app.rs @yourusername
+/src/cli.rs @yourusername
+/src/config.rs @yourusername
+
+# Package manager feature
+/src/components/package_manager.rs @yourusername
+/src/utils/package_manager.rs @yourusername
+/src/utils/package_installer.rs @yourusername
+
+# GitHub integration
+/src/github.rs @yourusername
+/src/components/github_auth.rs @yourusername
+

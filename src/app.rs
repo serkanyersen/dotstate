@@ -206,12 +206,9 @@ impl App {
 
                 let state = &mut self.ui_state.package_manager;
                 state.packages = packages;
-                state.package_statuses = vec![PackageStatus::Unknown; state.packages.len()];
-                // Auto-start checking if we have packages and not already checking
-                if !state.packages.is_empty() && !state.is_checking {
-                    state.is_checking = true;
-                    state.checking_index = None;
-                    state.checking_delay_until = Some(std::time::Instant::now() + Duration::from_millis(100));
+                // Initialize statuses as Unknown, but don't auto-check
+                if state.package_statuses.len() != state.packages.len() {
+                    state.package_statuses = vec![PackageStatus::Unknown; state.packages.len()];
                 }
             } else if self.last_screen == Some(Screen::ManagePackages) {
                 // We just left ManagePackages - clear installation state to prevent it from showing elsewhere
@@ -776,22 +773,54 @@ impl App {
                                                 };
                                             }
                                         }
-                                        KeyCode::Up => {
+                                        KeyCode::Up | KeyCode::Down | KeyCode::Left | KeyCode::Right => {
                                             if state.add_focused_field == AddPackageField::Manager {
-                                                state.manager_list_state.select_previous();
+                                                // Navigate through managers with arrow keys
+                                                let manager_count = state.available_managers.len();
+                                                if manager_count > 0 {
+                                                    match key.code {
+                                                        KeyCode::Right | KeyCode::Down => {
+                                                            state.add_manager_selected = (state.add_manager_selected + 1) % manager_count;
+                                                        }
+                                                        KeyCode::Left | KeyCode::Up => {
+                                                            state.add_manager_selected = if state.add_manager_selected == 0 {
+                                                                manager_count - 1
+                                                            } else {
+                                                                state.add_manager_selected - 1
+                                                            };
+                                                        }
+                                                        _ => {}
+                                                    }
+                                                    state.add_manager = Some(state.available_managers[state.add_manager_selected].clone());
+                                                    state.add_is_custom = matches!(state.available_managers[state.add_manager_selected], PackageManager::Custom);
+                                                }
                                             }
                                         }
-                                        KeyCode::Down => {
+                                        KeyCode::Char(' ') => {
                                             if state.add_focused_field == AddPackageField::Manager {
-                                                state.manager_list_state.select_next();
+                                                // Space toggles/selects the current manager
+                                                let manager_count = state.available_managers.len();
+                                                if manager_count > 0 {
+                                                    state.add_manager = Some(state.available_managers[state.add_manager_selected].clone());
+                                                    state.add_is_custom = matches!(state.available_managers[state.add_manager_selected], PackageManager::Custom);
+                                                }
                                             }
                                         }
                                         KeyCode::Enter => {
-                                            // Save package
-                                            // Release borrow before calling method
-                                            let _ = state;
-                                            if self.validate_and_save_package()? {
-                                                self.ui_state.package_manager.popup_type = PackagePopupType::None;
+                                            if state.add_focused_field == AddPackageField::Manager {
+                                                // Enter selects the current manager
+                                                let manager_count = state.available_managers.len();
+                                                if manager_count > 0 {
+                                                    state.add_manager = Some(state.available_managers[state.add_manager_selected].clone());
+                                                    state.add_is_custom = matches!(state.available_managers[state.add_manager_selected], PackageManager::Custom);
+                                                }
+                                            } else {
+                                                // Save package
+                                                // Release borrow before calling method
+                                                let _ = state;
+                                                if self.validate_and_save_package()? {
+                                                    self.ui_state.package_manager.popup_type = PackagePopupType::None;
+                                                }
                                             }
                                         }
                                         _ => {
@@ -915,14 +944,36 @@ impl App {
                                 }
                             }
                             KeyCode::Char('c') | KeyCode::Char('C') => {
-                                // Start checking packages (if not in popup)
+                                // Check all packages (if not in popup and not already checking)
                                 if state.popup_type == PackagePopupType::None && !state.is_checking && !state.packages.is_empty() {
                                     // Initialize statuses if needed
                                     if state.package_statuses.len() != state.packages.len() {
                                         state.package_statuses = vec![PackageStatus::Unknown; state.packages.len()];
                                     }
+                                    // Reset all statuses to Unknown to check all
+                                    state.package_statuses = vec![PackageStatus::Unknown; state.packages.len()];
                                     state.is_checking = true;
                                     state.checking_index = None;
+                                    state.checking_delay_until = Some(std::time::Instant::now() + Duration::from_millis(100));
+                                }
+                            }
+                            KeyCode::Char('s') | KeyCode::Char('S') => {
+                                // Check selected package only (if not in popup and not already checking)
+                                if state.popup_type == PackagePopupType::None && !state.is_checking {
+                                    if let Some(selected_idx) = state.list_state.selected() {
+                                        if selected_idx < state.packages.len() {
+                                            // Initialize statuses if needed
+                                            if state.package_statuses.len() != state.packages.len() {
+                                                state.package_statuses = vec![PackageStatus::Unknown; state.packages.len()];
+                                            }
+                                            // Only check the selected package - set others to stay as they are
+                                            // But we need to mark this one as Unknown so it gets checked
+                                            state.package_statuses[selected_idx] = PackageStatus::Unknown;
+                                            state.is_checking = true;
+                                            state.checking_index = Some(selected_idx);
+                                            state.checking_delay_until = Some(std::time::Instant::now() + Duration::from_millis(100));
+                                        }
+                                    }
                                 }
                             }
                             KeyCode::Char('i') | KeyCode::Char('I') => {
@@ -4954,7 +5005,43 @@ impl App {
             state.package_statuses = vec![PackageStatus::Unknown; state.packages.len()];
         }
 
-        // Find next unchecked package
+        // If we have a specific index to check (from "Check Selected"), check only that one
+        if let Some(index) = state.checking_index {
+            if index < state.packages.len() {
+                let package = &state.packages[index];
+
+                // Check if package exists (binary check + fallback)
+                use crate::utils::package_installer::PackageInstaller;
+                use crate::utils::package_manager::PackageManagerImpl;
+
+                match PackageInstaller::check_exists(package) {
+                    Ok((true, _)) => {
+                        state.package_statuses[index] = PackageStatus::Installed;
+                    }
+                    Ok((false, _)) => {
+                        // Package not found - check if manager is installed for installation purposes
+                        if !PackageManagerImpl::is_manager_installed(&package.manager) {
+                            state.package_statuses[index] = PackageStatus::Error(
+                                format!("Package not found and package manager '{:?}' is not installed", package.manager)
+                            );
+                        } else {
+                            state.package_statuses[index] = PackageStatus::NotInstalled;
+                        }
+                    }
+                    Err(e) => {
+                        state.package_statuses[index] = PackageStatus::Error(e.to_string());
+                    }
+                }
+
+                // Done checking selected package
+                state.checking_index = None;
+                state.is_checking = false;
+                state.checking_delay_until = None;
+                return Ok(());
+            }
+        }
+
+        // Find next unchecked package (for "Check All")
         let next_index = state.package_statuses.iter()
             .position(|s| matches!(s, PackageStatus::Unknown));
 

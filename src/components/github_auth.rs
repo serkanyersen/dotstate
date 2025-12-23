@@ -324,7 +324,7 @@ impl GitHubAuthComponent {
         let _ = Header::render(
             frame,
             header_chunk,
-            "dotstate - GitHub Setup",
+            "DotState - GitHub Setup",
             "Setting up your GitHub repository..."
         )?;
 
@@ -412,7 +412,7 @@ impl Component for GitHubAuthComponent {
         let _ = Header::render(
             frame,
             header_chunk,
-            "dotstate - GitHub Setup",
+            "DotState - GitHub Setup",
             "Configure your GitHub repository for syncing dotfiles. All settings will be saved securely."
         )?;
 
