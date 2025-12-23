@@ -844,7 +844,11 @@ mod tests {
     #[test]
     fn test_git_init() {
         let temp_dir = TempDir::new().unwrap();
-        let git_mgr = GitManager::open_or_init(temp_dir.path()).unwrap();
-        assert!(git_mgr.repo().is_empty().unwrap_or(false));
+        let repo_path = temp_dir.path();
+        let git_mgr = GitManager::open_or_init(repo_path).unwrap();
+        // After initialization, the repo will have a .gitignore file, so it's not empty
+        // Check that the repo was successfully initialized instead
+        assert!(!git_mgr.repo().is_bare());
+        assert!(repo_path.join(".git").exists());
     }
 }

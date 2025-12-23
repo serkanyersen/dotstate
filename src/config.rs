@@ -173,11 +173,16 @@ mod tests {
     fn test_config_save_and_load() {
         let temp_dir = TempDir::new().unwrap();
         let config_path = temp_dir.path().join("config.toml");
+        let repo_path = temp_dir.path().join("repo");
 
-        let config = Config::default();
+        // Create a config with a non-existent repo_path to avoid manifest loading
+        let mut config = Config::default();
+        config.repo_path = repo_path.clone();
         config.save(&config_path).unwrap();
 
         let loaded = Config::load_or_create(&config_path).unwrap();
+        // Both should have empty active_profile since repo_path doesn't exist
         assert_eq!(config.active_profile, loaded.active_profile);
+        assert_eq!(loaded.active_profile, "");
     }
 }
