@@ -1,0 +1,57 @@
+name: Bump Homebrew Tap
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  bump-tap:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Extract version
+        id: v
+        run: |
+          TAG="${GITHUB_REF_NAME}"   # e.g. v0.1.2
+          VER="${TAG#v}"
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "ver=$VER" >> $GITHUB_OUTPUT
+
+      - name: Download source tarball and compute sha256
+        id: sha
+        run: |
+          URL="https://github.com/${{ github.repository }}/archive/refs/tags/${{ steps.v.outputs.tag }}.tar.gz"
+          echo "url=$URL" >> $GITHUB_OUTPUT
+          curl -L "$URL" -o src.tar.gz
+          SHA=$(sha256sum src.tar.gz | awk '{print $1}')
+          echo "sha=$SHA" >> $GITHUB_OUTPUT
+
+      - name: Checkout tap repo
+        uses: actions/checkout@v4
+        with:
+          repository: serkanyersen/homebrew-dotstate
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: tap
+
+      - name: Update formula
+        run: |
+          FORMULA="tap/Formula/dotstate.rb"
+          TAG="${{ steps.v.outputs.tag }}"
+          URL="${{ steps.sha.outputs.url }}"
+          SHA="${{ steps.sha.outputs.sha }}"
+
+          # Replace url line
+          sed -i "s|^  url \".*\"|  url \"$URL\"|g" "$FORMULA"
+          # Replace sha256 line
+          sed -i "s|^  sha256 \".*\"|  sha256 \"$SHA\"|g" "$FORMULA"
+
+      - name: Commit and push
+        run: |
+          cd tap
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/dotstate.rb
+          git commit -m "dotstate ${{ steps.v.outputs.tag }}" || exit 0
+          git push

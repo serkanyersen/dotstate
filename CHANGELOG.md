@@ -52,3 +52,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added preview to sync changes page
 - added website
 
+## [0.1.2] - 2025-12-23
+
+### Added
+- homebrew tap
+
