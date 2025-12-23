@@ -32,7 +32,7 @@ oauth2 = "4.4"
 
 # File operations
 walkdir = "2"
-dirs = "5"
+dirs = "6"
 
 # Error handling
 anyhow = "1.0"
