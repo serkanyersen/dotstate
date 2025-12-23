@@ -18,7 +18,7 @@ ratatui = "0.27"
 crossterm = "0.28"
 
 # Git operations
-git2 = "0.18"
+git2 = "0.20"
 
 # Configuration
 toml = "0.8"
