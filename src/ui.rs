@@ -200,6 +200,8 @@ pub struct SyncWithRemoteState {
     pub pulled_changes_count: Option<usize>, // Number of changes pulled from remote
     pub list_state: ListState,
     pub scrollbar_state: ScrollbarState,
+    pub diff_content: Option<String>, // Content of the diff for preview
+    pub preview_scroll: usize,        // Scroll state for preview
 }
 
 impl Default for SyncWithRemoteState {
@@ -213,6 +215,8 @@ impl Default for SyncWithRemoteState {
             pulled_changes_count: None,
             list_state: ListState::default(),
             scrollbar_state: ScrollbarState::new(0),
+            diff_content: None,
+            preview_scroll: 0,
         }
     }
 }

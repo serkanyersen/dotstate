@@ -1,0 +1,797 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <!-- Primary Meta Tags -->
+    <title>DotState - Modern Dotfile Manager Built with Rust | Secure & Fast</title>
+    <meta name="title" content="DotState - Modern Dotfile Manager Built with Rust | Secure & Fast">
+    <meta name="description" content="DotState is a modern, secure dotfile manager built with Rust. Sync your .zshrc, .vimrc, and config files across machines with GitHub. Zero Git knowledge required. Automatic backups, profile management, and beautiful TUI.">
+    <meta name="keywords" content="dotfile manager, dotfiles, rust, dotfile sync, github dotfiles, configuration management, dotfile backup, symlink manager, terminal ui, tui, rust cli, dotfile tool, config sync, profile management, dotfile organizer">
+    <meta name="author" content="Serkan Yersen">
+    <meta name="robots" content="index, follow">
+    <meta name="language" content="English">
+    <meta name="revisit-after" content="7 days">
+    <link rel="canonical" href="https://dotstate.serkan.dev">
+
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://dotstate.serkan.dev">
+    <meta property="og:title" content="DotState - Modern Dotfile Manager Built with Rust">
+    <meta property="og:description" content="Manage your dotfiles effortlessly. Sync to GitHub, organize by profiles, and keep your configuration files safe. Built with Rust for speed and security.">
+    <meta property="og:image" content="https://dotstate.serkan.dev/og-image.png">
+    <meta property="og:site_name" content="DotState">
+    <meta property="og:locale" content="en_US">
+
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image">
+    <meta property="twitter:url" content="https://dotstate.serkan.dev">
+    <meta property="twitter:title" content="DotState - Modern Dotfile Manager Built with Rust">
+    <meta property="twitter:description" content="Manage your dotfiles effortlessly. Sync to GitHub, organize by profiles, and keep your configuration files safe.">
+    <meta property="twitter:image" content="https://dotstate.serkan.dev/og-image.png">
+    <meta property="twitter:creator" content="@serkanyersen">
+
+    <!-- Additional SEO -->
+    <meta name="theme-color" content="#00d4ff">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🦀</text></svg>">
+
+    <!-- Preconnect for Performance -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+
+    <!-- Structured Data (JSON-LD) -->
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "DotState",
+        "applicationCategory": "DeveloperApplication",
+        "operatingSystem": "Linux, macOS, Windows",
+        "offers": {
+            "@type": "Offer",
+            "price": "0",
+            "priceCurrency": "USD"
+        },
+        "aggregateRating": {
+            "@type": "AggregateRating",
+            "ratingValue": "5",
+            "ratingCount": "1"
+        },
+        "description": "A modern, secure, and user-friendly dotfile manager built with Rust. Sync your configuration files across machines with GitHub integration.",
+        "url": "https://dotstate.serkan.dev",
+        "downloadUrl": "https://crates.io/crates/dotstate",
+        "programmingLanguage": "Rust",
+        "license": "https://opensource.org/licenses/MIT",
+        "author": {
+            "@type": "Person",
+            "name": "Serkan Yersen"
+        },
+        "keywords": "dotfile manager, rust, github sync, configuration management, terminal ui",
+        "featureList": [
+            "Profile Management",
+            "GitHub Sync",
+            "Automatic Backups",
+            "Symlink Management",
+            "Package Management",
+            "Beautiful TUI",
+            "CLI Support"
+        ]
+    }
+    </script>
+
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "WebSite",
+        "name": "DotState",
+        "url": "https://dotstate.serkan.dev",
+        "potentialAction": {
+            "@type": "SearchAction",
+            "target": "https://github.com/serkanyersen/dotstate/search?q={search_term_string}",
+            "query-input": "required name=search_term_string"
+        }
+    }
+    </script>
+
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "TechArticle",
+        "headline": "DotState - Modern Dotfile Manager Built with Rust",
+        "description": "Learn how to manage your dotfiles with DotState, a secure and fast dotfile manager built with Rust.",
+        "author": {
+            "@type": "Person",
+            "name": "Serkan Yersen"
+        },
+        "publisher": {
+            "@type": "Organization",
+            "name": "DotState"
+        },
+        "datePublished": "2025-01-01",
+        "dateModified": "2025-01-01"
+    }
+    </script>
+
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header" role="banner">
+            <div class="header-content">
+                <h1 class="logo">DOTSTATE</h1>
+                <p class="tagline">Manage your dotfiles with ease. Sync to GitHub, organize by profiles, and keep your configuration files safe.</p>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <!-- Left Pane - Navigation/Menu -->
+            <aside class="sidebar" role="complementary" aria-label="Navigation menu">
+                <nav class="menu" role="navigation" aria-label="Main navigation">
+                    <div class="menu-label">
+                        <span class="menu-icon" aria-hidden="true">☰</span> Menu
+                    </div>
+                    <ul class="menu-list">
+                        <li class="menu-item active" data-section="overview">
+                            <span class="menu-arrow" aria-hidden="true">»</span>
+                            <span class="menu-icon" aria-hidden="true">📁</span>
+                            <span class="menu-text">Overview</span>
+                        </li>
+                        <li class="menu-item" data-section="features">
+                            <span class="menu-arrow" aria-hidden="true"> </span>
+                            <span class="menu-icon" aria-hidden="true">⭐</span>
+                            <span class="menu-text">Features</span>
+                        </li>
+                        <li class="menu-item" data-section="installation">
+                            <span class="menu-arrow" aria-hidden="true"> </span>
+                            <span class="menu-icon" aria-hidden="true">📦</span>
+                            <span class="menu-text">Installation</span>
+                        </li>
+                        <li class="menu-item" data-section="quickstart">
+                            <span class="menu-arrow" aria-hidden="true"> </span>
+                            <span class="menu-icon" aria-hidden="true">🚀</span>
+                            <span class="menu-text">Quick Start</span>
+                        </li>
+                        <li class="menu-item" data-section="cli">
+                            <span class="menu-arrow" aria-hidden="true"> </span>
+                            <span class="menu-icon" aria-hidden="true">⌨️</span>
+                            <span class="menu-text">CLI Commands</span>
+                        </li>
+                        <li class="menu-item" data-section="examples">
+                            <span class="menu-arrow" aria-hidden="true"> </span>
+                            <span class="menu-icon" aria-hidden="true">💡</span>
+                            <span class="menu-text">Examples</span>
+                        </li>
+                        <li class="menu-item" data-section="security">
+                            <span class="menu-arrow" aria-hidden="true"> </span>
+                            <span class="menu-icon" aria-hidden="true">🔒</span>
+                            <span class="menu-text">Security</span>
+                        </li>
+                        <li class="menu-item" data-section="contributing">
+                            <span class="menu-arrow" aria-hidden="true"> </span>
+                            <span class="menu-icon" aria-hidden="true">🤝</span>
+                            <span class="menu-text">Contributing</span>
+                        </li>
+                    </ul>
+                </nav>
+            </aside>
+
+            <!-- Right Pane - Content -->
+            <main class="content" role="main">
+                <!-- Overview Section -->
+                <article class="content-section active" id="overview">
+                    <div class="section-header">
+                        <span class="section-icon" aria-hidden="true">📁</span>
+                        <h2>What is DotState? - Modern Dotfile Manager for Developers</h2>
+                    </div>
+                    <div class="section-content">
+                        <p><strong>DotState</strong> is a terminal-based <strong>dotfile manager</strong> that helps you manage your dotfiles effortlessly. Whether you're syncing your configuration across multiple machines or setting up a new development environment, DotState makes it simple, safe, and fast.</p>
+
+                        <!-- Install Commands Widget -->
+                        <div class="install-widget">
+                            <div class="install-tabs">
+                                <button class="install-tab active" data-tab="curl">curl</button>
+                                <button class="install-tab" data-tab="brew">brew</button>
+                                <button class="install-tab" data-tab="cargo">cargo</button>
+                                <button class="install-tab" data-tab="more">more</button>
+                            </div>
+                            <div class="install-content">
+                                <div class="install-tab-content active" id="install-curl">
+                                    <div class="install-command">
+                                        <code>/bin/bash -c "$(curl -fsSL https://dotstate.serkan.dev/install.sh)"</code>
+                                        <button class="copy-btn" data-copy='/bin/bash -c "$(curl -fsSL https://dotstate.serkan.dev/install.sh)"' aria-label="Copy install command">📋</button>
+                                    </div>
+                                </div>
+                                <div class="install-tab-content" id="install-brew">
+                                    <div class="install-command">
+                                        <code>brew install dotstate</code>
+                                        <button class="copy-btn" data-copy="brew install dotstate" aria-label="Copy install command">📋</button>
+                                    </div>
+                                </div>
+                                <div class="install-tab-content" id="install-cargo">
+                                    <div class="install-command">
+                                        <code>cargo install dotstate</code>
+                                        <button class="copy-btn" data-copy="cargo install dotstate" aria-label="Copy install command">📋</button>
+                                    </div>
+                                </div>
+                                <div class="install-tab-content" id="install-more">
+                                    <div class="install-more-content">
+                                        <p>For more installation options, see the <a href="#installation" class="install-link">Installation</a> page.</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <h3>Why Use a Dotfile Manager?</h3>
+                        <p>Managing dotfiles can be a pain. You want your <code>.zshrc</code>, <code>.vimrc</code>, <code>.gitconfig</code>, <code>.bashrc</code>, and other config files synced across machines, but traditional solutions are either too complex, insecure, or require too much manual work.</p>
+
+                        <p><strong>DotState solves this by being:</strong></p>
+                        <ul>
+                            <li>🦀 <strong>Built with Rust</strong> - Fast, memory-safe, and reliable dotfile management</li>
+                            <li>🔒 <strong>Secure by design</strong> - No shell injection vulnerabilities, safe file operations</li>
+                            <li>🎨 <strong>Beautiful TUI</strong> - Intuitive interface that doesn't require learning Git</li>
+                            <li>⚡ <strong>Lightning fast</strong> - Non-blocking operations, instant feedback</li>
+                            <li>🛡️ <strong>Safe</strong> - Automatic backups before any file operations</li>
+                            <li>🔄 <strong>GitHub-powered</strong> - Your dotfiles stored securely in a private or public repo</li>
+                        </ul>
+
+                        <div class="comparison">
+                            <div class="comparison-item">
+                                <h4>Traditional Dotfile Managers</h4>
+                                <ul>
+                                    <li>❌ Require Git knowledge</li>
+                                    <li>❌ Manual symlink management</li>
+                                    <li>❌ No built-in backup system</li>
+                                    <li>❌ Complex setup process</li>
+                                </ul>
+                            </div>
+                            <div class="comparison-item">
+                                <h4>DotState - Best Dotfile Manager</h4>
+                                <ul>
+                                    <li>✅ Zero Git knowledge required</li>
+                                    <li>✅ Automatic symlink management</li>
+                                    <li>✅ Built-in backups</li>
+                                    <li>✅ One-command setup</li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <h3>Perfect For</h3>
+                        <ul>
+                            <li>Developers who work on multiple machines</li>
+                            <li>Teams sharing configuration files</li>
+                            <li>Anyone who wants to backup their dotfiles</li>
+                            <li>Users switching between macOS and Linux</li>
+                            <li>Developers who want a modern Rust-based solution</li>
+                        </ul>
+
+                        <div class="tip">
+                            <span class="tip-icon" aria-hidden="true">💡</span>
+                            <div>
+                                <strong>Tip:</strong> When you select a file, it's automatically copied to your repository and a symlink is created in its place. This means your files are safely backed up and version controlled.
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="status-section">
+                        <div class="section-header">
+                            <span class="section-icon" aria-hidden="true">✓</span>
+                            <h2>Status</h2>
+                        </div>
+                        <div class="status-grid">
+                            <div class="status-item">
+                                <span class="status-label">Synced Files:</span>
+                                <span class="status-value">8</span>
+                            </div>
+                            <div class="status-item">
+                                <span class="status-label">Profiles:</span>
+                                <span class="status-value purple">2</span>
+                                <span class="status-subtext purple">(Active: Personal)</span>
+                            </div>
+                            <div class="status-item">
+                                <span class="status-label">Repository:</span>
+                                <span class="status-value">dotstate-storage</span>
+                            </div>
+                        </div>
+                    </div>
+                </article>
+
+                <!-- Features Section -->
+                <article class="content-section" id="features">
+                    <div class="section-header">
+                        <span class="section-icon" aria-hidden="true">⭐</span>
+                        <h2>DotState Features - Complete Dotfile Management Solution</h2>
+                    </div>
+                    <div class="section-content">
+                        <p>DotState provides everything you need for <strong>dotfile management</strong>, <strong>configuration sync</strong>, and <strong>profile organization</strong>. Here's what makes it the best dotfile manager:</p>
+
+                        <h3>🎯 Core Features</h3>
+                        <div class="features-grid">
+                            <div class="feature-card">
+                                <div class="feature-icon" aria-hidden="true">👤</div>
+                                <h4>Profile Management</h4>
+                                <p>Create separate profiles for different contexts (work, personal, Mac, Linux, etc.). Perfect for managing multiple dotfile sets.</p>
+                            </div>
+                            <div class="feature-card">
+                                <div class="feature-icon" aria-hidden="true">🔄</div>
+                                <h4>GitHub Sync</h4>
+                                <p>Automatic sync with GitHub (private or public repos). Keep your dotfiles backed up and accessible from anywhere.</p>
+                            </div>
+                            <div class="feature-card">
+                                <div class="feature-icon" aria-hidden="true">🔍</div>
+                                <h4>Smart File Detection</h4>
+                                <p>Automatically finds common dotfiles in your home directory (.zshrc, .vimrc, .gitconfig, etc.).</p>
+                            </div>
+                            <div class="feature-card">
+                                <div class="feature-icon" aria-hidden="true">🛡️</div>
+                                <h4>Safe Operations</h4>
+                                <p>Automatic backups before any file modification. Your files are always safe.</p>
+                            </div>
+                            <div class="feature-card">
+                                <div class="feature-icon" aria-hidden="true">🔗</div>
+                                <h4>Symlink Management</h4>
+                                <p>Automatic creation and management of symlinks. No manual linking required.</p>
+                            </div>
+                            <div class="feature-card">
+                                <div class="feature-icon" aria-hidden="true">📄</div>
+                                <h4>Custom Files</h4>
+                                <p>Add any file or directory, not just dotfiles. Full control over what you sync.</p>
+                            </div>
+                        </div>
+
+                        <h3>📦 Package Management</h3>
+                        <p>DotState includes built-in <strong>package management</strong> to track and install CLI tools per profile:</p>
+                        <div class="features-grid">
+                            <div class="feature-card">
+                                <div class="feature-icon" aria-hidden="true">📋</div>
+                                <h4>CLI Tool Tracking</h4>
+                                <p>Define and track CLI tools and dependencies per profile. Know what's installed where.</p>
+                            </div>
+                            <div class="feature-card">
+                                <div class="feature-icon" aria-hidden="true">🔧</div>
+                                <h4>Multi-Manager Support</h4>
+                                <p>Works with Homebrew, Cargo, npm, pip, and more. One tool for all package managers.</p>
+                            </div>
+                            <div class="feature-card">
+                                <div class="feature-icon" aria-hidden="true">⚙️</div>
+                                <h4>Installation Flow</h4>
+                                <p>Check what's missing and install with one command. Never lose track of dependencies.</p>
+                            </div>
+                            <div class="feature-card">
+                                <div class="feature-icon" aria-hidden="true">🎨</div>
+                                <h4>Custom Packages</h4>
+                                <p>Support for custom installation scripts. Full flexibility for your workflow.</p>
+                            </div>
+                        </div>
+
+                        <h3>🎨 User Experience</h3>
+                        <div class="features-grid">
+                            <div class="feature-card">
+                                <div class="feature-icon" aria-hidden="true">🖥️</div>
+                                <h4>Beautiful TUI</h4>
+                                <p>Modern terminal interface built with Ratatui. The best terminal UI for dotfile management.</p>
+                            </div>
+                            <div class="feature-card">
+                                <div class="feature-icon" aria-hidden="true">🖱️</div>
+                                <h4>Mouse Support</h4>
+                                <p>Click to navigate and interact. Not just keyboard-only like other terminal tools.</p>
+                            </div>
+                            <div class="feature-card">
+                                <div class="feature-icon" aria-hidden="true">⚡</div>
+                                <h4>Real-time Feedback</h4>
+                                <p>See what's happening as it happens. No more waiting for operations to complete.</p>
+                            </div>
+                            <div class="feature-card">
+                                <div class="feature-icon" aria-hidden="true">⌨️</div>
+                                <h4>CLI & TUI</h4>
+                                <p>Full-featured CLI for automation, beautiful TUI for interactive use. Best of both worlds.</p>
+                            </div>
+                        </div>
+                    </div>
+                </article>
+
+                <!-- Installation Section -->
+                <article class="content-section" id="installation">
+                    <div class="section-header">
+                        <span class="section-icon" aria-hidden="true">📦</span>
+                        <h2>Install DotState - Installation Guide</h2>
+                    </div>
+                    <div class="section-content">
+                        <p>Install DotState, the best <strong>Rust dotfile manager</strong>, using one of these methods:</p>
+
+                        <h3>From Cargo (Recommended)</h3>
+                        <p>The easiest way to install DotState is via Cargo, the Rust package manager:</p>
+                        <div class="code-block">
+                            <code>cargo install dotstate</code>
+                            <button class="copy-btn" data-copy="cargo install dotstate" aria-label="Copy command">📋</button>
+                        </div>
+
+                        <h3>From Source</h3>
+                        <p>Build DotState from source for the latest features:</p>
+                        <div class="code-block">
+                            <code>git clone https://github.com/serkanyersen/dotstate.git<br>cd dotstate<br>cargo install --path .</code>
+                            <button class="copy-btn" data-copy="git clone https://github.com/serkanyersen/dotstate.git
+cd dotstate
+cargo install --path ." aria-label="Copy command">📋</button>
+                        </div>
+
+                        <h3>Using Homebrew (macOS)</h3>
+                        <p>Install DotState via Homebrew on macOS:</p>
+                        <div class="code-block">
+                            <code>brew install dotstate</code>
+                            <button class="copy-btn" data-copy="brew install dotstate" aria-label="Copy command">📋</button>
+                        </div>
+                        <p class="note">Note: Homebrew formula coming soon</p>
+
+                        <h3>System Requirements</h3>
+                        <ul class="requirements-list">
+                            <li><strong>Rust:</strong> Latest stable version (for building from source)</li>
+                            <li><strong>Git:</strong> For repository operations</li>
+                            <li><strong>GitHub Account:</strong> For cloud sync (optional, but recommended)</li>
+                            <li><strong>Operating System:</strong> Linux, macOS, or Windows</li>
+                        </ul>
+                    </div>
+                </article>
+
+                <!-- Quick Start Section -->
+                <article class="content-section" id="quickstart">
+                    <div class="section-header">
+                        <span class="section-icon" aria-hidden="true">🚀</span>
+                        <h2>Quick Start Guide - Get Started with DotState in Minutes</h2>
+                    </div>
+                    <div class="section-content">
+                        <p>Get started with DotState, the fastest way to manage your dotfiles. Follow these simple steps:</p>
+
+                        <div class="step">
+                            <div class="step-number">1</div>
+                            <div class="step-content">
+                                <h3>Launch DotState</h3>
+                                <p>Start the DotState terminal UI:</p>
+                                <div class="code-block">
+                                    <code>dotstate</code>
+                                    <button class="copy-btn" data-copy="dotstate" aria-label="Copy command">📋</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="step">
+                            <div class="step-number">2</div>
+                            <div class="step-content">
+                                <h3>First-time Setup</h3>
+                                <p>Configure DotState for the first time:</p>
+                                <ul>
+                                    <li>Enter your GitHub token (create one at <a href="https://github.com/settings/tokens" target="_blank" rel="noopener noreferrer">github.com/settings/tokens</a>)</li>
+                                    <li>Choose repository name and location</li>
+                                    <li>Select repository visibility (private/public)</li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <div class="step">
+                            <div class="step-number">3</div>
+                            <div class="step-content">
+                                <h3>Add Your Files</h3>
+                                <p>Start syncing your dotfiles:</p>
+                                <ul>
+                                    <li>Navigate to "Manage Files"</li>
+                                    <li>Select files to sync (they're automatically added)</li>
+                                    <li>Files are moved to the repo and symlinked automatically</li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <div class="step">
+                            <div class="step-number">4</div>
+                            <div class="step-content">
+                                <h3>Sync to GitHub</h3>
+                                <p>Push your dotfiles to GitHub:</p>
+                                <ul>
+                                    <li>Go to "Sync with Remote"</li>
+                                    <li>Your files are committed, pulled, and pushed automatically</li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <div class="tip success">
+                            <span class="tip-icon" aria-hidden="true">✅</span>
+                            <div>
+                                <strong>That's it!</strong> Your dotfiles are now synced and ready to use on any machine. DotState makes dotfile management effortless.
+                            </div>
+                        </div>
+                    </div>
+                </article>
+
+                <!-- CLI Commands Section -->
+                <article class="content-section" id="cli">
+                    <div class="section-header">
+                        <span class="section-icon" aria-hidden="true">⌨️</span>
+                        <h2>DotState CLI Commands - Complete Command Reference</h2>
+                    </div>
+                    <div class="section-content">
+                        <p>DotState provides a powerful CLI for automation and scripting. Here's the complete command reference:</p>
+
+                        <div class="command-card">
+                            <div class="command-header">
+                                <code class="command-name">dotstate sync</code>
+                                <button class="copy-btn" data-copy="dotstate sync" aria-label="Copy command">📋</button>
+                            </div>
+                            <p class="command-desc">Sync with remote: commit, pull (with rebase), and push. This is the main sync command for keeping your dotfiles up to date.</p>
+                        </div>
+
+                        <div class="command-card">
+                            <div class="command-header">
+                                <code class="command-name">dotstate list</code>
+                                <button class="copy-btn" data-copy="dotstate list" aria-label="Copy command">📋</button>
+                            </div>
+                            <p class="command-desc">List all synced files. Shows the full path of symlink location and storage repo location.</p>
+                            <div class="command-options">
+                                <code>--verbose</code> Show detailed information including file status
+                            </div>
+                        </div>
+
+                        <div class="command-card">
+                            <div class="command-header">
+                                <code class="command-name">dotstate add &lt;path&gt;</code>
+                                <button class="copy-btn" data-copy="dotstate add" aria-label="Copy command">📋</button>
+                            </div>
+                            <p class="command-desc">Add a file to sync. Moves the file directly to the repo and creates a symlink automatically.</p>
+                            <div class="command-example">
+                                <strong>Example:</strong> <code>dotstate add ~/.myconfig</code> or <code>dotstate add ~/.zshrc</code>
+                            </div>
+                        </div>
+
+                        <div class="command-card">
+                            <div class="command-header">
+                                <code class="command-name">dotstate activate</code>
+                                <button class="copy-btn" data-copy="dotstate activate" aria-label="Copy command">📋</button>
+                            </div>
+                            <p class="command-desc">Activate the symlinks, restores app state after deactivation. Use this after cloning your dotfiles on a new machine.</p>
+                            <p class="command-note">Essential for setting up a new machine with your existing dotfiles.</p>
+                        </div>
+
+                        <div class="command-card">
+                            <div class="command-header">
+                                <code class="command-name">dotstate deactivate</code>
+                                <button class="copy-btn" data-copy="dotstate deactivate" aria-label="Copy command">📋</button>
+                            </div>
+                            <p class="command-desc">Deactivate symlinks. This might be useful if you are going to uninstall dotstate or you need the original files.</p>
+                            <div class="command-options">
+                                <code>--completely</code> Completely remove symlinks without restoring files
+                            </div>
+                        </div>
+
+                        <div class="command-card">
+                            <div class="command-header">
+                                <code class="command-name">dotstate logs</code>
+                                <button class="copy-btn" data-copy="dotstate logs" aria-label="Copy command">📋</button>
+                            </div>
+                            <p class="command-desc">Shows logs location and how to view them. Useful for debugging issues.</p>
+                        </div>
+
+                        <div class="command-card">
+                            <div class="command-header">
+                                <code class="command-name">dotstate config</code>
+                                <button class="copy-btn" data-copy="dotstate config" aria-label="Copy command">📋</button>
+                            </div>
+                            <p class="command-desc">Configuration file location. Shows where DotState stores its configuration.</p>
+                        </div>
+
+                        <div class="command-card">
+                            <div class="command-header">
+                                <code class="command-name">dotstate repository</code>
+                                <button class="copy-btn" data-copy="dotstate repository" aria-label="Copy command">📋</button>
+                            </div>
+                            <p class="command-desc">Repository location. Shows where your dotfiles are stored locally.</p>
+                        </div>
+
+                        <div class="command-card">
+                            <div class="command-header">
+                                <code class="command-name">dotstate help</code>
+                                <button class="copy-btn" data-copy="dotstate help" aria-label="Copy command">📋</button>
+                            </div>
+                            <p class="command-desc">Show help for a specific command. Get detailed information about any DotState command.</p>
+                            <div class="command-example">
+                                <strong>Example:</strong> <code>dotstate help sync</code> or <code>dotstate help add</code>
+                            </div>
+                        </div>
+                    </div>
+                </article>
+
+                <!-- Examples Section -->
+                <article class="content-section" id="examples">
+                    <div class="section-header">
+                        <span class="section-icon" aria-hidden="true">💡</span>
+                        <h2>DotState Examples - Common Use Cases and Workflows</h2>
+                    </div>
+                    <div class="section-content">
+                        <p>Learn how to use DotState with these practical examples and common workflows:</p>
+
+                        <h3>Common Workflows</h3>
+
+                        <div class="example-card">
+                            <h4>Setting up a new machine</h4>
+                            <p>When you get a new computer, use DotState to quickly set up all your dotfiles:</p>
+                            <ol>
+                                <li>Install DotState: <code>cargo install dotstate</code></li>
+                                <li>Launch TUI: <code>dotstate</code></li>
+                                <li>Enter your GitHub token</li>
+                                <li>Select your profile</li>
+                                <li>Activate symlinks: <code>dotstate activate</code></li>
+                            </ol>
+                            <p>Your entire development environment is now configured!</p>
+                        </div>
+
+                        <div class="example-card">
+                            <h4>Adding a new dotfile</h4>
+                            <p>Add new configuration files to your dotfile collection:</p>
+                            <div class="code-block">
+                                <code># Using CLI<br>dotstate add ~/.mynewconfig<br><br># Or using TUI<br>dotstate<br># Navigate to "Manage Files" → Select file</code>
+                            </div>
+                            <p>Both methods automatically move the file to the repo and create a symlink.</p>
+                        </div>
+
+                        <div class="example-card">
+                            <h4>Syncing changes across machines</h4>
+                            <p>Keep your dotfiles synchronized across all your machines:</p>
+                            <div class="code-block">
+                                <code># Using CLI<br>dotstate sync<br><br># Or using TUI<br>dotstate<br># Navigate to "Sync with Remote"</code>
+                            </div>
+                            <p>The sync command commits, pulls, and pushes automatically.</p>
+                        </div>
+
+                        <div class="example-card">
+                            <h4>Managing multiple profiles</h4>
+                            <p>Create separate profiles for different contexts:</p>
+                            <ul>
+                                <li><strong>Personal:</strong> Your personal dotfiles (.zshrc, .vimrc, etc.)</li>
+                                <li><strong>Work:</strong> Work-specific configurations</li>
+                                <li><strong>Mac:</strong> macOS-specific settings</li>
+                                <li><strong>Linux:</strong> Linux-specific settings</li>
+                            </ul>
+                            <p>Switch between profiles easily in the TUI or activate them via CLI. Perfect for managing different dotfile sets.</p>
+                        </div>
+
+                        <div class="example-card">
+                            <h4>Package management per profile</h4>
+                            <p>Track and install CLI tools per profile:</p>
+                            <ol>
+                                <li>Navigate to "Manage Packages"</li>
+                                <li>Add packages (Homebrew, Cargo, npm, etc.)</li>
+                                <li>Check what's installed: Press <code>S</code> to check selected</li>
+                                <li>Install missing packages: Press <code>I</code></li>
+                            </ol>
+                            <p>Never lose track of what tools you need for each environment.</p>
+                        </div>
+                    </div>
+                </article>
+
+                <!-- Security Section -->
+                <article class="content-section" id="security">
+                    <div class="section-header">
+                        <span class="section-icon" aria-hidden="true">🔒</span>
+                        <h2>DotState Security - Secure Dotfile Management</h2>
+                    </div>
+                    <div class="section-content">
+                        <p>Security is a top priority for DotState. Here's how we keep your dotfiles safe:</p>
+
+                        <h3>Security Features</h3>
+
+                        <div class="security-card">
+                            <h4>🛡️ No Shell Injection</h4>
+                            <p>All commands use direct execution, not shell interpretation. This prevents shell injection vulnerabilities that plague other dotfile managers.</p>
+                        </div>
+
+                        <div class="security-card">
+                            <h4>✅ Path Validation</h4>
+                            <p>Dangerous paths (like home directory root) are blocked. The app validates all paths before operations to prevent accidental data loss.</p>
+                        </div>
+
+                        <div class="security-card">
+                            <h4>🔍 Git Repository Detection</h4>
+                            <p>Prevents nested Git repositories. You can't have a Git repo inside a Git repo, protecting you from configuration conflicts.</p>
+                        </div>
+
+                        <div class="security-card">
+                            <h4>💾 Backup System</h4>
+                            <p>Automatic backups before any file operation. Your files are safe even if something goes wrong during sync or file operations.</p>
+                        </div>
+
+                        <div class="security-card">
+                            <h4>🔐 Token Security</h4>
+                            <p>GitHub tokens are stored securely in config files. Use tokens with minimal required permissions (only <code>repo</code> scope).</p>
+                        </div>
+
+                        <h3>Security Best Practices</h3>
+                        <ul class="best-practices">
+                            <li>Use GitHub tokens with minimal required permissions (only <code>repo</code> scope)</li>
+                            <li>Rotate tokens regularly for enhanced security</li>
+                            <li>Never commit tokens to version control</li>
+                            <li>Review files before syncing (especially custom files)</li>
+                            <li>Keep backups enabled (default: enabled)</li>
+                            <li>Use private repositories for sensitive configurations</li>
+                        </ul>
+                    </div>
+                </article>
+
+                <!-- Contributing Section -->
+                <article class="content-section" id="contributing">
+                    <div class="section-header">
+                        <span class="section-icon" aria-hidden="true">🤝</span>
+                        <h2>Contributing to DotState - Open Source Dotfile Manager</h2>
+                    </div>
+                    <div class="section-content">
+                        <p>We welcome contributions! DotState is an open-source project built with ❤️ and Rust. Help us make it the best dotfile manager available.</p>
+
+                        <h3>How to Contribute</h3>
+                        <ol>
+                            <li>Fork the repository on GitHub</li>
+                            <li>Create a branch from <code>main</code></li>
+                            <li>Make your changes</li>
+                            <li>Test thoroughly</li>
+                            <li>Submit a pull request</li>
+                        </ol>
+
+                        <h3>Areas for Contribution</h3>
+                        <div class="contrib-areas">
+                            <div class="contrib-card">
+                                <h4>📝 Documentation</h4>
+                                <p>Improving README, adding examples, writing guides</p>
+                            </div>
+                            <div class="contrib-card">
+                                <h4>🧪 Testing</h4>
+                                <p>Adding tests, improving test coverage</p>
+                            </div>
+                            <div class="contrib-card">
+                                <h4>🎨 UI/UX</h4>
+                                <p>Improving the TUI interface, adding features</p>
+                            </div>
+                            <div class="contrib-card">
+                                <h4>⚡ Performance</h4>
+                                <p>Optimizing operations, reducing memory usage</p>
+                            </div>
+                            <div class="contrib-card">
+                                <h4>🌐 Platform Support</h4>
+                                <p>Improving cross-platform compatibility</p>
+                            </div>
+                            <div class="contrib-card">
+                                <h4>📦 Package Managers</h4>
+                                <p>Adding support for more package managers</p>
+                            </div>
+                        </div>
+
+                        <div class="tip">
+                            <span class="tip-icon" aria-hidden="true">📖</span>
+                            <div>
+                                <strong>Read More:</strong> See <a href="https://github.com/serkanyersen/dotstate/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener noreferrer">CONTRIBUTING.md</a> for detailed guidelines.
+                            </div>
+                        </div>
+                    </div>
+                </article>
+            </main>
+        </div>
+
+        <!-- Footer -->
+        <footer class="footer" role="contentinfo">
+            <div class="footer-content">
+                <div class="footer-links">
+                    <a href="https://github.com/serkanyersen/dotstate" target="_blank" rel="noopener noreferrer">GitHub</a> |
+                    <a href="https://crates.io/crates/dotstate" target="_blank" rel="noopener noreferrer">Crates.io</a> |
+                    <a href="https://github.com/serkanyersen/dotstate/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener noreferrer">Contributing</a> |
+                    <a href="https://github.com/serkanyersen/dotstate/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">License</a>
+                </div>
+                <p class="footer-license">Made with ❤️ and Rust | MIT License</p>
+                <p class="footer-nav">↑↓: Navigate | Enter/Click: Select | q: Quit</p>
+            </div>
+        </footer>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

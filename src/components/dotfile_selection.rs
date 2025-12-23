@@ -16,6 +16,8 @@ use ratatui::widgets::{
     StatefulWidget, Wrap,
 };
 use std::path::{Path, PathBuf};
+use syntect::highlighting::Theme;
+use syntect::parsing::SyntaxSet;
 
 /// Dotfile selection component
 /// Note: Event handling is done in app.rs due to complex state dependencies
@@ -33,6 +35,8 @@ impl DotfileSelectionComponent {
         frame: &mut Frame,
         area: Rect,
         state: &mut UiState,
+        syntax_set: &SyntaxSet,
+        theme: &Theme,
     ) -> Result<()> {
         // Clear the entire area first to prevent background bleed-through
         frame.render_widget(Clear, area);
@@ -60,11 +64,11 @@ impl DotfileSelectionComponent {
         }
         // Check if file browser is active - render as popup
         else if selection_state.file_browser_mode {
-            self.render_file_browser(frame, area, selection_state, footer_chunk)?;
+            self.render_file_browser(frame, area, selection_state, footer_chunk, syntax_set, theme)?;
         } else if selection_state.adding_custom_file {
             self.render_custom_file_input(frame, content_chunk, footer_chunk, selection_state)?;
         } else {
-            self.render_dotfile_list(frame, content_chunk, footer_chunk, selection_state)?;
+            self.render_dotfile_list(frame, content_chunk, footer_chunk, selection_state, syntax_set, theme)?;
         }
 
         Ok(())
@@ -76,6 +80,8 @@ impl DotfileSelectionComponent {
         area: Rect,
         selection_state: &mut crate::ui::DotfileSelectionState,
         footer_chunk: Rect,
+        syntax_set: &SyntaxSet,
+        theme: &Theme,
     ) -> Result<()> {
         // Create popup area (centered, 80% width, 70% height)
         let popup_area = center_popup(area, 80, 70);
@@ -260,6 +266,9 @@ impl DotfileSelectionComponent {
                     selection_state.file_browser_preview_scroll,
                     is_focused,
                     Some(preview_title),
+                    None,
+                    syntax_set,
+                    theme,
                 )?;
             } else {
                 let empty_preview = Paragraph::new("No selection").block(
@@ -347,6 +356,8 @@ impl DotfileSelectionComponent {
         content_chunk: Rect,
         footer_chunk: Rect,
         selection_state: &mut crate::ui::DotfileSelectionState,
+        syntax_set: &SyntaxSet,
+        theme: &Theme,
     ) -> Result<()> {
         // Split content into left (list + description) and right (preview)
         let (left_area, preview_area_opt) = if selection_state.status_message.is_some() {
@@ -496,6 +507,9 @@ impl DotfileSelectionComponent {
                         selection_state.preview_scroll,
                         is_focused,
                         Some(&preview_title),
+                        None,
+                        syntax_set,
+                        theme,
                     )?;
                 } else {
                     let empty_preview = Paragraph::new("No file selected").block(

@@ -1,16 +1,20 @@
 use anyhow::Result;
 use ratatui::prelude::*;
-use ratatui::text::{Line, Text};
+use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{
     Block, Borders, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Wrap,
 };
 use std::path::PathBuf;
+use syntect::easy::HighlightLines;
+use syntect::highlighting::{Style as SyntectStyle, Theme};
+use syntect::parsing::SyntaxSet;
+use syntect::util::LinesWithEndings;
 
 /// Common file preview component
 pub struct FilePreview;
 
 impl FilePreview {
-    /// Render a file preview with proper whitespace handling and scrollbar
+    /// Render a file preview with syntax highlighting
     ///
     /// # Arguments
     /// * `frame` - The frame to render to
@@ -19,16 +23,8 @@ impl FilePreview {
     /// * `scroll_offset` - Number of lines to skip from the top
     /// * `focused` - Whether the preview pane is focused (for border color)
     /// * `title` - Optional custom title (defaults to "Preview")
-    ///
-    /// # Returns
-    /// Result indicating success or failure
-    ///
-    /// # Scrollbar Tutorial
-    /// A scrollbar shows the user's position in a scrollable content area.
-    /// In Ratatui, scrollbars require three pieces of information:
-    /// 1. **Total Content Size**: How many lines/items exist in total
-    /// 2. **Visible Area Size**: How many lines/items can be seen at once
-    /// 3. **Current Position**: Where in the content we're currently viewing
+    /// * `syntax_set` - Syntax definitions for highlighting
+    /// * `theme` - Theme for highlighting
     pub fn render(
         frame: &mut Frame,
         area: Rect,
@@ -36,6 +32,9 @@ impl FilePreview {
         scroll_offset: usize,
         focused: bool,
         title: Option<&str>,
+        content_override: Option<&str>,
+        syntax_set: &SyntaxSet,
+        theme: &Theme,
     ) -> Result<()> {
         let preview_title = title.unwrap_or("Preview");
         let border_style = if focused {
@@ -44,29 +43,100 @@ impl FilePreview {
             Style::default()
         };
 
-        // Read file content and render with proper whitespace preservation
-        if file_path.is_file() {
-            match std::fs::read_to_string(file_path) {
+        // Read file content or use override
+        if file_path.is_file() || content_override.is_some() {
+            let content_result = if let Some(content) = content_override {
+                Ok(content.to_string())
+            } else {
+                std::fs::read_to_string(file_path)
+            };
+
+            match content_result {
                 Ok(content) => {
-                    // Split by newline to preserve line structure and whitespace
-                    let all_lines: Vec<&str> = content.split('\n').collect();
-                    let total_lines = all_lines.len();
+                    let total_lines = content.lines().count().max(1);
                     let visible_height = area.height.saturating_sub(4) as usize; // Account for borders
 
-                    // Get lines to display
-                    let start_line = scroll_offset.min(total_lines.saturating_sub(1));
-                    let end_line = (start_line + visible_height).min(total_lines);
+                    // Determine syntax
+                    let syntax = if let Some(content_str) = content_override {
+                        // If content override is provided, try to detect syntax from content or default to Diff if it looks like one
+                        if content_str.starts_with("diff --git") || content_str.starts_with("--- a/") {
+                             syntax_set.find_syntax_by_name("Diff")
+                                .or_else(|| syntax_set.find_syntax_by_extension("diff"))
+                                .or_else(|| syntax_set.find_syntax_by_extension("patch"))
+                                .unwrap_or_else(|| syntax_set.find_syntax_plain_text())
+                        } else {
+                            // Try to guess from file extension first if path matches
+                            syntax_set
+                                .find_syntax_for_file(file_path)
+                                .unwrap_or(None)
+                                .unwrap_or_else(|| syntax_set.find_syntax_plain_text())
+                        }
+                    } else {
+                        // Standard detection logic
+                        // First check for overrides based on filename
+                        let file_name = file_path
+                            .file_name()
+                            .and_then(|n| n.to_str())
+                            .unwrap_or("");
 
-                    // Convert to Line objects using raw() to preserve all whitespace
-                    let preview_lines: Vec<Line> = all_lines[start_line..end_line]
-                        .iter()
-                        .map(|line| Line::raw(*line)) // Use raw() to preserve whitespace
-                        .collect();
+                        if file_name.ends_with("rc") || file_name.contains("profile") || file_name == ".aliases" || file_name == ".functions" {
+                            // Assume shell for *rc files, profile, aliases, functions
+                            syntax_set.find_syntax_by_name("Bourne Again Shell (bash)")
+                                .or_else(|| syntax_set.find_syntax_by_extension("sh"))
+                                .or_else(|| syntax_set.find_syntax_for_file(file_path).unwrap_or(None))
+                                .unwrap_or_else(|| syntax_set.find_syntax_plain_text())
+                        } else if file_name.ends_with(".conf") || file_name.ends_with(".config") {
+                             // Try to find a specific syntax, otherwise fallback to INI/Shell or just rely on extension
+                             syntax_set.find_syntax_for_file(file_path)
+                                .unwrap_or(None)
+                                .or_else(|| syntax_set.find_syntax_by_extension("ini"))
+                                .unwrap_or_else(|| syntax_set.find_syntax_plain_text())
+                        } else if file_name.ends_with(".vim") || file_name == ".vimrc" || file_name.contains("vim") {
+                            syntax_set.find_syntax_by_extension("vim")
+                                .or_else(|| syntax_set.find_syntax_by_name("VimL"))
+                                .or_else(|| syntax_set.find_syntax_by_name("Vim Script"))
+                                .or_else(|| syntax_set.find_syntax_by_extension("lua"))
+                                .unwrap_or_else(|| syntax_set.find_syntax_plain_text())
+                        } else {
+                            // Standard detection
+                            syntax_set
+                                .find_syntax_for_file(file_path)
+                                .unwrap_or(None)
+                                .unwrap_or_else(|| syntax_set.find_syntax_plain_text())
+                        }
+                    };
+
+                    let mut highlighter = HighlightLines::new(syntax, theme);
+
+                    // Skip lines up to scroll_offset efficiently
+                    let mut lines_iter = LinesWithEndings::from(&content);
+                    for _ in 0..scroll_offset {
+                        lines_iter.next();
+                    }
+
+                    // Process only visible lines
+                    let mut preview_lines = Vec::new();
+                    for line in lines_iter.take(visible_height) {
+                        // Highlight the line
+                        let ranges: Vec<(SyntectStyle, &str)> =
+                            highlighter.highlight_line(line, syntax_set).unwrap_or_default();
+
+                        // Convert to Ratatui spans
+                        let spans: Vec<Span> = ranges
+                            .into_iter()
+                            .map(|(style, text)| {
+                                let fg = Color::Rgb(style.foreground.r, style.foreground.g, style.foreground.b);
+                                Span::styled(text.to_string(), Style::default().fg(fg))
+                            })
+                            .collect();
+                        preview_lines.push(Line::from(spans));
+                    }
 
                     // Create text with lines
                     let mut preview_text = Text::from(preview_lines);
 
                     // Add footer info if there are more lines
+                    let end_line = (scroll_offset + visible_height).min(total_lines);
                     if total_lines > end_line {
                         preview_text.extend([
                             Line::from(""),
@@ -74,7 +144,7 @@ impl FilePreview {
                             Line::from(format!(
                                 "... ({} total lines, showing lines {}-{})",
                                 total_lines,
-                                start_line + 1,
+                                scroll_offset + 1,
                                 end_line
                             )),
                         ]);
@@ -93,39 +163,20 @@ impl FilePreview {
                     frame.render_widget(preview, area);
 
                     // === SCROLLBAR IMPLEMENTATION ===
-                    // Now let's add a scrollbar to show the user's position in the file
-
-                    // Step 1: Create a ScrollbarState
-                    // This struct tracks the scrollbar's position and content size
                     let mut scrollbar_state = ScrollbarState::new(total_lines)
-                        // `new(total_lines)` sets the total content size
-                        // In our case, it's the total number of lines in the file
                         .position(scroll_offset);
-                    // `.position(scroll_offset)` sets where we're currently viewing
-                    // This is the line number at the top of the visible area
 
-                    // Step 2: Create the Scrollbar widget
-                    // The scrollbar is a visual indicator on the right edge
                     let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
-                        // VerticalRight means the scrollbar appears on the right edge
-                        // (There's also VerticalLeft, HorizontalTop, HorizontalBottom)
-                        .begin_symbol(Some("↑")) // Arrow at the top
-                        .end_symbol(Some("↓")) // Arrow at the bottom
-                        .track_symbol(Some("│")) // The track/rail the thumb moves on
-                        .thumb_symbol("█"); // The draggable part (shows current position)
-                                            // Note: The thumb size is automatically calculated based on
-                                            // visible_area / total_content ratio
+                        .begin_symbol(Some("↑"))
+                        .end_symbol(Some("↓"))
+                        .track_symbol(Some("│"))
+                        .thumb_symbol("█");
 
-                    // Step 3: Render the scrollbar
-                    // We render it in the same `area` as the paragraph
-                    // The scrollbar automatically positions itself on the right edge
                     frame.render_stateful_widget(
-                        scrollbar,            // The widget to render
-                        area,                 // Where to render it (same as the preview)
-                        &mut scrollbar_state, // The state that controls its position
+                        scrollbar,
+                        area,
+                        &mut scrollbar_state,
                     );
-                    // Note: `render_stateful_widget` is used instead of `render_widget`
-                    // because the scrollbar needs to know about the state (position, size)
                 }
                 Err(_) => {
                     let error_text = format!("Unable to read file: {:?}", file_path);
@@ -161,6 +212,6 @@ impl FilePreview {
             frame.render_widget(preview, area);
         }
 
-        Ok(()) // Return Ok since we're rendering directly
+        Ok(())
     }
 }

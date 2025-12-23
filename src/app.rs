@@ -22,6 +22,8 @@ use crossterm::event::{
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
+use syntect::highlighting::Theme;
+use syntect::parsing::SyntaxSet;
 use tokio::runtime::Runtime;
 use tracing::{debug, error, info, trace, warn};
 // Frame and Rect are used in function signatures but imported where needed
@@ -77,6 +79,9 @@ pub struct App {
     profile_manager_component: ProfileManagerComponent,
     package_manager_component: PackageManagerComponent,
     message_component: Option<MessageComponent>,
+    // Syntax highlighting assets
+    syntax_set: SyntaxSet,
+    theme: Theme,
 }
 
 impl App {
@@ -87,7 +92,28 @@ impl App {
         let file_manager = FileManager::new()?;
         let tui = Tui::new()?;
         let ui_state = UiState::new();
+
         let runtime = Runtime::new().context("Failed to create tokio runtime")?;
+
+        // Initialize syntax highlighting
+        let syntax_set = SyntaxSet::load_defaults_newlines();
+        let theme_set = syntect::highlighting::ThemeSet::load_defaults();
+        // Use a dark theme that contrasts well with standard terminal colors
+        let theme = theme_set
+            .themes
+            .get("base16-ocean.dark")
+            .or_else(|| theme_set.themes.get("base16-eighties.dark"))
+            .or_else(|| theme_set.themes.get("base16-mocha.dark"))
+            .cloned()
+            .unwrap_or_else(|| {
+                // Fallback if specific themes aren't available
+                theme_set
+                    .themes
+                    .values()
+                    .next()
+                    .cloned()
+                    .expect("No themes available")
+            });
 
         let has_changes = false; // Will be checked on first draw
         let config_clone = config.clone();
@@ -107,7 +133,10 @@ impl App {
             push_changes_component: PushChangesComponent::new(),
             profile_manager_component: ProfileManagerComponent::new(),
             package_manager_component: PackageManagerComponent::new(),
+
             message_component: None,
+            syntax_set,
+            theme,
         })
     }
 
@@ -314,7 +343,13 @@ impl App {
                 }
                 Screen::DotfileSelection => {
                     // Component handles all rendering including Clear
-                    if let Err(e) = self.dotfile_selection_component.render_with_state(frame, area, &mut self.ui_state) {
+                    if let Err(e) = self.dotfile_selection_component.render_with_state(
+                        frame,
+                        area,
+                        &mut self.ui_state,
+                        &self.syntax_set,
+                        &self.theme,
+                    ) {
                         eprintln!("Error rendering dotfile selection: {}", e);
                     }
                 }
@@ -323,7 +358,13 @@ impl App {
                 }
                 Screen::SyncWithRemote => {
                     // Component handles all rendering including Clear
-                    if let Err(e) = self.push_changes_component.render_with_state(frame, area, &mut self.ui_state.sync_with_remote) {
+                    if let Err(e) = self.push_changes_component.render_with_state(
+                        frame,
+                        area,
+                        &mut self.ui_state.sync_with_remote,
+                        &self.syntax_set,
+                        &self.theme,
+                    ) {
                         eprintln!("Error rendering sync with remote: {}", e);
                     }
                 }
@@ -557,10 +598,23 @@ impl App {
                                 }
                             }
                             KeyCode::Up => {
-                                self.ui_state.sync_with_remote.list_state.select_previous();
+                                if key.modifiers.contains(KeyModifiers::SHIFT) {
+                                    // Scroll preview up
+                                    self.ui_state.sync_with_remote.preview_scroll =
+                                        self.ui_state.sync_with_remote.preview_scroll.saturating_sub(1);
+                                } else {
+                                    self.ui_state.sync_with_remote.list_state.select_previous();
+                                    self.update_diff_preview();
+                                }
                             }
                             KeyCode::Down => {
-                                self.ui_state.sync_with_remote.list_state.select_next();
+                                if key.modifiers.contains(KeyModifiers::SHIFT) {
+                                    // Scroll preview down
+                                    self.ui_state.sync_with_remote.preview_scroll += 1;
+                                } else {
+                                    self.ui_state.sync_with_remote.list_state.select_next();
+                                    self.update_diff_preview();
+                                }
                             }
                             KeyCode::PageUp => {
                                 if let Some(current) =
@@ -571,6 +625,7 @@ impl App {
                                         .sync_with_remote
                                         .list_state
                                         .select(Some(new_index));
+                                    self.update_diff_preview();
                                 }
                             }
                             KeyCode::PageDown => {
@@ -588,13 +643,16 @@ impl App {
                                         .sync_with_remote
                                         .list_state
                                         .select(Some(new_index));
+                                    self.update_diff_preview();
                                 }
                             }
                             KeyCode::Home => {
                                 self.ui_state.sync_with_remote.list_state.select_first();
+                                self.update_diff_preview();
                             }
                             KeyCode::End => {
                                 self.ui_state.sync_with_remote.list_state.select_last();
+                                self.update_diff_preview();
                             }
                             _ => {}
                         }
@@ -603,8 +661,10 @@ impl App {
                     // Handle mouse events for list navigation
                     if let MouseEventKind::ScrollUp = mouse.kind {
                         self.ui_state.sync_with_remote.list_state.select_previous();
+                        self.update_diff_preview();
                     } else if let MouseEventKind::ScrollDown = mouse.kind {
                         self.ui_state.sync_with_remote.list_state.select_next();
+                        self.update_diff_preview();
                     } else if let MouseEventKind::Down(MouseButton::Left) = mouse.kind {
                         // Click to sync or close popup
                         if self.ui_state.sync_with_remote.show_result_popup {
@@ -1427,7 +1487,12 @@ impl App {
                                                     }
                                                     Err(e) => {
                                                         error!("Failed to create profile: {}", e);
-                                                        // TODO: Show error message in UI
+                                                        // Show error message in UI
+                                                        self.message_component = Some(MessageComponent::new(
+                                                            "Profile Creation Failed".to_string(),
+                                                            format!("Failed to create profile '{}':\n{}", name, e),
+                                                            Screen::ManageProfiles,
+                                                        ));
                                                     }
                                                 }
                                                 return Ok(());
@@ -1653,7 +1718,12 @@ impl App {
                                                                     "Failed to rename profile: {}",
                                                                     e
                                                                 );
-                                                                // TODO: Show error message in UI
+                                                                // Show error message in UI
+                                                                self.message_component = Some(MessageComponent::new(
+                                                                    "Profile Rename Failed".to_string(),
+                                                                    format!("Failed to rename profile '{}' to '{}':\n{}", old_name, new_name, e),
+                                                                    Screen::ManageProfiles,
+                                                                ));
                                                             }
                                                         }
                                                         return Ok(());
@@ -4565,10 +4635,45 @@ impl App {
                 // Select first item if list is not empty
                 if !self.ui_state.sync_with_remote.changed_files.is_empty() {
                     self.ui_state.sync_with_remote.list_state.select(Some(0));
+                    self.update_diff_preview();
                 }
             }
             Err(_) => {
                 self.ui_state.sync_with_remote.changed_files = vec![];
+            }
+        }
+    }
+
+    /// Update the diff preview based on the selected file
+    fn update_diff_preview(&mut self) {
+        // Clear existing diff content
+        self.ui_state.sync_with_remote.diff_content = None;
+
+        let selected_idx = if let Some(idx) = self.ui_state.sync_with_remote.list_state.selected() {
+            idx
+        } else {
+            return;
+        };
+
+        if selected_idx >= self.ui_state.sync_with_remote.changed_files.len() {
+            return;
+        }
+
+        let file_info = &self.ui_state.sync_with_remote.changed_files[selected_idx];
+        // Format is "X filename"
+        let parts: Vec<&str> = file_info.splitn(2, ' ').collect();
+        if parts.len() != 2 {
+            return;
+        }
+        let path_str = parts[1].trim();
+
+        // Use repo_path from config
+        let repo_path = &self.config.repo_path;
+
+        if let Ok(git_mgr) = GitManager::open_or_init(repo_path) {
+            if let Ok(Some(diff)) = git_mgr.get_diff_for_file(path_str) {
+                self.ui_state.sync_with_remote.diff_content = Some(diff);
+                self.ui_state.sync_with_remote.preview_scroll = 0;
             }
         }
     }

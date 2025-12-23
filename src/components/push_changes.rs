@@ -11,6 +11,9 @@ use ratatui::widgets::{
     Block, Borders, Clear, List, ListItem, Paragraph, Scrollbar, ScrollbarOrientation,
     StatefulWidget, Wrap,
 };
+use syntect::highlighting::Theme;
+use syntect::parsing::SyntaxSet;
+use crate::utils::create_split_layout;
 
 /// Push changes component - shows list of changes and allows pushing
 pub struct PushChangesComponent;
@@ -45,6 +48,8 @@ impl PushChangesComponent {
         frame: &mut Frame,
         area: Rect,
         state: &mut SyncWithRemoteState,
+        syntax_set: &SyntaxSet,
+        theme: &Theme,
     ) -> Result<()> {
         // Clear the entire area first
         frame.render_widget(Clear, area);
@@ -139,6 +144,11 @@ impl PushChangesComponent {
                 );
                 frame.render_widget(empty_message, content_chunk);
             } else {
+                // Split content into List (Left) and Preview (Right)
+                let chunks = create_split_layout(content_chunk, &[50, 50]);
+                let list_area = chunks[0];
+                let preview_area = chunks[1];
+
                 // Update scrollbar state
                 let total_items = state.changed_files.len();
                 let selected_index = state.list_state.selected().unwrap_or(0);
@@ -182,7 +192,7 @@ impl PushChangesComponent {
 
                 StatefulWidget::render(
                     list,
-                    content_chunk,
+                    list_area,
                     frame.buffer_mut(),
                     &mut state.list_state,
                 );
@@ -192,9 +202,40 @@ impl PushChangesComponent {
                     Scrollbar::new(ScrollbarOrientation::VerticalRight)
                         .begin_symbol(Some("↑"))
                         .end_symbol(Some("↓")),
-                    content_chunk,
+                    list_area,
                     &mut state.scrollbar_state,
                 );
+
+                // Render Preview
+                if let Some(selected_idx) = state.list_state.selected() {
+                    if selected_idx < state.changed_files.len() {
+                         let file_info = &state.changed_files[selected_idx];
+                         // format is "X filename"
+                         let parts: Vec<&str> = file_info.splitn(2, ' ').collect();
+                         if parts.len() == 2 {
+                             let path_str = parts[1].trim();
+                             let path = std::path::PathBuf::from(path_str);
+                             let preview_title = format!("Diff: {}", path_str);
+
+                             use crate::components::file_preview::FilePreview;
+                             FilePreview::render(
+                                 frame,
+                                 preview_area,
+                                 &path,
+                                 state.preview_scroll,
+                                 false, // Not focused for now (could add focus switching)
+                                 Some(&preview_title),
+                                 state.diff_content.as_deref(),
+                                 syntax_set,
+                                 theme,
+                             )?;
+                         }
+                    }
+                } else {
+                     let empty_preview = Paragraph::new("Select a file to view changes")
+                        .block(Block::default().borders(Borders::ALL).title("Preview"));
+                     frame.render_widget(empty_preview, preview_area);
+                }
             }
         }
 
