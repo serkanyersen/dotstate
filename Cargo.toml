@@ -8,7 +8,7 @@ license = "MIT"
 repository = "https://github.com/serkanyersen/dotstate"
 homepage = "https://github.com/serkanyersen/dotstate"
 documentation = "https://github.com/serkanyersen/dotstate"
-keywords = ["dotfiles", "tui", "git", "github", "sync", "configuration"]
+keywords = ["dotfiles", "tui", "git", "github", "sync"]
 categories = ["command-line-utilities", "development-tools"]
 readme = "README.md"
 
