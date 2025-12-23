@@ -45,3 +45,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [Unreleased]: https://github.com/serkanyersen/dotstate/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/serkanyersen/dotstate/releases/tag/v0.1.0
 
+## [0.1.1] - 2025-12-23
+
+### Added
+- Syntax Highlighting for file previews
+- Added preview to sync changes page
+- added website
+
