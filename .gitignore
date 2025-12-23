@@ -25,3 +25,4 @@ Thumbs.db
 # Temporary files
 *.tmp
 *.bak
+.llm_docs/
