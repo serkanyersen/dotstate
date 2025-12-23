@@ -64,11 +64,25 @@ impl DotfileSelectionComponent {
         }
         // Check if file browser is active - render as popup
         else if selection_state.file_browser_mode {
-            self.render_file_browser(frame, area, selection_state, footer_chunk, syntax_set, theme)?;
+            self.render_file_browser(
+                frame,
+                area,
+                selection_state,
+                footer_chunk,
+                syntax_set,
+                theme,
+            )?;
         } else if selection_state.adding_custom_file {
             self.render_custom_file_input(frame, content_chunk, footer_chunk, selection_state)?;
         } else {
-            self.render_dotfile_list(frame, content_chunk, footer_chunk, selection_state, syntax_set, theme)?;
+            self.render_dotfile_list(
+                frame,
+                content_chunk,
+                footer_chunk,
+                selection_state,
+                syntax_set,
+                theme,
+            )?;
         }
 
         Ok(())

@@ -3,6 +3,7 @@ use crate::components::footer::Footer;
 use crate::components::header::Header;
 use crate::components::message_box::MessageBox;
 use crate::ui::SyncWithRemoteState;
+use crate::utils::create_split_layout;
 use crate::utils::{center_popup, create_standard_layout, focused_border_style};
 use anyhow::Result;
 use crossterm::event::Event;
@@ -13,7 +14,6 @@ use ratatui::widgets::{
 };
 use syntect::highlighting::Theme;
 use syntect::parsing::SyntaxSet;
-use crate::utils::create_split_layout;
 
 /// Push changes component - shows list of changes and allows pushing
 pub struct PushChangesComponent;
@@ -190,12 +190,7 @@ impl PushChangesComponent {
                     )
                     .highlight_symbol("> ");
 
-                StatefulWidget::render(
-                    list,
-                    list_area,
-                    frame.buffer_mut(),
-                    &mut state.list_state,
-                );
+                StatefulWidget::render(list, list_area, frame.buffer_mut(), &mut state.list_state);
 
                 // Render scrollbar
                 frame.render_stateful_widget(
@@ -209,32 +204,32 @@ impl PushChangesComponent {
                 // Render Preview
                 if let Some(selected_idx) = state.list_state.selected() {
                     if selected_idx < state.changed_files.len() {
-                         let file_info = &state.changed_files[selected_idx];
-                         // format is "X filename"
-                         let parts: Vec<&str> = file_info.splitn(2, ' ').collect();
-                         if parts.len() == 2 {
-                             let path_str = parts[1].trim();
-                             let path = std::path::PathBuf::from(path_str);
-                             let preview_title = format!("Diff: {}", path_str);
+                        let file_info = &state.changed_files[selected_idx];
+                        // format is "X filename"
+                        let parts: Vec<&str> = file_info.splitn(2, ' ').collect();
+                        if parts.len() == 2 {
+                            let path_str = parts[1].trim();
+                            let path = std::path::PathBuf::from(path_str);
+                            let preview_title = format!("Diff: {}", path_str);
 
-                             use crate::components::file_preview::FilePreview;
-                             FilePreview::render(
-                                 frame,
-                                 preview_area,
-                                 &path,
-                                 state.preview_scroll,
-                                 false, // Not focused for now (could add focus switching)
-                                 Some(&preview_title),
-                                 state.diff_content.as_deref(),
-                                 syntax_set,
-                                 theme,
-                             )?;
-                         }
+                            use crate::components::file_preview::FilePreview;
+                            FilePreview::render(
+                                frame,
+                                preview_area,
+                                &path,
+                                state.preview_scroll,
+                                false, // Not focused for now (could add focus switching)
+                                Some(&preview_title),
+                                state.diff_content.as_deref(),
+                                syntax_set,
+                                theme,
+                            )?;
+                        }
                     }
                 } else {
-                     let empty_preview = Paragraph::new("Select a file to view changes")
+                    let empty_preview = Paragraph::new("Select a file to view changes")
                         .block(Block::default().borders(Borders::ALL).title("Preview"));
-                     frame.render_widget(empty_preview, preview_area);
+                    frame.render_widget(empty_preview, preview_area);
                 }
             }
         }

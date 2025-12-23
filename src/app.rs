@@ -600,8 +600,11 @@ impl App {
                             KeyCode::Up => {
                                 if key.modifiers.contains(KeyModifiers::SHIFT) {
                                     // Scroll preview up
-                                    self.ui_state.sync_with_remote.preview_scroll =
-                                        self.ui_state.sync_with_remote.preview_scroll.saturating_sub(1);
+                                    self.ui_state.sync_with_remote.preview_scroll = self
+                                        .ui_state
+                                        .sync_with_remote
+                                        .preview_scroll
+                                        .saturating_sub(1);
                                 } else {
                                     self.ui_state.sync_with_remote.list_state.select_previous();
                                     self.update_diff_preview();

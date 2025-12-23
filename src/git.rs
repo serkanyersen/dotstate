@@ -842,7 +842,9 @@ impl GitManager {
         diff_opts.context_lines(3); // Standard context
 
         // 1. Check for unstaged changes (Workdir vs Index)
-        let diff_workdir = self.repo.diff_index_to_workdir(None, Some(&mut diff_opts))
+        let diff_workdir = self
+            .repo
+            .diff_index_to_workdir(None, Some(&mut diff_opts))
             .context("Failed to get workdir diff")?;
 
         // 2. Check for staged changes (Index vs HEAD)
@@ -852,8 +854,11 @@ impl GitManager {
         };
 
         let diff_index = if let Some(tree) = head_tree.as_ref() {
-            Some(self.repo.diff_tree_to_index(Some(tree), Some(&self.repo.index()?), Some(&mut diff_opts))
-                .context("Failed to get index diff")?)
+            Some(
+                self.repo
+                    .diff_tree_to_index(Some(tree), Some(&self.repo.index()?), Some(&mut diff_opts))
+                    .context("Failed to get index diff")?,
+            )
         } else {
             None
         };
@@ -865,17 +870,18 @@ impl GitManager {
 
         // Helper to format a diff into the buffer
         let print_diff = |diff: &git2::Diff, buf: &mut Vec<u8>| -> Result<()> {
-             diff.print(git2::DiffFormat::Patch, |_delta, _hunk, line| {
+            diff.print(git2::DiffFormat::Patch, |_delta, _hunk, line| {
                 let origin = line.origin();
                 match origin {
                     '+' | '-' | ' ' => {
-                        let _ = buf.push(origin as u8);
+                        buf.push(origin as u8);
                     }
                     _ => {}
                 }
-                let _ = buf.extend_from_slice(line.content());
+                buf.extend_from_slice(line.content());
                 true
-            }).map_err(|e| anyhow::anyhow!("Diff print error: {}", e))?;
+            })
+            .map_err(|e| anyhow::anyhow!("Diff print error: {}", e))?;
             Ok(())
         };
 
@@ -888,15 +894,20 @@ impl GitManager {
             // Might be an untracked file or binary?
             // If it's untracked (New), we might want to just show the file content
             let path_obj = Path::new(path);
-             if path_obj.exists() && path_obj.is_file() {
-                 // Check if it's untracked
-                 let status = self.repo.status_file(path_obj).unwrap_or(git2::Status::empty());
-                 if status.contains(git2::Status::WT_NEW) {
-                     return Ok(Some(std::fs::read_to_string(path_obj)
-                        .unwrap_or_else(|_| "Binary file or unreadable".to_string())));
-                 }
-             }
-             return Ok(None);
+            if path_obj.exists() && path_obj.is_file() {
+                // Check if it's untracked
+                let status = self
+                    .repo
+                    .status_file(path_obj)
+                    .unwrap_or(git2::Status::empty());
+                if status.contains(git2::Status::WT_NEW) {
+                    return Ok(Some(
+                        std::fs::read_to_string(path_obj)
+                            .unwrap_or_else(|_| "Binary file or unreadable".to_string()),
+                    ));
+                }
+            }
+            return Ok(None);
         }
 
         Ok(Some(String::from_utf8_lossy(&diff_buf).to_string()))

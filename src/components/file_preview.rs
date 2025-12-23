@@ -25,6 +25,7 @@ impl FilePreview {
     /// * `title` - Optional custom title (defaults to "Preview")
     /// * `syntax_set` - Syntax definitions for highlighting
     /// * `theme` - Theme for highlighting
+    #[allow(clippy::too_many_arguments)]
     pub fn render(
         frame: &mut Frame,
         area: Rect,
@@ -59,8 +60,11 @@ impl FilePreview {
                     // Determine syntax
                     let syntax = if let Some(content_str) = content_override {
                         // If content override is provided, try to detect syntax from content or default to Diff if it looks like one
-                        if content_str.starts_with("diff --git") || content_str.starts_with("--- a/") {
-                             syntax_set.find_syntax_by_name("Diff")
+                        if content_str.starts_with("diff --git")
+                            || content_str.starts_with("--- a/")
+                        {
+                            syntax_set
+                                .find_syntax_by_name("Diff")
                                 .or_else(|| syntax_set.find_syntax_by_extension("diff"))
                                 .or_else(|| syntax_set.find_syntax_by_extension("patch"))
                                 .unwrap_or_else(|| syntax_set.find_syntax_plain_text())
@@ -74,25 +78,35 @@ impl FilePreview {
                     } else {
                         // Standard detection logic
                         // First check for overrides based on filename
-                        let file_name = file_path
-                            .file_name()
-                            .and_then(|n| n.to_str())
-                            .unwrap_or("");
+                        let file_name =
+                            file_path.file_name().and_then(|n| n.to_str()).unwrap_or("");
 
-                        if file_name.ends_with("rc") || file_name.contains("profile") || file_name == ".aliases" || file_name == ".functions" {
+                        if file_name.ends_with("rc")
+                            || file_name.contains("profile")
+                            || file_name == ".aliases"
+                            || file_name == ".functions"
+                        {
                             // Assume shell for *rc files, profile, aliases, functions
-                            syntax_set.find_syntax_by_name("Bourne Again Shell (bash)")
+                            syntax_set
+                                .find_syntax_by_name("Bourne Again Shell (bash)")
                                 .or_else(|| syntax_set.find_syntax_by_extension("sh"))
-                                .or_else(|| syntax_set.find_syntax_for_file(file_path).unwrap_or(None))
+                                .or_else(|| {
+                                    syntax_set.find_syntax_for_file(file_path).unwrap_or(None)
+                                })
                                 .unwrap_or_else(|| syntax_set.find_syntax_plain_text())
                         } else if file_name.ends_with(".conf") || file_name.ends_with(".config") {
-                             // Try to find a specific syntax, otherwise fallback to INI/Shell or just rely on extension
-                             syntax_set.find_syntax_for_file(file_path)
+                            // Try to find a specific syntax, otherwise fallback to INI/Shell or just rely on extension
+                            syntax_set
+                                .find_syntax_for_file(file_path)
                                 .unwrap_or(None)
                                 .or_else(|| syntax_set.find_syntax_by_extension("ini"))
                                 .unwrap_or_else(|| syntax_set.find_syntax_plain_text())
-                        } else if file_name.ends_with(".vim") || file_name == ".vimrc" || file_name.contains("vim") {
-                            syntax_set.find_syntax_by_extension("vim")
+                        } else if file_name.ends_with(".vim")
+                            || file_name == ".vimrc"
+                            || file_name.contains("vim")
+                        {
+                            syntax_set
+                                .find_syntax_by_extension("vim")
                                 .or_else(|| syntax_set.find_syntax_by_name("VimL"))
                                 .or_else(|| syntax_set.find_syntax_by_name("Vim Script"))
                                 .or_else(|| syntax_set.find_syntax_by_extension("lua"))
@@ -118,14 +132,19 @@ impl FilePreview {
                     let mut preview_lines = Vec::new();
                     for line in lines_iter.take(visible_height) {
                         // Highlight the line
-                        let ranges: Vec<(SyntectStyle, &str)> =
-                            highlighter.highlight_line(line, syntax_set).unwrap_or_default();
+                        let ranges: Vec<(SyntectStyle, &str)> = highlighter
+                            .highlight_line(line, syntax_set)
+                            .unwrap_or_default();
 
                         // Convert to Ratatui spans
                         let spans: Vec<Span> = ranges
                             .into_iter()
                             .map(|(style, text)| {
-                                let fg = Color::Rgb(style.foreground.r, style.foreground.g, style.foreground.b);
+                                let fg = Color::Rgb(
+                                    style.foreground.r,
+                                    style.foreground.g,
+                                    style.foreground.b,
+                                );
                                 Span::styled(text.to_string(), Style::default().fg(fg))
                             })
                             .collect();
@@ -163,8 +182,8 @@ impl FilePreview {
                     frame.render_widget(preview, area);
 
                     // === SCROLLBAR IMPLEMENTATION ===
-                    let mut scrollbar_state = ScrollbarState::new(total_lines)
-                        .position(scroll_offset);
+                    let mut scrollbar_state =
+                        ScrollbarState::new(total_lines).position(scroll_offset);
 
                     let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
                         .begin_symbol(Some("↑"))
@@ -172,11 +191,7 @@ impl FilePreview {
                         .track_symbol(Some("│"))
                         .thumb_symbol("█");
 
-                    frame.render_stateful_widget(
-                        scrollbar,
-                        area,
-                        &mut scrollbar_state,
-                    );
+                    frame.render_stateful_widget(scrollbar, area, &mut scrollbar_state);
                 }
                 Err(_) => {
                     let error_text = format!("Unable to read file: {:?}", file_path);
