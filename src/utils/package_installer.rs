@@ -1,10 +1,10 @@
-use anyhow::Result;
-use std::sync::mpsc;
-use std::process::{Stdio, Child};
-use std::io::{BufRead, BufReader};
-use std::thread;
-use crate::utils::profile_manifest::Package;
 use crate::utils::package_manager::PackageManagerImpl;
+use crate::utils::profile_manifest::Package;
+use anyhow::Result;
+use std::io::{BufRead, BufReader};
+use std::process::{Child, Stdio};
+use std::sync::mpsc;
+use std::thread;
 
 /// Package installer and checker utilities
 pub struct PackageInstaller;
@@ -32,10 +32,7 @@ impl PackageInstaller {
         // Build command (direct Command for managed, sh -c for custom)
         let mut cmd = PackageManagerImpl::get_install_command_builder(package);
 
-        let mut child = cmd
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()?;
+        let mut child = cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).spawn()?;
 
         // Channel for output lines
         let (tx, rx) = mpsc::channel::<String>();
@@ -43,24 +40,28 @@ impl PackageInstaller {
         let tx_stderr = tx.clone();
 
         // Spawn thread to read stdout
-        let stdout = child.stdout.take().ok_or_else(|| anyhow::anyhow!("Failed to capture stdout"))?;
+        let stdout = child
+            .stdout
+            .take()
+            .ok_or_else(|| anyhow::anyhow!("Failed to capture stdout"))?;
         thread::spawn(move || {
             let reader = BufReader::new(stdout);
-            for line in reader.lines() {
-                if let Ok(line) = line {
-                    let _ = tx_stdout.send(line);
-                }
+            #[allow(clippy::unnecessary_lazy_evaluations, clippy::lines_filter_map_ok)]
+            for line in reader.lines().flatten() {
+                let _ = tx_stdout.send(line);
             }
         });
 
         // Spawn thread to read stderr
-        let stderr = child.stderr.take().ok_or_else(|| anyhow::anyhow!("Failed to capture stderr"))?;
+        let stderr = child
+            .stderr
+            .take()
+            .ok_or_else(|| anyhow::anyhow!("Failed to capture stderr"))?;
         thread::spawn(move || {
             let reader = BufReader::new(stderr);
-            for line in reader.lines() {
-                if let Ok(line) = line {
-                    let _ = tx_stderr.send(format!("[stderr] {}", line));
-                }
+            #[allow(clippy::unnecessary_lazy_evaluations, clippy::lines_filter_map_ok)]
+            for line in reader.lines().flatten() {
+                let _ = tx_stderr.send(format!("[stderr] {}", line));
             }
         });
 
@@ -118,7 +119,9 @@ impl PackageInstaller {
         if let Some(package_name) = &package.package_name {
             // Only try manager check if manager is installed
             if PackageManagerImpl::is_manager_installed(&package.manager) {
-                if let Some(mut manager_cmd) = PackageManagerImpl::build_manager_check_command(&package.manager, package_name) {
+                if let Some(mut manager_cmd) =
+                    PackageManagerImpl::build_manager_check_command(&package.manager, package_name)
+                {
                     let output = manager_cmd.output()?;
                     return Ok((output.status.success(), true));
                 }
@@ -129,4 +132,3 @@ impl PackageInstaller {
         Ok((false, false))
     }
 }
-

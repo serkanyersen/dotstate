@@ -1,10 +1,9 @@
-use anyhow::{Context, Result};
-use clap::{Parser, Subcommand};
 use crate::config::Config;
 use crate::git::GitManager;
 use crate::utils::SymlinkManager;
+use anyhow::{Context, Result};
+use clap::{Parser, Subcommand};
 use std::path::PathBuf;
-
 
 /// A friendly TUI tool for managing dotfiles with GitHub sync
 #[derive(Parser, Debug)]
@@ -73,8 +72,8 @@ impl Cli {
     fn cmd_sync() -> Result<()> {
         let config_path = crate::utils::get_config_path();
 
-        let config = Config::load_or_create(&config_path)
-            .context("Failed to load configuration")?;
+        let config =
+            Config::load_or_create(&config_path).context("Failed to load configuration")?;
 
         if config.github.is_none() {
             eprintln!("❌ GitHub not configured. Please run 'dotstate' to set up GitHub sync.");
@@ -82,28 +81,33 @@ impl Cli {
         }
 
         let repo_path = &config.repo_path;
-        let git_mgr = GitManager::open_or_init(repo_path)
-            .context("Failed to open repository")?;
+        let git_mgr = GitManager::open_or_init(repo_path).context("Failed to open repository")?;
 
-        let branch = git_mgr.get_current_branch()
+        let branch = git_mgr
+            .get_current_branch()
             .unwrap_or_else(|| config.default_branch.clone());
-        let token = config.github.as_ref()
-            .and_then(|gh| gh.token.as_deref());
+        let token = config.github.as_ref().and_then(|gh| gh.token.as_deref());
 
         println!("📝 Committing changes...");
-        git_mgr.commit_all("Update dotfiles")
+        git_mgr
+            .commit_all("Update dotfiles")
             .context("Failed to commit changes")?;
 
         println!("📥 Pulling changes from remote (with rebase)...");
-        let pulled_count = git_mgr.pull_with_rebase("origin", &branch, token)
+        let pulled_count = git_mgr
+            .pull_with_rebase("origin", &branch, token)
             .context("Failed to pull from remote")?;
 
         println!("📤 Pushing to GitHub...");
-        git_mgr.push("origin", &branch, token)
+        git_mgr
+            .push("origin", &branch, token)
             .context("Failed to push to remote")?;
 
         if pulled_count > 0 {
-            println!("✅ Successfully synced with remote! Pulled {} change(s) from remote.", pulled_count);
+            println!(
+                "✅ Successfully synced with remote! Pulled {} change(s) from remote.",
+                pulled_count
+            );
         } else {
             println!("✅ Successfully synced with remote! No changes pulled from remote.");
         }
@@ -126,8 +130,8 @@ impl Cli {
     }
 
     fn cmd_repository() -> Result<()> {
-        let repo_path = crate::utils::get_repository_path()
-            .context("Failed to get repository path")?;
+        let repo_path =
+            crate::utils::get_repository_path().context("Failed to get repository path")?;
         println!("Repository is located at: {:?}", repo_path);
         Ok(())
     }
@@ -135,8 +139,8 @@ impl Cli {
     fn cmd_list(verbose: bool) -> Result<()> {
         let config_path = crate::utils::get_config_path();
 
-        let config = Config::load_or_create(&config_path)
-            .context("Failed to load configuration")?;
+        let config =
+            Config::load_or_create(&config_path).context("Failed to load configuration")?;
 
         if !config.profile_activated {
             eprintln!("⚠️  Profile is not activated. Please activate your profile first:");
@@ -149,7 +153,9 @@ impl Cli {
         let manifest = crate::utils::ProfileManifest::load_or_backfill(&config.repo_path)
             .context("Failed to load profile manifest")?;
         let empty_vec = Vec::new();
-        let synced_files = manifest.profiles.iter()
+        let synced_files = manifest
+            .profiles
+            .iter()
             .find(|p| p.name == config.active_profile)
             .map(|p| &p.synced_files)
             .unwrap_or(&empty_vec);
@@ -159,8 +165,7 @@ impl Cli {
             return Ok(());
         }
 
-        let home_dir = dirs::home_dir()
-            .context("Failed to get home directory")?;
+        let home_dir = dirs::home_dir().context("Failed to get home directory")?;
         let repo_path = &config.repo_path;
         let profile_name = &config.active_profile;
 
@@ -209,12 +214,11 @@ impl Cli {
         use crate::utils::SymlinkManager;
 
         let config_path = crate::utils::get_config_path();
-        let config = Config::load_or_create(&config_path)
-            .context("Failed to load configuration")?;
+        let config =
+            Config::load_or_create(&config_path).context("Failed to load configuration")?;
 
         // Resolve path relative to home directory
-        let home = dirs::home_dir()
-            .context("Failed to get home directory")?;
+        let home = dirs::home_dir().context("Failed to get home directory")?;
 
         let resolved_path = if path.is_absolute() {
             path
@@ -231,14 +235,20 @@ impl Cli {
         let repo_path = &config.repo_path;
         let (is_safe, reason) = crate::utils::is_safe_to_add(&resolved_path, repo_path);
         if !is_safe {
-            eprintln!("❌ {}", reason.unwrap_or_else(|| "Cannot add this path".to_string()));
+            eprintln!(
+                "❌ {}",
+                reason.unwrap_or_else(|| "Cannot add this path".to_string())
+            );
             eprintln!("   Path: {:?}", resolved_path);
             std::process::exit(1);
         }
 
         // Check if it's a git repo (deny if directory is a git repo)
         if resolved_path.is_dir() && crate::utils::is_git_repo(&resolved_path) {
-            eprintln!("❌ Cannot sync a git repository. Path contains a .git directory: {:?}", resolved_path);
+            eprintln!(
+                "❌ Cannot sync a git repository. Path contains a .git directory: {:?}",
+                resolved_path
+            );
             eprintln!("   You cannot have a git repository inside a git repository.");
             std::process::exit(1);
         }
@@ -252,7 +262,9 @@ impl Cli {
         io::stdout().flush().context("Failed to flush stdout")?;
 
         let mut input = String::new();
-        io::stdin().read_line(&mut input).context("Failed to read input")?;
+        io::stdin()
+            .read_line(&mut input)
+            .context("Failed to read input")?;
 
         let trimmed = input.trim().to_lowercase();
         if trimmed != "y" && trimmed != "yes" {
@@ -261,7 +273,8 @@ impl Cli {
         }
 
         // Get relative path from home
-        let relative_path = resolved_path.strip_prefix(&home)
+        let relative_path = resolved_path
+            .strip_prefix(&home)
             .map(|p| p.to_path_buf())
             .unwrap_or_else(|_| resolved_path.clone());
 
@@ -290,30 +303,35 @@ impl Cli {
 
         // Create parent directories
         if let Some(parent) = repo_file_path.parent() {
-            std::fs::create_dir_all(parent)
-                .context("Failed to create repo directory")?;
+            std::fs::create_dir_all(parent).context("Failed to create repo directory")?;
         }
 
         // Handle symlinks: resolve to original file
         let source_path = if file_manager.is_symlink(&resolved_path) {
-            file_manager.resolve_symlink(&resolved_path)
+            file_manager
+                .resolve_symlink(&resolved_path)
                 .context("Failed to resolve symlink")?
         } else {
             resolved_path.clone()
         };
 
         // Copy to repo
-        file_manager.copy_to_repo(&source_path, &repo_file_path)
+        file_manager
+            .copy_to_repo(&source_path, &repo_file_path)
             .context("Failed to copy file to repo")?;
 
         // Create symlink using SymlinkManager
-        let mut symlink_mgr = SymlinkManager::new_with_backup(repo_path.clone(), config.backup_enabled)?;
-        symlink_mgr.activate_profile(&profile_name, &[relative_str.clone()])
+        let mut symlink_mgr =
+            SymlinkManager::new_with_backup(repo_path.clone(), config.backup_enabled)?;
+        symlink_mgr
+            .activate_profile(&profile_name, std::slice::from_ref(&relative_str))
             .context("Failed to create symlink")?;
 
         // Update manifest
         let mut manifest = crate::utils::ProfileManifest::load_or_backfill(&repo_path)?;
-        let current_files = manifest.profiles.iter()
+        let current_files = manifest
+            .profiles
+            .iter()
             .find(|p| p.name == profile_name)
             .map(|p| p.synced_files.clone())
             .unwrap_or_default();
@@ -331,22 +349,25 @@ impl Cli {
 
         if is_custom {
             // Add to config.custom_files if not already there
-            let mut config = Config::load_or_create(&config_path)
-                .context("Failed to load configuration")?;
+            let mut config =
+                Config::load_or_create(&config_path).context("Failed to load configuration")?;
             if !config.custom_files.contains(&relative_str) {
                 config.custom_files.push(relative_str.clone());
                 config.save(&config_path)?;
             }
         }
 
-        println!("✅ Added {} to repository and created symlink", relative_str);
+        println!(
+            "✅ Added {} to repository and created symlink",
+            relative_str
+        );
         Ok(())
     }
 
     fn cmd_activate() -> Result<()> {
         let config_path = crate::utils::get_config_path();
-        let mut config = Config::load_or_create(&config_path)
-            .context("Failed to load configuration")?;
+        let mut config =
+            Config::load_or_create(&config_path).context("Failed to load configuration")?;
 
         if config.github.is_none() {
             eprintln!("❌ GitHub not configured. Please run 'dotstate' to set up GitHub sync.");
@@ -355,7 +376,10 @@ impl Cli {
 
         // Check if already activated
         if config.profile_activated {
-            println!("ℹ️  Profile '{}' is already activated.", config.active_profile);
+            println!(
+                "ℹ️  Profile '{}' is already activated.",
+                config.active_profile
+            );
             println!("   No action needed. Use 'dotstate deactivate' to restore original files.");
             return Ok(());
         }
@@ -364,37 +388,49 @@ impl Cli {
         let active_profile_name = config.active_profile.clone();
         let manifest = crate::utils::ProfileManifest::load_or_backfill(&config.repo_path)
             .context("Failed to load profile manifest")?;
-        let active_profile_files = manifest.profiles.iter()
+        let active_profile_files = manifest
+            .profiles
+            .iter()
             .find(|p| p.name == active_profile_name)
             .ok_or_else(|| anyhow::anyhow!("No active profile found"))?
-            .synced_files.clone();
+            .synced_files
+            .clone();
 
         if active_profile_files.is_empty() {
-            eprintln!("❌ Active profile '{}' has no synced files.", active_profile_name);
+            eprintln!(
+                "❌ Active profile '{}' has no synced files.",
+                active_profile_name
+            );
             eprintln!("💡 Run 'dotstate' to select and sync files.");
             std::process::exit(1);
         }
 
         println!("🔗 Activating profile '{}'...", active_profile_name);
-        println!("   This will create symlinks for {} files", active_profile_files.len());
+        println!(
+            "   This will create symlinks for {} files",
+            active_profile_files.len()
+        );
 
         // Create SymlinkManager
-        let mut symlink_mgr = SymlinkManager::new_with_backup(
-            config.repo_path.clone(),
-            config.backup_enabled,
-        )?;
+        let mut symlink_mgr =
+            SymlinkManager::new_with_backup(config.repo_path.clone(), config.backup_enabled)?;
 
         // Activate profile
-        let operations = symlink_mgr.activate_profile(&active_profile_name, &active_profile_files)?;
+        let operations =
+            symlink_mgr.activate_profile(&active_profile_name, &active_profile_files)?;
 
         // Report results
-        let success_count = operations.iter()
+        let success_count = operations
+            .iter()
             .filter(|op| op.status == crate::utils::symlink_manager::OperationStatus::Success)
             .count();
         let failed_count = operations.len() - success_count;
 
         if failed_count > 0 {
-            eprintln!("⚠️  Activated {} files, {} failed", success_count, failed_count);
+            eprintln!(
+                "⚠️  Activated {} files, {} failed",
+                success_count, failed_count
+            );
             for op in &operations {
                 if let crate::utils::symlink_manager::OperationStatus::Failed(msg) = &op.status {
                     eprintln!("   ❌ {}: {}", op.target.display(), msg);
@@ -404,10 +440,14 @@ impl Cli {
         } else {
             // Mark as activated in config
             config.profile_activated = true;
-            config.save(&config_path)
+            config
+                .save(&config_path)
                 .context("Failed to save configuration")?;
 
-            println!("✅ Successfully activated profile '{}'", active_profile_name);
+            println!(
+                "✅ Successfully activated profile '{}'",
+                active_profile_name
+            );
             println!("   {} symlinks created", success_count);
         }
 
@@ -416,8 +456,8 @@ impl Cli {
 
     fn cmd_deactivate(completely: bool) -> Result<()> {
         let config_path = crate::utils::get_config_path();
-        let mut config = Config::load_or_create(&config_path)
-            .context("Failed to load configuration")?;
+        let mut config =
+            Config::load_or_create(&config_path).context("Failed to load configuration")?;
 
         if config.github.is_none() {
             eprintln!("❌ GitHub not configured. Please run 'dotstate' to set up GitHub sync.");
@@ -428,7 +468,10 @@ impl Cli {
         let active_profile_name = &config.active_profile;
 
         if completely {
-            println!("🔓 Deactivating profile '{}' (completely)...", active_profile_name);
+            println!(
+                "🔓 Deactivating profile '{}' (completely)...",
+                active_profile_name
+            );
             println!("   This will remove symlinks without restoring files");
         } else {
             println!("🔓 Deactivating profile '{}'...", active_profile_name);
@@ -436,49 +479,64 @@ impl Cli {
         }
 
         // Create SymlinkManager
-        let mut symlink_mgr = SymlinkManager::new_with_backup(
-            config.repo_path.clone(),
-            config.backup_enabled,
-        )?;
+        let mut symlink_mgr =
+            SymlinkManager::new_with_backup(config.repo_path.clone(), config.backup_enabled)?;
 
         // Check if tracking file exists and has data
         let tracking_file = crate::utils::get_config_dir().join("symlinks.json");
         if !tracking_file.exists() {
-            eprintln!("⚠️  Warning: Tracking file not found at {:?}", tracking_file);
+            eprintln!(
+                "⚠️  Warning: Tracking file not found at {:?}",
+                tracking_file
+            );
             eprintln!("   No symlinks are currently tracked.");
             eprintln!("   If you have symlinks, they may have been created outside of dotstate.");
             return Ok(());
         }
 
         // Check what's in the tracking file
-        let tracking_data = std::fs::read_to_string(&tracking_file)
-            .context("Failed to read tracking file")?;
-        let tracking: serde_json::Value = serde_json::from_str(&tracking_data)
-            .context("Failed to parse tracking file")?;
+        let tracking_data =
+            std::fs::read_to_string(&tracking_file).context("Failed to read tracking file")?;
+        let tracking: serde_json::Value =
+            serde_json::from_str(&tracking_data).context("Failed to parse tracking file")?;
 
         if let Some(symlinks) = tracking.get("symlinks").and_then(|s| s.as_array()) {
             if symlinks.is_empty() {
                 eprintln!("⚠️  Warning: Tracking file exists but contains no symlinks.");
-                eprintln!("   Profile '{}' may not have any active symlinks.", active_profile_name);
+                eprintln!(
+                    "   Profile '{}' may not have any active symlinks.",
+                    active_profile_name
+                );
                 return Ok(());
             }
 
             // Debug: show what profiles are tracked
             let profile_path = config.repo_path.join(active_profile_name);
             let profile_path_str = profile_path.to_string_lossy().to_string();
-            let profile_symlinks: Vec<_> = symlinks.iter()
+            let profile_symlinks: Vec<_> = symlinks
+                .iter()
                 .filter_map(|s| {
-                    s.get("source").and_then(|src| src.as_str())
+                    s.get("source")
+                        .and_then(|src| src.as_str())
                         .filter(|src| src.starts_with(&profile_path_str))
                 })
                 .collect();
 
             if profile_symlinks.is_empty() {
-                eprintln!("⚠️  Warning: No symlinks found for profile '{}'", active_profile_name);
+                eprintln!(
+                    "⚠️  Warning: No symlinks found for profile '{}'",
+                    active_profile_name
+                );
                 if let Some(active) = tracking.get("active_profile").and_then(|a| a.as_str()) {
                     if !active.is_empty() && active != active_profile_name {
-                        eprintln!("   Currently tracked active profile: '{}' (different from config)", active);
-                        eprintln!("   Your config has active_profile = '{}'", active_profile_name);
+                        eprintln!(
+                            "   Currently tracked active profile: '{}' (different from config)",
+                            active
+                        );
+                        eprintln!(
+                            "   Your config has active_profile = '{}'",
+                            active_profile_name
+                        );
                         eprintln!("   This mismatch might be the issue.");
                     }
                 }
@@ -510,22 +568,30 @@ impl Cli {
         }
 
         // Deactivate profile
-        let operations = symlink_mgr.deactivate_profile_with_restore(active_profile_name, !completely)?;
+        let operations =
+            symlink_mgr.deactivate_profile_with_restore(active_profile_name, !completely)?;
 
         // Report results
-        let success_count = operations.iter()
+        let success_count = operations
+            .iter()
             .filter(|op| op.status == crate::utils::symlink_manager::OperationStatus::Success)
             .count();
         let failed_count = operations.len() - success_count;
 
         if operations.is_empty() {
-            eprintln!("⚠️  No symlinks found to deactivate for profile '{}'", active_profile_name);
+            eprintln!(
+                "⚠️  No symlinks found to deactivate for profile '{}'",
+                active_profile_name
+            );
             eprintln!("   This could mean:");
             eprintln!("   - The profile was never activated");
             eprintln!("   - The symlinks were created outside of dotstate");
             eprintln!("   - The profile name doesn't match what's in the tracking file");
         } else if failed_count > 0 {
-            eprintln!("⚠️  Deactivated {} files, {} failed", success_count, failed_count);
+            eprintln!(
+                "⚠️  Deactivated {} files, {} failed",
+                success_count, failed_count
+            );
             for op in &operations {
                 if let crate::utils::symlink_manager::OperationStatus::Failed(msg) = &op.status {
                     eprintln!("   ❌ {}: {}", op.target.display(), msg);
@@ -535,14 +601,21 @@ impl Cli {
         } else {
             // Mark as deactivated in config
             config.profile_activated = false;
-            config.save(&config_path)
+            config
+                .save(&config_path)
                 .context("Failed to save configuration")?;
 
             if completely {
-                println!("✅ Successfully deactivated profile '{}'", active_profile_name);
+                println!(
+                    "✅ Successfully deactivated profile '{}'",
+                    active_profile_name
+                );
                 println!("   {} symlinks removed", success_count);
             } else {
-                println!("✅ Successfully deactivated profile '{}'", active_profile_name);
+                println!(
+                    "✅ Successfully deactivated profile '{}'",
+                    active_profile_name
+                );
                 println!("   {} files restored", success_count);
             }
             println!("💡 Profile is now deactivated. Use 'dotstate activate' to reactivate.");
@@ -570,7 +643,9 @@ impl Cli {
             // Show list of all available commands
             println!("Available commands:\n");
             Self::print_all_commands();
-            println!("\nUse 'dotstate help <command>' to see detailed help for a specific command.");
+            println!(
+                "\nUse 'dotstate help <command>' to see detailed help for a specific command."
+            );
         }
         Ok(())
     }
@@ -584,7 +659,8 @@ impl Cli {
 
         for subcmd in subcommands {
             let name = subcmd.get_name();
-            let about = subcmd.get_about()
+            let about = subcmd
+                .get_about()
                 .map(|s| s.to_string())
                 .or_else(|| subcmd.get_long_about().map(|s| s.to_string()))
                 .unwrap_or_else(|| "No description available".to_string());
@@ -603,13 +679,15 @@ impl Cli {
             for arg in subcmd.get_arguments() {
                 if let Some(short) = arg.get_short() {
                     if let Some(long) = arg.get_long() {
-                        let help = arg.get_help()
+                        let help = arg
+                            .get_help()
                             .map(|s| s.to_string())
                             .unwrap_or_else(String::new);
                         println!("    -{}, --{:<12} {}", short, long, help);
                     }
                 } else if let Some(long) = arg.get_long() {
-                    let help = arg.get_help()
+                    let help = arg
+                        .get_help()
                         .map(|s| s.to_string())
                         .unwrap_or_else(String::new);
                     println!("    --{:<15} {}", long, help);
@@ -618,4 +696,3 @@ impl Cli {
         }
     }
 }
-

@@ -14,8 +14,8 @@ mod utils;
 mod widgets;
 
 use app::App;
-use cli::Cli;
 use clap::Parser;
+use cli::Cli;
 
 /// Set up panic hook to restore terminal state on panic
 fn setup_panic_hook() {
@@ -77,5 +77,3 @@ fn main() -> Result<()> {
 
     result
 }
-
-

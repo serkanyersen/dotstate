@@ -1,7 +1,7 @@
+use crate::ui::Screen;
 use anyhow::Result;
 use crossterm::event::Event;
 use ratatui::prelude::*;
-use crate::ui::Screen;
 
 /// Action that a component can return after handling an event
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

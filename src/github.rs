@@ -50,7 +50,11 @@ impl GitHubClient {
 
         // Log request details (mask token for security)
         let token_preview = if self.token.len() > 8 {
-            format!("{}...{}", &self.token[..4], &self.token[self.token.len()-4..])
+            format!(
+                "{}...{}",
+                &self.token[..4],
+                &self.token[self.token.len() - 4..]
+            )
         } else {
             "***".to_string()
         };
@@ -60,11 +64,21 @@ impl GitHubClient {
         info!("Method: GET");
         info!("Token preview: {}", token_preview);
         info!("Token length: {} characters", self.token.len());
-        info!("Token starts with: {}", if self.token.starts_with("ghp_") { "ghp_ (correct)" } else { &self.token[..self.token.len().min(4)] });
+        info!(
+            "Token starts with: {}",
+            if self.token.starts_with("ghp_") {
+                "ghp_ (correct)"
+            } else {
+                &self.token[..self.token.len().min(4)]
+            }
+        );
         info!("Authorization header: token {}", token_preview);
         info!("User-Agent: dotstate");
         info!("Accept: application/vnd.github.v3+json");
-        info!("Full auth header value (first 20 chars): {}", &auth_header[..auth_header.len().min(20)]);
+        info!(
+            "Full auth header value (first 20 chars): {}",
+            &auth_header[..auth_header.len().min(20)]
+        );
 
         let request = self
             .http_client
@@ -76,10 +90,7 @@ impl GitHubClient {
         // Log the actual request being built
         debug!("Request built, sending...");
 
-        let response = request
-            .send()
-            .await
-            .context("Failed to fetch user")?;
+        let response = request.send().await.context("Failed to fetch user")?;
 
         let status = response.status();
         info!("=== GitHub API Response ===");
@@ -95,7 +106,10 @@ impl GitHubClient {
         }
 
         if !status.is_success() {
-            let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
             error!("=== GitHub API Error ===");
             error!("Status: {} {}", status.as_u16(), status);
             error!("Error response body: {}", error_text);
@@ -154,7 +168,10 @@ impl GitHubClient {
         }
 
         if !status.is_success() {
-            let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
             anyhow::bail!("Failed to check repository ({}): {}", status, error_text);
         }
 
@@ -162,7 +179,12 @@ impl GitHubClient {
     }
 
     /// Create a new repository
-    pub async fn create_repo(&self, name: &str, description: &str, private: bool) -> Result<GitHubRepo> {
+    pub async fn create_repo(
+        &self,
+        name: &str,
+        description: &str,
+        private: bool,
+    ) -> Result<GitHubRepo> {
         let request_body = CreateRepoRequest {
             name: name.to_string(),
             description: description.to_string(),
@@ -173,7 +195,11 @@ impl GitHubClient {
         let url = "https://api.github.com/user/repos";
         let auth_header = format!("token {}", self.token);
         let token_preview = if self.token.len() > 8 {
-            format!("{}...{}", &self.token[..4], &self.token[self.token.len()-4..])
+            format!(
+                "{}...{}",
+                &self.token[..4],
+                &self.token[self.token.len() - 4..]
+            )
         } else {
             "***".to_string()
         };
@@ -184,7 +210,10 @@ impl GitHubClient {
         info!("Authorization header: token {}", token_preview);
         info!("User-Agent: dotstate");
         info!("Accept: application/vnd.github.v3+json");
-        info!("Request body: name={}, description={}, private={}, auto_init=false", name, description, private);
+        info!(
+            "Request body: name={}, description={}, private={}, auto_init=false",
+            name, description, private
+        );
 
         let response = self
             .http_client
@@ -227,7 +256,6 @@ impl GitHubClient {
 
         Ok(repo)
     }
-
 }
 
 /// Simplified OAuth flow using Personal Access Token
@@ -266,4 +294,3 @@ pub async fn authenticate_with_pat() -> Result<String> {
 
     Ok(token)
 }
-

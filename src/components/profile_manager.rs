@@ -1,13 +1,18 @@
+use crate::components::component::{Component, ComponentAction};
+use crate::components::footer::Footer;
+use crate::components::header::Header;
+use crate::components::input_field::InputField;
+use crate::config::Config;
+use crate::utils::{
+    center_popup, create_standard_layout, focused_border_style, unfocused_border_style,
+};
 use anyhow::Result;
 use crossterm::event::{Event, KeyCode, KeyEventKind, MouseButton, MouseEventKind};
 use ratatui::prelude::*;
-use ratatui::widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph, Scrollbar, ScrollbarOrientation, Wrap};
-use crate::components::component::{Component, ComponentAction};
-use crate::components::header::Header;
-use crate::components::footer::Footer;
-use crate::config::Config;
-use crate::utils::{create_standard_layout, center_popup, focused_border_style, unfocused_border_style};
-use crate::components::input_field::InputField;
+use ratatui::widgets::{
+    Block, Borders, Clear, List, ListItem, ListState, Paragraph, Scrollbar, ScrollbarOrientation,
+    Wrap,
+};
 
 /// Profile manager popup types
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -95,18 +100,16 @@ impl Component for ProfileManagerComponent {
 
     fn handle_event(&mut self, event: Event) -> Result<ComponentAction> {
         match event {
-            Event::Key(key) if key.kind == KeyEventKind::Press => {
-                match key.code {
-                    KeyCode::Up => Ok(ComponentAction::Update),
-                    KeyCode::Down => Ok(ComponentAction::Update),
-                    KeyCode::Enter => Ok(ComponentAction::Update),
-                    KeyCode::Char('c') | KeyCode::Char('C') => Ok(ComponentAction::Update),
-                    KeyCode::Char('r') | KeyCode::Char('R') => Ok(ComponentAction::Update),
-                    KeyCode::Char('d') | KeyCode::Char('D') => Ok(ComponentAction::Update),
-                    KeyCode::Esc => Ok(ComponentAction::Quit),
-                    _ => Ok(ComponentAction::None),
-                }
-            }
+            Event::Key(key) if key.kind == KeyEventKind::Press => match key.code {
+                KeyCode::Up => Ok(ComponentAction::Update),
+                KeyCode::Down => Ok(ComponentAction::Update),
+                KeyCode::Enter => Ok(ComponentAction::Update),
+                KeyCode::Char('c') | KeyCode::Char('C') => Ok(ComponentAction::Update),
+                KeyCode::Char('r') | KeyCode::Char('R') => Ok(ComponentAction::Update),
+                KeyCode::Char('d') | KeyCode::Char('D') => Ok(ComponentAction::Update),
+                KeyCode::Esc => Ok(ComponentAction::Quit),
+                _ => Ok(ComponentAction::None),
+            },
             Event::Mouse(mouse) => {
                 match mouse.kind {
                     MouseEventKind::Down(MouseButton::Left) => {
@@ -131,13 +134,19 @@ impl Component for ProfileManagerComponent {
 
 impl ProfileManagerComponent {
     /// Render with config and state - this is the main render method
-    pub fn render_with_config(&mut self, frame: &mut Frame, area: Rect, config: &Config, profiles: &[crate::utils::ProfileInfo], state: &mut ProfileManagerState) -> Result<()> {
+    pub fn render_with_config(
+        &mut self,
+        frame: &mut Frame,
+        area: Rect,
+        config: &Config,
+        profiles: &[crate::utils::ProfileInfo],
+        state: &mut ProfileManagerState,
+    ) -> Result<()> {
         // Clear the entire area first
         frame.render_widget(Clear, area);
 
         // Background
-        let background = Block::default()
-            .style(Style::default().bg(Color::Black));
+        let background = Block::default().style(Style::default().bg(Color::Black));
         frame.render_widget(background, area);
 
         // Layout: Header, Content (split), Footer
@@ -184,16 +193,25 @@ impl ProfileManagerComponent {
     }
 
     /// Render the profiles list on the left
-    fn render_profiles_list(&self, frame: &mut Frame, area: Rect, config: &Config, profiles: &[crate::utils::ProfileInfo], state: &mut ProfileManagerState) -> Result<()> {
+    fn render_profiles_list(
+        &self,
+        frame: &mut Frame,
+        area: Rect,
+        config: &Config,
+        profiles: &[crate::utils::ProfileInfo],
+        state: &mut ProfileManagerState,
+    ) -> Result<()> {
         let active_profile = &config.active_profile;
 
-        let items: Vec<ListItem> = profiles.iter()
-            .enumerate()
-            .map(|(_idx, profile)| {
+        let items: Vec<ListItem> = profiles
+            .iter()
+            .map(|profile| {
                 let is_active = profile.name == *active_profile;
                 let icon = if is_active { "⭐" } else { "  " };
                 let name_style = if is_active {
-                    Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD)
                 } else {
                     Style::default().fg(Color::White)
                 };
@@ -215,12 +233,12 @@ impl ProfileManagerComponent {
                 Block::default()
                     .borders(Borders::ALL)
                     .title("Profiles")
-                    .border_style(focused_border_style())
+                    .border_style(focused_border_style()),
             )
             .highlight_style(
                 Style::default()
                     .bg(Color::DarkGray)
-                    .add_modifier(Modifier::BOLD)
+                    .add_modifier(Modifier::BOLD),
             );
 
         // Store clickable areas for mouse support
@@ -231,7 +249,8 @@ impl ProfileManagerComponent {
             // We'll use the full width and estimate height per item
             let item_height = 1; // Each list item is typically 1 row
             let item_y = area.y + 1 + idx as u16; // +1 for border, +idx for item position
-            if item_y < area.y + area.height - 1 { // Within visible area
+            if item_y < area.y + area.height - 1 {
+                // Within visible area
                 state.clickable_areas.push((
                     Rect {
                         x: area.x + 1, // +1 for left border
@@ -251,11 +270,20 @@ impl ProfileManagerComponent {
     }
 
     /// Render profile details on the right
-    fn render_profile_details(&self, frame: &mut Frame, area: Rect, config: &Config, profiles: &[crate::utils::ProfileInfo], state: &ProfileManagerState) -> Result<()> {
+    fn render_profile_details(
+        &self,
+        frame: &mut Frame,
+        area: Rect,
+        config: &Config,
+        profiles: &[crate::utils::ProfileInfo],
+        state: &ProfileManagerState,
+    ) -> Result<()> {
         let active_profile = &config.active_profile;
 
         // Find selected profile (use selected index, fallback to active, then first)
-        let profile = state.list_state.selected()
+        let profile = state
+            .list_state
+            .selected()
             .and_then(|idx| profiles.get(idx))
             .or_else(|| profiles.iter().find(|p| p.name == *active_profile))
             .or_else(|| profiles.first());
@@ -268,9 +296,7 @@ impl ProfileManagerComponent {
                 ("○ Inactive", Color::Yellow)
             };
 
-            let description = profile.description.as_ref()
-                .map(|d| d.as_str())
-                .unwrap_or("No description");
+            let description = profile.description.as_deref().unwrap_or("No description");
 
             let files_text = if profile.synced_files.is_empty() {
                 "No files synced".to_string()
@@ -281,7 +307,9 @@ impl ProfileManagerComponent {
             let files_list = if profile.synced_files.is_empty() {
                 String::new()
             } else {
-                profile.synced_files.iter()
+                profile
+                    .synced_files
+                    .iter()
                     .take(10) // Show first 10
                     .map(|f| format!("  • {}", f))
                     .collect::<Vec<_>>()
@@ -298,38 +326,57 @@ impl ProfileManagerComponent {
             use ratatui::text::{Line, Span};
             let mut lines = vec![
                 Line::from(vec![
-                    Span::styled("Name: ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+                    Span::styled(
+                        "Name: ",
+                        Style::default()
+                            .fg(Color::Cyan)
+                            .add_modifier(Modifier::BOLD),
+                    ),
                     Span::styled(&profile.name, Style::default().fg(Color::White)),
                 ]),
                 Line::from(""),
                 Line::from(vec![
-                    Span::styled("Status: ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+                    Span::styled(
+                        "Status: ",
+                        Style::default()
+                            .fg(Color::Cyan)
+                            .add_modifier(Modifier::BOLD),
+                    ),
                     Span::styled(status.0, Style::default().fg(status.1)),
                 ]),
                 Line::from(""),
-                Line::from(vec![
-                    Span::styled("Description:", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
-                ]),
-                Line::from(vec![
-                    Span::styled(description, Style::default().fg(Color::Gray)),
-                ]),
+                Line::from(vec![Span::styled(
+                    "Description:",
+                    Style::default()
+                        .fg(Color::Cyan)
+                        .add_modifier(Modifier::BOLD),
+                )]),
+                Line::from(vec![Span::styled(
+                    description,
+                    Style::default().fg(Color::Gray),
+                )]),
                 Line::from(""),
-                Line::from(vec![
-                    Span::styled(&files_text, Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
-                ]),
+                Line::from(vec![Span::styled(
+                    &files_text,
+                    Style::default()
+                        .fg(Color::Cyan)
+                        .add_modifier(Modifier::BOLD),
+                )]),
             ];
 
             if !files_list.is_empty() {
                 for line in files_list.lines() {
-                    lines.push(Line::from(vec![
-                        Span::styled(line, Style::default().fg(Color::White)),
-                    ]));
+                    lines.push(Line::from(vec![Span::styled(
+                        line,
+                        Style::default().fg(Color::White),
+                    )]));
                 }
             }
             if !more_text.is_empty() {
-                lines.push(Line::from(vec![
-                    Span::styled(&more_text, Style::default().fg(Color::DarkGray)),
-                ]));
+                lines.push(Line::from(vec![Span::styled(
+                    &more_text,
+                    Style::default().fg(Color::DarkGray),
+                )]));
             }
 
             let text = ratatui::text::Text::from(lines);
@@ -340,21 +387,22 @@ impl ProfileManagerComponent {
                         .borders(Borders::ALL)
                         .title("Profile Details")
                         .border_style(unfocused_border_style())
-                        .padding(ratatui::widgets::Padding::new(1, 1, 1, 1))
+                        .padding(ratatui::widgets::Padding::new(1, 1, 1, 1)),
                 )
                 .wrap(Wrap { trim: true });
 
             frame.render_widget(paragraph, area);
         } else {
-            let paragraph = Paragraph::new("No profiles found.\n\nPress 'C' to create your first profile.")
-                .block(
-                    Block::default()
-                        .borders(Borders::ALL)
-                        .title("Profile Details")
-                        .border_style(unfocused_border_style())
-                        .padding(ratatui::widgets::Padding::new(1, 1, 1, 1))
-                )
-                .wrap(Wrap { trim: true });
+            let paragraph =
+                Paragraph::new("No profiles found.\n\nPress 'C' to create your first profile.")
+                    .block(
+                        Block::default()
+                            .borders(Borders::ALL)
+                            .title("Profile Details")
+                            .border_style(unfocused_border_style())
+                            .padding(ratatui::widgets::Padding::new(1, 1, 1, 1)),
+                    )
+                    .wrap(Wrap { trim: true });
             frame.render_widget(paragraph, area);
         }
 
@@ -362,18 +410,40 @@ impl ProfileManagerComponent {
     }
 
     /// Render the active popup
-    fn render_popup(&self, frame: &mut Frame, area: Rect, config: &Config, profiles: &[crate::utils::ProfileInfo], state: &mut ProfileManagerState) -> Result<()> {
+    fn render_popup(
+        &self,
+        frame: &mut Frame,
+        area: Rect,
+        config: &Config,
+        profiles: &[crate::utils::ProfileInfo],
+        state: &mut ProfileManagerState,
+    ) -> Result<()> {
         match state.popup_type {
-            ProfilePopupType::Create => self.render_create_popup(frame, area, config, profiles, state),
-            ProfilePopupType::Switch => self.render_switch_popup(frame, area, config, profiles, state),
-            ProfilePopupType::Rename => self.render_rename_popup(frame, area, config, profiles, state),
-            ProfilePopupType::Delete => self.render_delete_popup(frame, area, config, profiles, state),
+            ProfilePopupType::Create => {
+                self.render_create_popup(frame, area, config, profiles, state)
+            }
+            ProfilePopupType::Switch => {
+                self.render_switch_popup(frame, area, config, profiles, state)
+            }
+            ProfilePopupType::Rename => {
+                self.render_rename_popup(frame, area, config, profiles, state)
+            }
+            ProfilePopupType::Delete => {
+                self.render_delete_popup(frame, area, config, profiles, state)
+            }
             ProfilePopupType::None => Ok(()),
         }
     }
 
     /// Render create profile popup
-    fn render_create_popup(&self, frame: &mut Frame, area: Rect, _config: &Config, profiles: &[crate::utils::ProfileInfo], state: &mut ProfileManagerState) -> Result<()> {
+    fn render_create_popup(
+        &self,
+        frame: &mut Frame,
+        area: Rect,
+        _config: &Config,
+        profiles: &[crate::utils::ProfileInfo],
+        state: &mut ProfileManagerState,
+    ) -> Result<()> {
         let popup_area = center_popup(area, 60, 50);
         frame.render_widget(Clear, popup_area);
 
@@ -391,7 +461,11 @@ impl ProfileManagerComponent {
         // Title (no border, just text)
         let title = Paragraph::new("Create New Profile")
             .alignment(Alignment::Center)
-            .style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD));
+            .style(
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            );
         frame.render_widget(title, chunks[0]);
 
         // Store clickable areas for mouse support
@@ -434,7 +508,12 @@ impl ProfileManagerComponent {
 
         if profiles.is_empty() {
             let copy_para = Paragraph::new("No profiles available to copy from")
-                .block(Block::default().borders(Borders::ALL).title("Copy From").border_style(border_style))
+                .block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .title("Copy From")
+                        .border_style(border_style),
+                )
                 .wrap(Wrap { trim: true });
             frame.render_widget(copy_para, chunks[3]);
         } else {
@@ -443,13 +522,20 @@ impl ProfileManagerComponent {
 
             // Add "Start Blank" option at the start
             let is_start_blank_selected = state.create_copy_from.is_none();
-            let start_blank_prefix = if is_start_blank_selected { "✓ " } else { "  " };
+            let start_blank_prefix = if is_start_blank_selected {
+                "✓ "
+            } else {
+                "  "
+            };
             let start_blank_style = if is_start_blank_selected {
                 Style::default().fg(Color::Green)
             } else {
                 Style::default().fg(Color::White)
             };
-            items.push(ListItem::new(format!("{}Start Blank", start_blank_prefix)).style(start_blank_style));
+            items.push(
+                ListItem::new(format!("{}Start Blank", start_blank_prefix))
+                    .style(start_blank_style),
+            );
 
             // Add profiles (offset by 1 because "Start Blank" is at index 0)
             for (idx, profile) in profiles.iter().enumerate() {
@@ -473,11 +559,16 @@ impl ProfileManagerComponent {
             }
 
             let list = List::new(items)
-                .block(Block::default().borders(Borders::ALL).title("Copy From").border_style(border_style))
+                .block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .title("Copy From")
+                        .border_style(border_style),
+                )
                 .highlight_style(
                     Style::default()
                         .bg(Color::DarkGray)
-                        .add_modifier(Modifier::BOLD)
+                        .add_modifier(Modifier::BOLD),
                 );
 
             // Create a temporary list state for rendering
@@ -503,18 +594,14 @@ impl ProfileManagerComponent {
                 use ratatui::widgets::ScrollbarState;
 
                 let selected_pos = list_state.selected().unwrap_or(0);
-                let mut scrollbar_state = ScrollbarState::new(total_items as usize)
-                    .position(selected_pos);
+                let mut scrollbar_state =
+                    ScrollbarState::new(total_items as usize).position(selected_pos);
 
                 let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
                     .begin_symbol(Some("↑"))
                     .end_symbol(Some("↓"));
 
-                frame.render_stateful_widget(
-                    scrollbar,
-                    chunks[3],
-                    &mut scrollbar_state,
-                );
+                frame.render_stateful_widget(scrollbar, chunks[3], &mut scrollbar_state);
             }
         }
 
@@ -522,13 +609,19 @@ impl ProfileManagerComponent {
     }
 
     /// Render switch profile confirmation popup
-    fn render_switch_popup(&self, frame: &mut Frame, area: Rect, config: &Config, profiles: &[crate::utils::ProfileInfo], state: &ProfileManagerState) -> Result<()> {
+    fn render_switch_popup(
+        &self,
+        frame: &mut Frame,
+        area: Rect,
+        config: &Config,
+        profiles: &[crate::utils::ProfileInfo],
+        state: &ProfileManagerState,
+    ) -> Result<()> {
         let popup_area = center_popup(area, 70, 40);
         frame.render_widget(Clear, popup_area);
 
         let selected_idx = state.list_state.selected();
-        let current_profile = profiles.iter()
-            .find(|p| p.name == config.active_profile);
+        let current_profile = profiles.iter().find(|p| p.name == config.active_profile);
         let target_profile = selected_idx.and_then(|idx| profiles.get(idx));
 
         let content = if let (Some(current), Some(target)) = (current_profile, target_profile) {
@@ -560,7 +653,14 @@ impl ProfileManagerComponent {
     }
 
     /// Render rename profile popup
-    fn render_rename_popup(&self, frame: &mut Frame, area: Rect, _config: &Config, profiles: &[crate::utils::ProfileInfo], state: &ProfileManagerState) -> Result<()> {
+    fn render_rename_popup(
+        &self,
+        frame: &mut Frame,
+        area: Rect,
+        _config: &Config,
+        profiles: &[crate::utils::ProfileInfo],
+        state: &ProfileManagerState,
+    ) -> Result<()> {
         let popup_area = center_popup(area, 60, 30);
         frame.render_widget(Clear, popup_area);
 
@@ -582,7 +682,11 @@ impl ProfileManagerComponent {
 
         let title = Paragraph::new(format!("Rename Profile: {}", profile_name))
             .alignment(Alignment::Center)
-            .style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD));
+            .style(
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            );
         frame.render_widget(title, chunks[0]);
 
         // Name input
@@ -602,7 +706,14 @@ impl ProfileManagerComponent {
     }
 
     /// Render delete profile confirmation popup
-    fn render_delete_popup(&self, frame: &mut Frame, area: Rect, config: &Config, profiles: &[crate::utils::ProfileInfo], state: &ProfileManagerState) -> Result<()> {
+    fn render_delete_popup(
+        &self,
+        frame: &mut Frame,
+        area: Rect,
+        config: &Config,
+        profiles: &[crate::utils::ProfileInfo],
+        state: &ProfileManagerState,
+    ) -> Result<()> {
         let popup_area = center_popup(area, 70, 40);
         frame.render_widget(Clear, popup_area);
 
@@ -625,8 +736,9 @@ impl ProfileManagerComponent {
                 format!(
                     "⚠️  WARNING: Cannot Delete Active Profile\n\n\
                     Profile '{}' is currently active.\n\
-                    Please switch to another profile first."
-                , p.name)
+                    Please switch to another profile first.",
+                    p.name
+                )
             } else {
                 format!(
                     "⚠️  WARNING: Delete Profile\n\n\
@@ -669,4 +781,3 @@ impl ProfileManagerComponent {
         Ok(())
     }
 }
-

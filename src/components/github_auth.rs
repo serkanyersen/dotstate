@@ -1,13 +1,16 @@
+use crate::components::component::{Component, ComponentAction};
+use crate::components::footer::Footer;
+use crate::components::header::Header;
+use crate::components::input_field::InputField;
+use crate::ui::{GitHubAuthField, GitHubAuthState};
+use crate::utils::{
+    create_standard_layout, disabled_border_style, disabled_text_style, focused_border_style,
+    unfocused_border_style,
+};
 use anyhow::Result;
 use crossterm::event::{Event, MouseButton, MouseEventKind};
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
-use crate::components::component::{Component, ComponentAction};
-use crate::components::header::Header;
-use crate::components::footer::Footer;
-use crate::components::input_field::InputField;
-use crate::ui::{GitHubAuthState, GitHubAuthField};
-use crate::utils::{create_standard_layout, focused_border_style, unfocused_border_style, disabled_border_style, disabled_text_style};
 
 /// GitHub authentication component
 /// Note: Event handling is done in app.rs due to complex state dependencies
@@ -52,20 +55,26 @@ impl GitHubAuthComponent {
         let is_focused = self.auth_state.focused_field == GitHubAuthField::Token;
 
         // Show masked token if repo is already configured and not editing
-        let display_text = if self.auth_state.repo_already_configured && !self.auth_state.is_editing_token {
-            "••••••••••••••••••••••••••••••••••••••••"
-        } else {
-            &self.auth_state.token_input
-        };
+        let display_text =
+            if self.auth_state.repo_already_configured && !self.auth_state.is_editing_token {
+                "••••••••••••••••••••••••••••••••••••••••"
+            } else {
+                &self.auth_state.token_input
+            };
 
-        let cursor_pos = if is_focused && (!self.auth_state.repo_already_configured || self.auth_state.is_editing_token) {
-            self.auth_state.cursor_position.min(self.auth_state.token_input.chars().count())
+        let cursor_pos = if is_focused
+            && (!self.auth_state.repo_already_configured || self.auth_state.is_editing_token)
+        {
+            self.auth_state
+                .cursor_position
+                .min(self.auth_state.token_input.chars().count())
         } else {
             0
         };
 
         // Disable token field if repo configured and not in edit mode
-        let is_disabled = self.auth_state.repo_already_configured && !self.auth_state.is_editing_token;
+        let is_disabled =
+            self.auth_state.repo_already_configured && !self.auth_state.is_editing_token;
 
         // Store area for mouse support
         let input_block = Block::bordered();
@@ -90,7 +99,9 @@ impl GitHubAuthComponent {
         let is_disabled = self.auth_state.repo_already_configured;
 
         let cursor_pos = if is_focused && !is_disabled {
-            self.auth_state.cursor_position.min(self.auth_state.repo_name_input.chars().count())
+            self.auth_state
+                .cursor_position
+                .min(self.auth_state.repo_name_input.chars().count())
         } else {
             0
         };
@@ -118,7 +129,9 @@ impl GitHubAuthComponent {
         let is_disabled = self.auth_state.repo_already_configured;
 
         let cursor_pos = if is_focused && !is_disabled {
-            self.auth_state.cursor_position.min(self.auth_state.repo_location_input.chars().count())
+            self.auth_state
+                .cursor_position
+                .min(self.auth_state.repo_location_input.chars().count())
         } else {
             0
         };
@@ -312,9 +325,9 @@ impl GitHubAuthComponent {
 
     /// Render progress screen when processing GitHub setup
     fn render_progress_screen(&mut self, frame: &mut Frame, area: Rect) -> Result<()> {
-        use ratatui::layout::Layout;
-        use ratatui::layout::Direction;
         use ratatui::layout::Constraint;
+        use ratatui::layout::Direction;
+        use ratatui::layout::Layout;
 
         // Layout: Header, Content, Footer
         // Header component needs more height (6) to accommodate logo and description
@@ -325,7 +338,7 @@ impl GitHubAuthComponent {
             frame,
             header_chunk,
             "DotState - GitHub Setup",
-            "Setting up your GitHub repository..."
+            "Setting up your GitHub repository...",
         )?;
 
         // Center the progress message
@@ -379,7 +392,13 @@ impl GitHubAuthComponent {
         // Footer
         let footer_text = if self.auth_state.error_message.is_some() {
             "Press Esc to go back and fix the error"
-        } else if self.auth_state.status_message.as_ref().map(|s| s.contains("✅")).unwrap_or(false) {
+        } else if self
+            .auth_state
+            .status_message
+            .as_ref()
+            .map(|s| s.contains("✅"))
+            .unwrap_or(false)
+        {
             "Press Enter to continue"
         } else {
             "Please wait..."
@@ -396,12 +415,14 @@ impl Component for GitHubAuthComponent {
         frame.render_widget(Clear, area);
 
         // Background
-        let background = Block::default()
-            .style(Style::default().bg(Color::Black));
+        let background = Block::default().style(Style::default().bg(Color::Black));
         frame.render_widget(background, area);
 
         // If processing or in setup, show progress screen instead of input form
-        if matches!(self.auth_state.step, crate::ui::GitHubAuthStep::Processing | crate::ui::GitHubAuthStep::SetupStep(_)) {
+        if matches!(
+            self.auth_state.step,
+            crate::ui::GitHubAuthStep::Processing | crate::ui::GitHubAuthStep::SetupStep(_)
+        ) {
             return self.render_progress_screen(frame, area);
         }
 
@@ -492,56 +513,50 @@ impl Component for GitHubAuthComponent {
     fn handle_event(&mut self, event: Event) -> Result<ComponentAction> {
         // Basic mouse support - clicking fields focuses them
         // Full event handling is done in app.rs due to complex dependencies
-        match event {
-            Event::Mouse(mouse) => {
-                match mouse.kind {
-                    MouseEventKind::Down(MouseButton::Left) => {
-                        let x = mouse.column;
-                        let y = mouse.row;
+        if let Event::Mouse(mouse) = event {
+            if let MouseEventKind::Down(MouseButton::Left) = mouse.kind {
+                let x = mouse.column;
+                let y = mouse.row;
 
-                        // Check which field was clicked
-                        if self.is_click_in_area(self.token_area, x, y) {
-                            // Token is only editable if repo not configured OR in edit mode
-                            if !self.auth_state.repo_already_configured || self.auth_state.is_editing_token {
-                                self.auth_state.focused_field = GitHubAuthField::Token;
-                                self.auth_state.input_focused = true;
-                                return Ok(ComponentAction::Update);
-                            }
-                        } else if self.is_click_in_area(self.repo_name_area, x, y) {
-                            // Repo name is only editable if repo not configured
-                            if !self.auth_state.repo_already_configured {
-                                self.auth_state.focused_field = GitHubAuthField::RepoName;
-                                self.auth_state.input_focused = true;
-                                return Ok(ComponentAction::Update);
-                            }
-                        } else if self.is_click_in_area(self.repo_location_area, x, y) {
-                            // Repo location is only editable if repo not configured
-                            if !self.auth_state.repo_already_configured {
-                                self.auth_state.focused_field = GitHubAuthField::RepoLocation;
-                                self.auth_state.input_focused = true;
-                                return Ok(ComponentAction::Update);
-                            }
-                        } else if self.is_click_in_area(self.visibility_area, x, y) {
-                            // Only allow interaction if repo is not already configured
-                            if !self.auth_state.repo_already_configured {
-                                self.auth_state.focused_field = GitHubAuthField::IsPrivate;
-                                self.auth_state.input_focused = true;
-                                // Toggle visibility on click
-                                self.auth_state.is_private = !self.auth_state.is_private;
-                                return Ok(ComponentAction::Update);
-                            }
-                        } else {
-                            // Click outside - unfocus
-                            self.auth_state.input_focused = false;
-                            return Ok(ComponentAction::Update);
-                        }
+                // Check which field was clicked
+                if self.is_click_in_area(self.token_area, x, y) {
+                    // Token is only editable if repo not configured OR in edit mode
+                    if !self.auth_state.repo_already_configured || self.auth_state.is_editing_token
+                    {
+                        self.auth_state.focused_field = GitHubAuthField::Token;
+                        self.auth_state.input_focused = true;
+                        return Ok(ComponentAction::Update);
                     }
-                    _ => {}
+                } else if self.is_click_in_area(self.repo_name_area, x, y) {
+                    // Repo name is only editable if repo not configured
+                    if !self.auth_state.repo_already_configured {
+                        self.auth_state.focused_field = GitHubAuthField::RepoName;
+                        self.auth_state.input_focused = true;
+                        return Ok(ComponentAction::Update);
+                    }
+                } else if self.is_click_in_area(self.repo_location_area, x, y) {
+                    // Repo location is only editable if repo not configured
+                    if !self.auth_state.repo_already_configured {
+                        self.auth_state.focused_field = GitHubAuthField::RepoLocation;
+                        self.auth_state.input_focused = true;
+                        return Ok(ComponentAction::Update);
+                    }
+                } else if self.is_click_in_area(self.visibility_area, x, y) {
+                    // Only allow interaction if repo is not already configured
+                    if !self.auth_state.repo_already_configured {
+                        self.auth_state.focused_field = GitHubAuthField::IsPrivate;
+                        self.auth_state.input_focused = true;
+                        // Toggle visibility on click
+                        self.auth_state.is_private = !self.auth_state.is_private;
+                        return Ok(ComponentAction::Update);
+                    }
+                } else {
+                    // Click outside - unfocus
+                    self.auth_state.input_focused = false;
+                    return Ok(ComponentAction::Update);
                 }
             }
-            _ => {}
         }
         Ok(ComponentAction::None)
     }
-
 }

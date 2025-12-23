@@ -1,12 +1,15 @@
+use crate::components::component::{Component, ComponentAction};
+use crate::components::footer::Footer;
+use crate::components::header::Header;
+use crate::config::Config;
+use crate::utils::create_standard_layout;
 use anyhow::Result;
 use crossterm::event::{Event, KeyCode, KeyEventKind, MouseButton, MouseEventKind};
 use ratatui::prelude::*;
-use ratatui::widgets::{Block, Borders, Clear, HighlightSpacing, List, ListItem, ListState, Paragraph, StatefulWidget, Wrap};
-use crate::components::component::{Component, ComponentAction};
-use crate::components::header::Header;
-use crate::components::footer::Footer;
-use crate::config::Config;
-use crate::utils::create_standard_layout;
+use ratatui::widgets::{
+    Block, Borders, Clear, HighlightSpacing, List, ListItem, ListState, Paragraph, StatefulWidget,
+    Wrap,
+};
 
 /// Menu items enum - defines the order and available menu options
 /// This is the single source of truth for menu items
@@ -35,7 +38,7 @@ impl MenuItem {
     pub fn requires_setup(&self) -> bool {
         match self {
             MenuItem::SetupGitHub => false, // Always available
-            _ => true, // All other items require setup
+            _ => true,                      // All other items require setup
         }
     }
 
@@ -290,14 +293,17 @@ impl MenuItem {
     }
 
     /// Convert MenuItem to index
-    pub fn to_index(&self) -> usize {
-        Self::all().iter().position(|item| item == self).unwrap_or(0)
+    pub fn to_index(self) -> usize {
+        Self::all()
+            .iter()
+            .position(|item| *item == self)
+            .unwrap_or(0)
     }
 }
 
 /// Main menu component (also serves as welcome screen)
 pub struct MainMenuComponent {
-    selected_item: MenuItem,  // Use MenuItem enum instead of index
+    selected_item: MenuItem, // Use MenuItem enum instead of index
     has_changes_to_push: bool,
     list_state: ListState,
     /// Clickable areas: (rect, MenuItem)
@@ -327,7 +333,10 @@ impl MainMenuComponent {
 
     /// Check if the app is set up (GitHub configured)
     fn is_setup(&self) -> bool {
-        self.config.as_ref().and_then(|c| c.github.as_ref()).is_some()
+        self.config
+            .as_ref()
+            .and_then(|c| c.github.as_ref())
+            .is_some()
     }
 
     /// Get the currently selected menu item
@@ -381,7 +390,9 @@ impl MainMenuComponent {
             // Get stats from manifest
             let manifest = crate::utils::ProfileManifest::load_or_backfill(&config.repo_path)
                 .unwrap_or_default();
-            let synced_count = manifest.profiles.iter()
+            let synced_count = manifest
+                .profiles
+                .iter()
                 .find(|p| p.name == config.active_profile)
                 .map(|p| p.synced_files.len())
                 .unwrap_or(0);
@@ -390,15 +401,15 @@ impl MainMenuComponent {
 
             let mut stats = format!(
                 "Synced Files: {}\nProfiles: {} (Active: {})\nRepository: {}",
-                synced_count,
-                profile_count,
-                active_profile,
-                config.repo_name
+                synced_count, profile_count, active_profile, config.repo_name
             );
 
             // Add pending changes if any
             if !self.changed_files.is_empty() {
-                stats.push_str(&format!("\n\nPending Changes ({}):", self.changed_files.len()));
+                stats.push_str(&format!(
+                    "\n\nPending Changes ({}):",
+                    self.changed_files.len()
+                ));
                 // Show first few files (limit to avoid overflow)
                 let max_files = 5.min(self.changed_files.len());
                 for file in self.changed_files.iter().take(max_files) {
@@ -411,7 +422,10 @@ impl MainMenuComponent {
                     stats.push_str(&format!("\n  • {}", display_file));
                 }
                 if self.changed_files.len() > max_files {
-                    stats.push_str(&format!("\n  ... and {} more", self.changed_files.len() - max_files));
+                    stats.push_str(&format!(
+                        "\n  ... and {} more",
+                        self.changed_files.len() - max_files
+                    ));
                 }
             }
 
@@ -428,8 +442,7 @@ impl Component for MainMenuComponent {
         frame.render_widget(Clear, area);
 
         // Background
-        let background = Block::default()
-            .style(Style::default().bg(Color::Black));
+        let background = Block::default().style(Style::default().bg(Color::Black));
         frame.render_widget(background, area);
 
         let (header_chunk, content_chunk, footer_chunk) = create_standard_layout(area, 5, 2);
@@ -466,12 +479,15 @@ impl Component for MainMenuComponent {
 
                 // Determine color based on enabled state
                 let color = if !is_enabled {
-                    Color::DarkGray  // Disabled items in dark gray
+                    Color::DarkGray // Disabled items in dark gray
                 } else {
                     menu_item.color(self.has_changes_to_push)
                 };
 
-                let display_text = if *menu_item == MenuItem::SyncWithRemote && self.has_changes_to_push && is_enabled {
+                let display_text = if *menu_item == MenuItem::SyncWithRemote
+                    && self.has_changes_to_push
+                    && is_enabled
+                {
                     format!("{} {} ({} pending)", icon, text, self.changed_files.len())
                 } else if !is_enabled {
                     format!("{} {} (requires setup)", icon, text)
@@ -481,9 +497,7 @@ impl Component for MainMenuComponent {
 
                 let style = if i == selected_index {
                     if is_enabled {
-                        Style::default()
-                            .fg(color)
-                            .add_modifier(Modifier::BOLD)
+                        Style::default().fg(color).add_modifier(Modifier::BOLD)
                     } else {
                         // Disabled items stay gray even when selected
                         Style::default()
@@ -491,11 +505,9 @@ impl Component for MainMenuComponent {
                             .add_modifier(Modifier::BOLD)
                     }
                 } else {
-                    Style::default()
-                        .fg(color)
+                    Style::default().fg(color)
                 };
                 ListItem::new(display_text).style(style)
-
             })
             .collect();
 
@@ -504,7 +516,11 @@ impl Component for MainMenuComponent {
             .border_style(Style::default().fg(Color::Cyan))
             .border_type(ratatui::widgets::BorderType::Rounded)
             .title("📋 Menu")
-            .title_style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
+            .title_style(
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            )
             .title_alignment(Alignment::Center)
             .padding(ratatui::widgets::Padding::new(1, 1, 1, 1));
 
@@ -518,7 +534,7 @@ impl Component for MainMenuComponent {
                 Style::default()
                     .fg(Color::Yellow)
                     .bg(Color::DarkGray)
-                    .add_modifier(Modifier::BOLD)
+                    .add_modifier(Modifier::BOLD),
             )
             .highlight_spacing(HighlightSpacing::Always)
             .highlight_symbol("» ");
@@ -535,7 +551,12 @@ impl Component for MainMenuComponent {
         }
 
         // Render list
-        StatefulWidget::render(list, content_split[0], frame.buffer_mut(), &mut self.list_state);
+        StatefulWidget::render(
+            list,
+            content_split[0],
+            frame.buffer_mut(),
+            &mut self.list_state,
+        );
 
         // Right panel: Explanation and stats
         let right_split = Layout::default()
@@ -567,7 +588,11 @@ impl Component for MainMenuComponent {
 
         // Stats block with colorful styling
         let has_pending = !self.changed_files.is_empty();
-        let stats_color = if has_pending { Color::Yellow } else { Color::Green };
+        let stats_color = if has_pending {
+            Color::Yellow
+        } else {
+            Color::Green
+        };
         let stats_icon = if has_pending { "⚠️" } else { "✅" };
 
         let stats_block = Block::default()
@@ -575,7 +600,11 @@ impl Component for MainMenuComponent {
             .border_style(Style::default().fg(stats_color))
             .border_type(ratatui::widgets::BorderType::Rounded)
             .title(format!("{} Status", stats_icon))
-            .title_style(Style::default().fg(stats_color).add_modifier(Modifier::BOLD))
+            .title_style(
+                Style::default()
+                    .fg(stats_color)
+                    .add_modifier(Modifier::BOLD),
+            )
             .title_alignment(Alignment::Center)
             .padding(ratatui::widgets::Padding::new(1, 1, 1, 1));
 
@@ -586,50 +615,65 @@ impl Component for MainMenuComponent {
             .map(|line| {
                 if line.starts_with("Synced Files:") {
                     Line::from(vec![
-                        Span::styled("Synced Files: ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+                        Span::styled(
+                            "Synced Files: ",
+                            Style::default()
+                                .fg(Color::Cyan)
+                                .add_modifier(Modifier::BOLD),
+                        ),
                         Span::styled(
                             line.strip_prefix("Synced Files: ").unwrap_or(""),
-                            Style::default().fg(Color::White)
+                            Style::default().fg(Color::White),
                         ),
                     ])
                 } else if line.starts_with("Profiles:") {
                     Line::from(vec![
-                        Span::styled("Profiles: ", Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD)),
+                        Span::styled(
+                            "Profiles: ",
+                            Style::default()
+                                .fg(Color::Magenta)
+                                .add_modifier(Modifier::BOLD),
+                        ),
                         Span::styled(
                             line.strip_prefix("Profiles: ").unwrap_or(""),
-                            Style::default().fg(Color::White)
+                            Style::default().fg(Color::White),
                         ),
                     ])
                 } else if line.starts_with("Repository:") {
                     Line::from(vec![
-                        Span::styled("Repository: ", Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD)),
+                        Span::styled(
+                            "Repository: ",
+                            Style::default()
+                                .fg(Color::Blue)
+                                .add_modifier(Modifier::BOLD),
+                        ),
                         Span::styled(
                             line.strip_prefix("Repository: ").unwrap_or(""),
-                            Style::default().fg(Color::White)
+                            Style::default().fg(Color::White),
                         ),
                     ])
                 } else if line.starts_with("Pending Changes") {
-                    Line::from(vec![
-                        Span::styled(
-                            line,
-                            Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
-                        ),
-                    ])
+                    Line::from(vec![Span::styled(
+                        line,
+                        Style::default()
+                            .fg(Color::Yellow)
+                            .add_modifier(Modifier::BOLD),
+                    )])
                 } else if line.starts_with("  •") {
                     Line::from(vec![
                         Span::styled("  • ", Style::default().fg(Color::Yellow)),
                         Span::styled(
                             line.strip_prefix("  • ").unwrap_or(""),
-                            Style::default().fg(Color::White)
+                            Style::default().fg(Color::White),
                         ),
                     ])
                 } else if line.contains("... and") {
-                    Line::from(vec![
-                        Span::styled(
-                            line,
-                            Style::default().fg(Color::DarkGray).add_modifier(Modifier::ITALIC)
-                        ),
-                    ])
+                    Line::from(vec![Span::styled(
+                        line,
+                        Style::default()
+                            .fg(Color::DarkGray)
+                            .add_modifier(Modifier::ITALIC),
+                    )])
                 } else {
                     Line::from(Span::styled(line, Style::default().fg(Color::White)))
                 }
@@ -643,7 +687,11 @@ impl Component for MainMenuComponent {
         frame.render_widget(stats_para, right_split[1]);
 
         // Footer
-        let _ = Footer::render(frame, footer_chunk, "↑↓: Navigate | Enter/Click: Select | q: Quit")?;
+        let _ = Footer::render(
+            frame,
+            footer_chunk,
+            "↑↓: Navigate | Enter/Click: Select | q: Quit",
+        )?;
 
         Ok(())
     }
@@ -689,9 +737,7 @@ impl Component for MainMenuComponent {
                             Ok(ComponentAction::None) // Ignore Enter on disabled items
                         }
                     }
-                    KeyCode::Char('q') | KeyCode::Esc => {
-                        Ok(ComponentAction::Quit)
-                    }
+                    KeyCode::Char('q') | KeyCode::Esc => Ok(ComponentAction::Quit),
                     _ => Ok(ComponentAction::None),
                 }
             }
@@ -703,7 +749,8 @@ impl Component for MainMenuComponent {
                             if mouse.column >= rect.x
                                 && mouse.column < rect.x + rect.width
                                 && mouse.row >= rect.y
-                                && mouse.row < rect.y + rect.height {
+                                && mouse.row < rect.y + rect.height
+                            {
                                 self.selected_item = *menu_item;
                                 let index = menu_item.to_index();
                                 self.list_state.select(Some(index));

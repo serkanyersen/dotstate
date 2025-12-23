@@ -32,17 +32,9 @@ impl MessageBox {
             || message.to_lowercase().contains("failed")
             || message.to_lowercase().contains("fail");
 
-        let final_color = if is_error {
-            Color::Red
-        } else {
-            border_color
-        };
+        let final_color = if is_error { Color::Red } else { border_color };
 
-        let final_title = if is_error {
-            "Error"
-        } else {
-            title_text
-        };
+        let final_title = if is_error { "Error" } else { title_text };
 
         let message_block = Block::default()
             .borders(Borders::ALL)
@@ -79,4 +71,3 @@ impl MessageBox {
         Self::render(frame, area, message, Some("Success"), Some(Color::Green))
     }
 }
-

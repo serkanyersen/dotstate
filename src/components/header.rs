@@ -1,7 +1,7 @@
+use crate::widgets::DotstateLogo;
 use anyhow::Result;
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
-use crate::widgets::DotstateLogo;
 
 /// Common header component for all screens
 pub struct Header;
@@ -17,15 +17,22 @@ impl Header {
     ///
     /// # Returns
     /// The height of the header (for layout calculations)
-    pub fn render(frame: &mut Frame, area: Rect, title: &str, description: &str) -> Result<u16, anyhow::Error> {
+    pub fn render(
+        frame: &mut Frame,
+        area: Rect,
+        title: &str,
+        description: &str,
+    ) -> Result<u16, anyhow::Error> {
         // Main header block with cyan border, padding, and title
         let header_block = Block::default()
             .borders(Borders::ALL)
             .border_style(Style::default().fg(Color::Cyan))
             .title(title)
-            .title_style(Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD))
+            .title_style(
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            )
             .title_alignment(Alignment::Center)
             .padding(ratatui::widgets::Padding::new(1, 1, 0, 0));
 
@@ -40,13 +47,12 @@ impl Header {
             .direction(Direction::Horizontal)
             .constraints([
                 Constraint::Length(30), // Logo width (small logo is ~28 chars + spacing)
-                Constraint::Min(0),      // Rest for description
+                Constraint::Min(0),     // Rest for description
             ])
             .split(inner_area);
 
         // Logo area (borderless block for positioning)
-        let logo_block = Block::default()
-            .padding(ratatui::widgets::Padding::new(0, 1, 0, 0));
+        let logo_block = Block::default().padding(ratatui::widgets::Padding::new(0, 1, 0, 0));
         let logo_area = logo_block.inner(horizontal_chunks[0]);
         frame.render_widget(logo_block, horizontal_chunks[0]);
         frame.render_widget(DotstateLogo::small(), logo_area);
@@ -63,10 +69,7 @@ impl Header {
 
         let desc_layout = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Length(top_padding),
-                Constraint::Min(0),
-            ])
+            .constraints([Constraint::Length(top_padding), Constraint::Min(0)])
             .split(desc_area);
 
         let description_para = Paragraph::new(description)
@@ -80,4 +83,3 @@ impl Header {
         Ok(area.height)
     }
 }
-

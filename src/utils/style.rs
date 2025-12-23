@@ -45,4 +45,3 @@ pub fn input_placeholder_style() -> Style {
 pub fn input_text_style() -> Style {
     Style::default().fg(Color::White)
 }
-

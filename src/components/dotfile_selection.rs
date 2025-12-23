@@ -1,14 +1,20 @@
+use crate::components::component::{Component, ComponentAction};
+use crate::components::file_preview::FilePreview;
+use crate::components::footer::Footer;
+use crate::components::header::Header;
+use crate::components::input_field::InputField;
+use crate::ui::{DotfileSelectionFocus, UiState};
+use crate::utils::{
+    center_popup, create_split_layout, create_standard_layout, focused_border_style,
+    unfocused_border_style,
+};
 use anyhow::Result;
 use crossterm::event::Event;
 use ratatui::prelude::*;
-use ratatui::widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Scrollbar, ScrollbarOrientation, StatefulWidget, Wrap};
-use crate::components::component::{Component, ComponentAction};
-use crate::components::header::Header;
-use crate::components::footer::Footer;
-use crate::components::input_field::InputField;
-use crate::components::file_preview::FilePreview;
-use crate::ui::{UiState, DotfileSelectionFocus};
-use crate::utils::{create_standard_layout, create_split_layout, center_popup, focused_border_style, unfocused_border_style};
+use ratatui::widgets::{
+    Block, Borders, Clear, List, ListItem, Paragraph, Scrollbar, ScrollbarOrientation,
+    StatefulWidget, Wrap,
+};
 use std::path::{Path, PathBuf};
 
 /// Dotfile selection component
@@ -22,17 +28,20 @@ impl DotfileSelectionComponent {
     }
 
     /// Render with state - this is the main render method that takes UiState
-    pub fn render_with_state(&mut self, frame: &mut Frame, area: Rect, state: &mut UiState) -> Result<()> {
+    pub fn render_with_state(
+        &mut self,
+        frame: &mut Frame,
+        area: Rect,
+        state: &mut UiState,
+    ) -> Result<()> {
         // Clear the entire area first to prevent background bleed-through
         frame.render_widget(Clear, area);
 
         // Background
-        let background = Block::default()
-            .style(Style::default().bg(Color::Black));
+        let background = Block::default().style(Style::default().bg(Color::Black));
         frame.render_widget(background, area);
 
         let selection_state = &mut state.dotfile_selection;
-
 
         // Layout: Title/Description, Content (list + preview), Footer
         let (header_chunk, content_chunk, footer_chunk) = create_standard_layout(area, 5, 2);
@@ -80,23 +89,33 @@ impl DotfileSelectionComponent {
             .constraints([
                 Constraint::Length(1), // Current path display
                 Constraint::Length(3), // Path input field
-                Constraint::Min(0),   // File list and preview
+                Constraint::Min(0),    // File list and preview
                 Constraint::Length(2), // Footer (1 for border, 1 for text)
             ])
             .split(popup_area);
 
         // Current path display
-        let path_display = Paragraph::new(selection_state.file_browser_path.to_string_lossy().to_string())
-            .block(Block::default()
+        let path_display = Paragraph::new(
+            selection_state
+                .file_browser_path
+                .to_string_lossy()
+                .to_string(),
+        )
+        .block(
+            Block::default()
                 .borders(Borders::ALL)
                 .title("Current Directory")
                 .title_alignment(Alignment::Center)
-                .style(Style::default().bg(Color::Black)));
+                .style(Style::default().bg(Color::Black)),
+        );
         frame.render_widget(path_display, browser_chunks[0]);
 
         // Path input field - use InputField component
         let path_input_text = if selection_state.file_browser_path_input.is_empty() {
-            selection_state.file_browser_path.to_string_lossy().to_string()
+            selection_state
+                .file_browser_path
+                .to_string_lossy()
+                .to_string()
         } else {
             selection_state.file_browser_path_input.clone()
         };
@@ -104,7 +123,9 @@ impl DotfileSelectionComponent {
         let cursor_pos = if selection_state.file_browser_path_input.is_empty() {
             path_input_text.chars().count()
         } else {
-            selection_state.file_browser_path_cursor.min(path_input_text.chars().count())
+            selection_state
+                .file_browser_path_cursor
+                .min(path_input_text.chars().count())
         };
 
         InputField::render(
@@ -123,7 +144,8 @@ impl DotfileSelectionComponent {
         let list_preview_chunks = create_split_layout(browser_chunks[2], &[50, 50]);
 
         // File list using ListState
-        let items: Vec<ListItem> = selection_state.file_browser_entries
+        let items: Vec<ListItem> = selection_state
+            .file_browser_entries
             .iter()
             .map(|path| {
                 let is_dir = if path == Path::new("..") {
@@ -157,8 +179,12 @@ impl DotfileSelectionComponent {
 
         // Update scrollbar state
         let total_items = selection_state.file_browser_entries.len();
-        let selected_index = selection_state.file_browser_list_state.selected().unwrap_or(0);
-        selection_state.file_browser_scrollbar = selection_state.file_browser_scrollbar
+        let selected_index = selection_state
+            .file_browser_list_state
+            .selected()
+            .unwrap_or(0);
+        selection_state.file_browser_scrollbar = selection_state
+            .file_browser_scrollbar
             .content_length(total_items)
             .position(selected_index);
 
@@ -171,19 +197,26 @@ impl DotfileSelectionComponent {
         };
 
         let list = List::new(items)
-            .block(Block::default()
-                .borders(Borders::ALL)
-                .title(list_title)
-                .title_alignment(Alignment::Center)
-                .border_style(list_border_style))
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title(list_title)
+                    .title_alignment(Alignment::Center)
+                    .border_style(list_border_style),
+            )
             .highlight_style(
                 Style::default()
                     .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD | Modifier::REVERSED)
+                    .add_modifier(Modifier::BOLD | Modifier::REVERSED),
             )
             .highlight_symbol("» ");
 
-        StatefulWidget::render(list, list_preview_chunks[0], frame.buffer_mut(), &mut selection_state.file_browser_list_state);
+        StatefulWidget::render(
+            list,
+            list_preview_chunks[0],
+            frame.buffer_mut(),
+            &mut selection_state.file_browser_list_state,
+        );
 
         // Render scrollbar
         frame.render_stateful_widget(
@@ -199,7 +232,9 @@ impl DotfileSelectionComponent {
             if selected_index < selection_state.file_browser_entries.len() {
                 let selected = &selection_state.file_browser_entries[selected_index];
                 let full_path = if selected == Path::new("..") {
-                    selection_state.file_browser_path.parent()
+                    selection_state
+                        .file_browser_path
+                        .parent()
                         .map(|p| p.to_path_buf())
                         .unwrap_or_else(|| PathBuf::from("/"))
                 } else if selected == Path::new(".") {
@@ -227,19 +262,21 @@ impl DotfileSelectionComponent {
                     Some(preview_title),
                 )?;
             } else {
-                let empty_preview = Paragraph::new("No selection")
-                    .block(Block::default()
+                let empty_preview = Paragraph::new("No selection").block(
+                    Block::default()
                         .borders(Borders::ALL)
                         .title("Preview")
-                        .title_alignment(Alignment::Center));
+                        .title_alignment(Alignment::Center),
+                );
                 frame.render_widget(empty_preview, list_preview_chunks[1]);
             }
         } else {
-            let empty_preview = Paragraph::new("No selection")
-                .block(Block::default()
+            let empty_preview = Paragraph::new("No selection").block(
+                Block::default()
                     .borders(Borders::ALL)
                     .title("Preview")
-                    .title_alignment(Alignment::Center));
+                    .title_alignment(Alignment::Center),
+            );
             frame.render_widget(empty_preview, list_preview_chunks[1]);
         }
 
@@ -279,7 +316,9 @@ impl DotfileSelectionComponent {
             .split(content_chunk);
 
         let input_text = &selection_state.custom_file_input;
-        let cursor_pos = selection_state.custom_file_cursor.min(input_text.chars().count());
+        let cursor_pos = selection_state
+            .custom_file_cursor
+            .min(input_text.chars().count());
 
         InputField::render(
             frame,
@@ -293,7 +332,11 @@ impl DotfileSelectionComponent {
             false, // Not disabled
         )?;
 
-        let _ = Footer::render(frame, footer_chunk, "Enter: Add File | Esc: Cancel | Tab: Focus/Unfocus")?;
+        let _ = Footer::render(
+            frame,
+            footer_chunk,
+            "Enter: Add File | Esc: Cancel | Tab: Focus/Unfocus",
+        )?;
 
         Ok(())
     }
@@ -317,7 +360,7 @@ impl DotfileSelectionComponent {
         let left_chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Min(0),  // List takes remaining space
+                Constraint::Min(0),    // List takes remaining space
                 Constraint::Length(4), // Description block (3 lines + 1 border)
             ])
             .split(left_area);
@@ -326,7 +369,8 @@ impl DotfileSelectionComponent {
         let description_area = left_chunks[1];
 
         // File list using ListState - simplified, no descriptions inline
-        let items: Vec<ListItem> = selection_state.dotfiles
+        let items: Vec<ListItem> = selection_state
+            .dotfiles
             .iter()
             .enumerate()
             .map(|(i, dotfile)| {
@@ -345,7 +389,8 @@ impl DotfileSelectionComponent {
         // Update scrollbar state
         let total_dotfiles = selection_state.dotfiles.len();
         let selected_index = selection_state.dotfile_list_state.selected().unwrap_or(0);
-        selection_state.dotfile_list_scrollbar = selection_state.dotfile_list_scrollbar
+        selection_state.dotfile_list_scrollbar = selection_state
+            .dotfile_list_scrollbar
             .content_length(total_dotfiles)
             .position(selected_index);
 
@@ -358,19 +403,26 @@ impl DotfileSelectionComponent {
         };
 
         let list = List::new(items)
-            .block(Block::default()
-                .borders(Borders::ALL)
-                .title(list_title)
-                .title_alignment(Alignment::Center)
-                .border_style(list_border_style))
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title(list_title)
+                    .title_alignment(Alignment::Center)
+                    .border_style(list_border_style),
+            )
             .highlight_style(
                 Style::default()
                     .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD | Modifier::REVERSED)
+                    .add_modifier(Modifier::BOLD | Modifier::REVERSED),
             )
             .highlight_symbol("> ");
 
-        StatefulWidget::render(list, list_area, frame.buffer_mut(), &mut selection_state.dotfile_list_state);
+        StatefulWidget::render(
+            list,
+            list_area,
+            frame.buffer_mut(),
+            &mut selection_state.dotfile_list_state,
+        );
 
         // Render scrollbar
         frame.render_stateful_widget(
@@ -388,34 +440,41 @@ impl DotfileSelectionComponent {
                 let description_text = if let Some(desc) = &dotfile.description {
                     desc.clone()
                 } else {
-                    format!("No description available for {}", dotfile.relative_path.to_string_lossy())
+                    format!(
+                        "No description available for {}",
+                        dotfile.relative_path.to_string_lossy()
+                    )
                 };
 
                 let description_para = Paragraph::new(description_text)
-                    .block(Block::default()
-                        .borders(Borders::ALL)
-                        .title("Description")
-                        .title_alignment(Alignment::Center)
-                        .border_style(unfocused_border_style()))
+                    .block(
+                        Block::default()
+                            .borders(Borders::ALL)
+                            .title("Description")
+                            .title_alignment(Alignment::Center)
+                            .border_style(unfocused_border_style()),
+                    )
                     .wrap(Wrap { trim: true })
                     .style(Style::default().fg(Color::White));
                 frame.render_widget(description_para, description_area);
             } else {
-                let empty_desc = Paragraph::new("No file selected")
-                    .block(Block::default()
+                let empty_desc = Paragraph::new("No file selected").block(
+                    Block::default()
                         .borders(Borders::ALL)
                         .title("Description")
                         .title_alignment(Alignment::Center)
-                        .border_style(unfocused_border_style()));
+                        .border_style(unfocused_border_style()),
+                );
                 frame.render_widget(empty_desc, description_area);
             }
         } else {
-            let empty_desc = Paragraph::new("No file selected")
-                .block(Block::default()
+            let empty_desc = Paragraph::new("No file selected").block(
+                Block::default()
                     .borders(Borders::ALL)
                     .title("Description")
                     .title_alignment(Alignment::Center)
-                    .border_style(unfocused_border_style()));
+                    .border_style(unfocused_border_style()),
+            );
             frame.render_widget(empty_desc, description_area);
         }
 
@@ -425,7 +484,10 @@ impl DotfileSelectionComponent {
                 if selected_index < selection_state.dotfiles.len() {
                     let dotfile = &selection_state.dotfiles[selected_index];
                     let is_focused = selection_state.focus == DotfileSelectionFocus::Preview;
-                    let preview_title = format!("Preview: {} (u/d: Scroll)", dotfile.relative_path.to_string_lossy());
+                    let preview_title = format!(
+                        "Preview: {} (u/d: Scroll)",
+                        dotfile.relative_path.to_string_lossy()
+                    );
 
                     FilePreview::render(
                         frame,
@@ -436,19 +498,21 @@ impl DotfileSelectionComponent {
                         Some(&preview_title),
                     )?;
                 } else {
-                    let empty_preview = Paragraph::new("No file selected")
-                        .block(Block::default()
+                    let empty_preview = Paragraph::new("No file selected").block(
+                        Block::default()
                             .borders(Borders::ALL)
                             .title("Preview")
-                            .title_alignment(Alignment::Center));
+                            .title_alignment(Alignment::Center),
+                    );
                     frame.render_widget(empty_preview, preview_rect);
                 }
             } else {
-                let empty_preview = Paragraph::new("No file selected")
-                    .block(Block::default()
+                let empty_preview = Paragraph::new("No file selected").block(
+                    Block::default()
                         .borders(Borders::ALL)
                         .title("Preview")
-                        .title_alignment(Alignment::Center));
+                        .title_alignment(Alignment::Center),
+                );
                 frame.render_widget(empty_preview, preview_rect);
             }
         }
@@ -457,14 +521,14 @@ impl DotfileSelectionComponent {
         if let Some(status) = &selection_state.status_message {
             let status_chunks = Layout::default()
                 .direction(Direction::Vertical)
-                .constraints([
-                    Constraint::Min(0),
-                    Constraint::Length(10),
-                ])
+                .constraints([Constraint::Min(0), Constraint::Length(10)])
                 .split(content_chunk);
 
             frame.render_widget(Clear, status_chunks[1]);
-            frame.render_widget(Block::default().style(Style::default().bg(Color::DarkGray)), status_chunks[1]);
+            frame.render_widget(
+                Block::default().style(Style::default().bg(Color::DarkGray)),
+                status_chunks[1],
+            );
 
             let status_block = Block::default()
                 .borders(Borders::ALL)
@@ -478,7 +542,11 @@ impl DotfileSelectionComponent {
         }
 
         // Footer
-        let backup_status = if selection_state.backup_enabled { "ON" } else { "OFF" };
+        let backup_status = if selection_state.backup_enabled {
+            "ON"
+        } else {
+            "OFF"
+        };
         let footer_text = if selection_state.status_message.is_some() {
             "Enter: Continue".to_string()
         } else {
@@ -497,15 +565,16 @@ impl DotfileSelectionComponent {
         selection_state: &crate::ui::DotfileSelectionState,
     ) -> Result<()> {
         // Dim the background
-        let dim = Block::default()
-            .style(Style::default().bg(Color::Black).fg(Color::DarkGray));
+        let dim = Block::default().style(Style::default().bg(Color::Black).fg(Color::DarkGray));
         frame.render_widget(dim, area);
 
         // Create centered popup
         let popup_area = crate::utils::center_popup(area, 70, 40);
         frame.render_widget(Clear, popup_area);
 
-        let path = selection_state.custom_file_confirm_path.as_ref()
+        let path = selection_state
+            .custom_file_confirm_path
+            .as_ref()
             .map(|p| p.display().to_string())
             .unwrap_or_else(|| "Unknown".to_string());
 
@@ -525,24 +594,33 @@ impl DotfileSelectionComponent {
 
         // Title
         let title = Paragraph::new("Confirm Add Custom File")
-            .block(Block::default()
-                .borders(Borders::ALL)
-                .title("Confirmation")
-                .title_alignment(Alignment::Center)
-                .style(Style::default().bg(Color::Black)))
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title("Confirmation")
+                    .title_alignment(Alignment::Center)
+                    .style(Style::default().bg(Color::Black)),
+            )
             .alignment(Alignment::Center)
-            .style(Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD));
+            .style(
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            );
         frame.render_widget(title, chunks[0]);
 
         // Path label
-        let path_label = Paragraph::new("Path:")
-            .style(Style::default().fg(Color::White));
+        let path_label = Paragraph::new("Path:").style(Style::default().fg(Color::White));
         frame.render_widget(path_label, chunks[2]);
 
         // Path value (highlighted in different color)
         let path_value = Paragraph::new(path.as_str())
             .wrap(Wrap { trim: true })
-            .style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD));
+            .style(
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            );
         frame.render_widget(path_value, chunks[3]);
 
         // Warning message
@@ -566,8 +644,7 @@ impl Component for DotfileSelectionComponent {
         // This method is required by the trait but we use render_with_state instead
         // Clear the area as a fallback
         frame.render_widget(Clear, area);
-        let background = Block::default()
-            .style(Style::default().bg(Color::Black));
+        let background = Block::default().style(Style::default().bg(Color::Black));
         frame.render_widget(background, area);
         Ok(())
     }

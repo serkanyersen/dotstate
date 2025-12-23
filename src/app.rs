@@ -1,20 +1,29 @@
-use anyhow::{Context, Result};
+use crate::components::package_manager::PackageManagerComponent;
+use crate::components::profile_manager::ProfilePopupType;
+use crate::components::{
+    Component, ComponentAction, DotfileSelectionComponent, GitHubAuthComponent, MainMenuComponent,
+    MenuItem, MessageComponent, ProfileManagerComponent, PushChangesComponent,
+    SyncedFilesComponent,
+};
 use crate::config::{Config, GitHubConfig};
 use crate::file_manager::FileManager;
-use crate::github::GitHubClient;
 use crate::git::GitManager;
+use crate::github::GitHubClient;
 use crate::tui::Tui;
-use crate::ui::{UiState, Screen, GitHubAuthStep, GitHubAuthField, GitHubSetupStep, PackageStatus, PackagePopupType, AddPackageField, InstallationStep};
+use crate::ui::{
+    AddPackageField, GitHubAuthField, GitHubAuthStep, GitHubSetupStep, InstallationStep,
+    PackagePopupType, PackageStatus, Screen, UiState,
+};
 use crate::utils::profile_manifest::{Package, PackageManager};
-use crate::components::{MainMenuComponent, GitHubAuthComponent, SyncedFilesComponent, MessageComponent, DotfileSelectionComponent, PushChangesComponent, ProfileManagerComponent, ComponentAction, Component, MenuItem};
-use crate::components::profile_manager::ProfilePopupType;
-use crate::components::package_manager::PackageManagerComponent;
-use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
+use anyhow::{Context, Result};
+use crossterm::event::{
+    Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind,
+};
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
-use std::fs;
 use tokio::runtime::Runtime;
-use tracing::{error, info, warn, debug, trace};
+use tracing::{debug, error, info, trace, warn};
 // Frame and Rect are used in function signatures but imported where needed
 
 /// Count files in a directory (recursively)
@@ -168,7 +177,10 @@ impl App {
                     }
                 }
                 // Check again after releasing borrow
-                if !matches!(self.ui_state.package_manager.installation_step, InstallationStep::NotStarted) {
+                if !matches!(
+                    self.ui_state.package_manager.installation_step,
+                    InstallationStep::NotStarted
+                ) {
                     self.process_installation_step()?;
                 }
             }
@@ -194,7 +206,8 @@ impl App {
             // Handle ManagePackages screen transitions
             if current_screen == Screen::ManagePackages {
                 // Load packages from active profile first (before mutable borrow)
-                let packages = self.get_active_profile_info()
+                let packages = self
+                    .get_active_profile_info()
                     .ok()
                     .flatten()
                     .map(|p| p.packages.clone())
@@ -220,10 +233,13 @@ impl App {
 
         // Update components with current state
         if self.ui_state.current_screen == Screen::MainMenu {
-            self.main_menu_component.set_has_changes_to_push(self.ui_state.has_changes_to_push);
-            self.main_menu_component.set_selected(self.ui_state.selected_index);
+            self.main_menu_component
+                .set_has_changes_to_push(self.ui_state.has_changes_to_push);
+            self.main_menu_component
+                .set_selected(self.ui_state.selected_index);
             // Update changed files for status display
-            self.main_menu_component.update_changed_files(self.ui_state.sync_with_remote.changed_files.clone());
+            self.main_menu_component
+                .update_changed_files(self.ui_state.sync_with_remote.changed_files.clone());
         }
 
         // Update GitHub auth component state
@@ -235,38 +251,42 @@ impl App {
 
         // Update synced files component config (only if on that screen to avoid unnecessary clones)
         if self.ui_state.current_screen == Screen::ViewSyncedFiles {
-            self.synced_files_component.update_config(self.config.clone());
+            self.synced_files_component
+                .update_config(self.config.clone());
         }
 
         // Load changed files when entering PushChanges screen
-        if self.ui_state.current_screen == Screen::SyncWithRemote && !self.ui_state.sync_with_remote.is_syncing {
+        if self.ui_state.current_screen == Screen::SyncWithRemote
+            && !self.ui_state.sync_with_remote.is_syncing
+        {
             // Only load if we don't have files yet
             if self.ui_state.sync_with_remote.changed_files.is_empty() {
                 self.load_changed_files();
             }
         }
 
-
         // Get profiles from manifest before the draw closure to avoid borrow issues
-        let profile_selection_profiles: Vec<crate::utils::ProfileInfo> = if self.ui_state.current_screen == Screen::ProfileSelection {
-            self.get_profiles().unwrap_or_default()
-        } else {
-            Vec::new()
-        };
+        let profile_selection_profiles: Vec<crate::utils::ProfileInfo> =
+            if self.ui_state.current_screen == Screen::ProfileSelection {
+                self.get_profiles().unwrap_or_default()
+            } else {
+                Vec::new()
+            };
 
         // Clone config for main menu to avoid borrow issues in closure
         let config_clone = self.config.clone();
 
         // Get packages for ManagePackages screen (before closure to avoid borrow issues)
-        let packages_for_manage: Vec<crate::utils::profile_manifest::Package> = if self.ui_state.current_screen == Screen::ManagePackages {
-            self.get_active_profile_info()
-                .ok()
-                .flatten()
-                .map(|p| p.packages.clone())
-                .unwrap_or_default()
-        } else {
-            Vec::new()
-        };
+        let packages_for_manage: Vec<crate::utils::profile_manifest::Package> =
+            if self.ui_state.current_screen == Screen::ManagePackages {
+                self.get_active_profile_info()
+                    .ok()
+                    .flatten()
+                    .map(|p| p.packages.clone())
+                    .unwrap_or_default()
+            } else {
+                Vec::new()
+            };
 
         self.tui.terminal_mut().draw(|frame| {
             let area = frame.area();
@@ -480,7 +500,8 @@ impl App {
                     let action = self.github_auth_component.handle_event(event)?;
                     if action == ComponentAction::Update {
                         // Sync state back
-                        self.ui_state.github_auth = self.github_auth_component.get_auth_state().clone();
+                        self.ui_state.github_auth =
+                            self.github_auth_component.get_auth_state().clone();
                     }
                     return Ok(());
                 }
@@ -489,7 +510,8 @@ impl App {
                     if key.kind == KeyEventKind::Press {
                         self.handle_github_auth_input(key)?;
                         // Sync state to component
-                        *self.github_auth_component.get_auth_state_mut() = self.ui_state.github_auth.clone();
+                        *self.github_auth_component.get_auth_state_mut() =
+                            self.ui_state.github_auth.clone();
                     }
                 }
                 return Ok(());
@@ -509,7 +531,8 @@ impl App {
                             KeyCode::Enter => {
                                 // Start pushing if not already pushing and we have changes
                                 if !self.ui_state.sync_with_remote.is_syncing
-                                    && !self.ui_state.sync_with_remote.changed_files.is_empty() {
+                                    && !self.ui_state.sync_with_remote.changed_files.is_empty()
+                                {
                                     self.start_sync()?;
                                 }
                             }
@@ -522,13 +545,15 @@ impl App {
                                     self.ui_state.sync_with_remote.pulled_changes_count = None;
                                     self.ui_state.current_screen = Screen::MainMenu;
                                     // Reset sync state
-                                    self.ui_state.sync_with_remote = crate::ui::SyncWithRemoteState::default();
+                                    self.ui_state.sync_with_remote =
+                                        crate::ui::SyncWithRemoteState::default();
                                     // Re-check for changes after sync
                                     self.check_changes_to_push();
                                 } else {
                                     self.ui_state.current_screen = Screen::MainMenu;
                                     // Reset sync state
-                                    self.ui_state.sync_with_remote = crate::ui::SyncWithRemoteState::default();
+                                    self.ui_state.sync_with_remote =
+                                        crate::ui::SyncWithRemoteState::default();
                                 }
                             }
                             KeyCode::Up => {
@@ -538,15 +563,31 @@ impl App {
                                 self.ui_state.sync_with_remote.list_state.select_next();
                             }
                             KeyCode::PageUp => {
-                                if let Some(current) = self.ui_state.sync_with_remote.list_state.selected() {
+                                if let Some(current) =
+                                    self.ui_state.sync_with_remote.list_state.selected()
+                                {
                                     let new_index = current.saturating_sub(10);
-                                    self.ui_state.sync_with_remote.list_state.select(Some(new_index));
+                                    self.ui_state
+                                        .sync_with_remote
+                                        .list_state
+                                        .select(Some(new_index));
                                 }
                             }
                             KeyCode::PageDown => {
-                                if let Some(current) = self.ui_state.sync_with_remote.list_state.selected() {
-                                    let new_index = (current + 10).min(self.ui_state.sync_with_remote.changed_files.len().saturating_sub(1));
-                                    self.ui_state.sync_with_remote.list_state.select(Some(new_index));
+                                if let Some(current) =
+                                    self.ui_state.sync_with_remote.list_state.selected()
+                                {
+                                    let new_index = (current + 10).min(
+                                        self.ui_state
+                                            .sync_with_remote
+                                            .changed_files
+                                            .len()
+                                            .saturating_sub(1),
+                                    );
+                                    self.ui_state
+                                        .sync_with_remote
+                                        .list_state
+                                        .select(Some(new_index));
                                 }
                             }
                             KeyCode::Home => {
@@ -573,11 +614,13 @@ impl App {
                             self.ui_state.sync_with_remote.pulled_changes_count = None;
                             self.ui_state.current_screen = Screen::MainMenu;
                             // Reset sync state
-                            self.ui_state.sync_with_remote = crate::ui::SyncWithRemoteState::default();
+                            self.ui_state.sync_with_remote =
+                                crate::ui::SyncWithRemoteState::default();
                             // Re-check for changes after sync
                             self.check_changes_to_push();
                         } else if !self.ui_state.sync_with_remote.is_syncing
-                            && !self.ui_state.sync_with_remote.changed_files.is_empty() {
+                            && !self.ui_state.sync_with_remote.changed_files.is_empty()
+                        {
                             self.start_sync()?;
                         }
                     }
@@ -598,11 +641,16 @@ impl App {
                                     state.show_exit_warning = false;
                                     if !state.profiles.is_empty() {
                                         let default_profile = state.profiles[0].clone();
-                                        if let Err(e) = self.activate_profile_after_setup(&default_profile) {
+                                        if let Err(e) =
+                                            self.activate_profile_after_setup(&default_profile)
+                                        {
                                             error!("Failed to activate default profile: {}", e);
                                             self.message_component = Some(MessageComponent::new(
                                                 "Activation Failed".to_string(),
-                                                format!("Failed to activate default profile '{}': {}", default_profile, e),
+                                                format!(
+                                                    "Failed to activate default profile '{}': {}",
+                                                    default_profile, e
+                                                ),
                                                 Screen::MainMenu,
                                             ));
                                         }
@@ -631,7 +679,9 @@ impl App {
                                     if current > 0 {
                                         state.list_state.select(Some(current - 1));
                                     } else {
-                                        state.list_state.select(Some(state.profiles.len().saturating_sub(1)));
+                                        state
+                                            .list_state
+                                            .select(Some(state.profiles.len().saturating_sub(1)));
                                     }
                                 } else if !state.profiles.is_empty() {
                                     state.list_state.select(Some(state.profiles.len() - 1));
@@ -651,20 +701,25 @@ impl App {
                             KeyCode::Enter => {
                                 // Activate selected profile
                                 // Clone profile name to release borrow of state
-                                let profile_name = if let Some(selected_idx) = state.list_state.selected() {
-                                    state.profiles.get(selected_idx).cloned()
-                                } else {
-                                    None
-                                };
+                                let profile_name =
+                                    if let Some(selected_idx) = state.list_state.selected() {
+                                        state.profiles.get(selected_idx).cloned()
+                                    } else {
+                                        None
+                                    };
 
                                 if let Some(profile_name) = profile_name {
                                     // state borrow ends here, allowing us to borrow self mutably
-                                    if let Err(e) = self.activate_profile_after_setup(&profile_name) {
+                                    if let Err(e) = self.activate_profile_after_setup(&profile_name)
+                                    {
                                         error!("Failed to activate profile: {}", e);
                                         // Show error message
                                         self.message_component = Some(MessageComponent::new(
                                             "Activation Failed".to_string(),
-                                            format!("Failed to activate profile '{}': {}", profile_name, e),
+                                            format!(
+                                                "Failed to activate profile '{}': {}",
+                                                profile_name, e
+                                            ),
                                             Screen::MainMenu,
                                         ));
                                     }
@@ -704,76 +759,107 @@ impl App {
                                             // Switch to next/previous field
                                             if key.modifiers.contains(KeyModifiers::SHIFT) {
                                                 // Shift+Tab: previous field (go backwards)
-                                                state.add_focused_field = match state.add_focused_field {
-                                                    AddPackageField::Name => {
-                                                        // Wrap to last field
-                                                        if state.add_is_custom {
-                                                            AddPackageField::ExistenceCheck
-                                                        } else {
-                                                            AddPackageField::BinaryName
+                                                state.add_focused_field =
+                                                    match state.add_focused_field {
+                                                        AddPackageField::Name => {
+                                                            // Wrap to last field
+                                                            if state.add_is_custom {
+                                                                AddPackageField::ExistenceCheck
+                                                            } else {
+                                                                AddPackageField::BinaryName
+                                                            }
                                                         }
-                                                    }
-                                                    AddPackageField::Description => AddPackageField::Name,
-                                                    AddPackageField::Manager => AddPackageField::Description,
-                                                    AddPackageField::PackageName => AddPackageField::Manager,
-                                                    AddPackageField::BinaryName => {
-                                                        if state.add_is_custom {
+                                                        AddPackageField::Description => {
+                                                            AddPackageField::Name
+                                                        }
+                                                        AddPackageField::Manager => {
+                                                            AddPackageField::Description
+                                                        }
+                                                        AddPackageField::PackageName => {
                                                             AddPackageField::Manager
-                                                        } else {
-                                                            AddPackageField::PackageName
                                                         }
-                                                    }
-                                                    AddPackageField::InstallCommand => AddPackageField::BinaryName,
-                                                    AddPackageField::ExistenceCheck => AddPackageField::InstallCommand,
-                                                    AddPackageField::ManagerCheck => {
-                                                        // ManagerCheck is not shown in UI, but exists in enum
-                                                        if state.add_is_custom {
-                                                            AddPackageField::ExistenceCheck
-                                                        } else {
+                                                        AddPackageField::BinaryName => {
+                                                            if state.add_is_custom {
+                                                                AddPackageField::Manager
+                                                            } else {
+                                                                AddPackageField::PackageName
+                                                            }
+                                                        }
+                                                        AddPackageField::InstallCommand => {
                                                             AddPackageField::BinaryName
                                                         }
-                                                    }
-                                                };
+                                                        AddPackageField::ExistenceCheck => {
+                                                            AddPackageField::InstallCommand
+                                                        }
+                                                        AddPackageField::ManagerCheck => {
+                                                            // ManagerCheck is not shown in UI, but exists in enum
+                                                            if state.add_is_custom {
+                                                                AddPackageField::ExistenceCheck
+                                                            } else {
+                                                                AddPackageField::BinaryName
+                                                            }
+                                                        }
+                                                    };
                                             } else {
                                                 // Tab: next field (go forwards)
-                                                state.add_focused_field = match state.add_focused_field {
-                                                    AddPackageField::Name => AddPackageField::Description,
-                                                    AddPackageField::Description => AddPackageField::Manager,
-                                                    AddPackageField::Manager => {
-                                                        if state.add_is_custom {
+                                                state.add_focused_field =
+                                                    match state.add_focused_field {
+                                                        AddPackageField::Name => {
+                                                            AddPackageField::Description
+                                                        }
+                                                        AddPackageField::Description => {
+                                                            AddPackageField::Manager
+                                                        }
+                                                        AddPackageField::Manager => {
+                                                            if state.add_is_custom {
+                                                                AddPackageField::BinaryName
+                                                            } else {
+                                                                AddPackageField::PackageName
+                                                            }
+                                                        }
+                                                        AddPackageField::PackageName => {
                                                             AddPackageField::BinaryName
-                                                        } else {
-                                                            AddPackageField::PackageName
                                                         }
-                                                    }
-                                                    AddPackageField::PackageName => AddPackageField::BinaryName,
-                                                    AddPackageField::BinaryName => {
-                                                        if state.add_is_custom {
-                                                            AddPackageField::InstallCommand
-                                                        } else {
-                                                            AddPackageField::Name // Wrap around for managed packages
+                                                        AddPackageField::BinaryName => {
+                                                            if state.add_is_custom {
+                                                                AddPackageField::InstallCommand
+                                                            } else {
+                                                                AddPackageField::Name
+                                                                // Wrap around for managed packages
+                                                            }
                                                         }
-                                                    }
-                                                    AddPackageField::InstallCommand => AddPackageField::ExistenceCheck,
-                                                    AddPackageField::ExistenceCheck => AddPackageField::Name, // Wrap around
-                                                    AddPackageField::ManagerCheck => {
-                                                        // ManagerCheck is not shown in UI, but exists in enum
-                                                        AddPackageField::Name
-                                                    }
-                                                };
+                                                        AddPackageField::InstallCommand => {
+                                                            AddPackageField::ExistenceCheck
+                                                        }
+                                                        AddPackageField::ExistenceCheck => {
+                                                            AddPackageField::Name
+                                                        } // Wrap around
+                                                        AddPackageField::ManagerCheck => {
+                                                            // ManagerCheck is not shown in UI, but exists in enum
+                                                            AddPackageField::Name
+                                                        }
+                                                    };
                                             }
                                         }
-                                        KeyCode::Up | KeyCode::Down | KeyCode::Left | KeyCode::Right => {
+                                        KeyCode::Up
+                                        | KeyCode::Down
+                                        | KeyCode::Left
+                                        | KeyCode::Right => {
                                             if state.add_focused_field == AddPackageField::Manager {
                                                 // Navigate through managers with arrow keys
                                                 let manager_count = state.available_managers.len();
                                                 if manager_count > 0 {
                                                     match key.code {
                                                         KeyCode::Right | KeyCode::Down => {
-                                                            state.add_manager_selected = (state.add_manager_selected + 1) % manager_count;
+                                                            state.add_manager_selected =
+                                                                (state.add_manager_selected + 1)
+                                                                    % manager_count;
                                                         }
                                                         KeyCode::Left | KeyCode::Up => {
-                                                            state.add_manager_selected = if state.add_manager_selected == 0 {
+                                                            state.add_manager_selected = if state
+                                                                .add_manager_selected
+                                                                == 0
+                                                            {
                                                                 manager_count - 1
                                                             } else {
                                                                 state.add_manager_selected - 1
@@ -781,8 +867,16 @@ impl App {
                                                         }
                                                         _ => {}
                                                     }
-                                                    state.add_manager = Some(state.available_managers[state.add_manager_selected].clone());
-                                                    state.add_is_custom = matches!(state.available_managers[state.add_manager_selected], PackageManager::Custom);
+                                                    state.add_manager = Some(
+                                                        state.available_managers
+                                                            [state.add_manager_selected]
+                                                            .clone(),
+                                                    );
+                                                    state.add_is_custom = matches!(
+                                                        state.available_managers
+                                                            [state.add_manager_selected],
+                                                        PackageManager::Custom
+                                                    );
                                                 }
                                             }
                                         }
@@ -791,8 +885,16 @@ impl App {
                                                 // Space toggles/selects the current manager
                                                 let manager_count = state.available_managers.len();
                                                 if manager_count > 0 {
-                                                    state.add_manager = Some(state.available_managers[state.add_manager_selected].clone());
-                                                    state.add_is_custom = matches!(state.available_managers[state.add_manager_selected], PackageManager::Custom);
+                                                    state.add_manager = Some(
+                                                        state.available_managers
+                                                            [state.add_manager_selected]
+                                                            .clone(),
+                                                    );
+                                                    state.add_is_custom = matches!(
+                                                        state.available_managers
+                                                            [state.add_manager_selected],
+                                                        PackageManager::Custom
+                                                    );
                                                 }
                                             }
                                         }
@@ -801,15 +903,24 @@ impl App {
                                                 // Enter selects the current manager
                                                 let manager_count = state.available_managers.len();
                                                 if manager_count > 0 {
-                                                    state.add_manager = Some(state.available_managers[state.add_manager_selected].clone());
-                                                    state.add_is_custom = matches!(state.available_managers[state.add_manager_selected], PackageManager::Custom);
+                                                    state.add_manager = Some(
+                                                        state.available_managers
+                                                            [state.add_manager_selected]
+                                                            .clone(),
+                                                    );
+                                                    state.add_is_custom = matches!(
+                                                        state.available_managers
+                                                            [state.add_manager_selected],
+                                                        PackageManager::Custom
+                                                    );
                                                 }
                                             } else {
                                                 // Save package
                                                 // Release borrow before calling method
                                                 let _ = state;
                                                 if self.validate_and_save_package()? {
-                                                    self.ui_state.package_manager.popup_type = PackagePopupType::None;
+                                                    self.ui_state.package_manager.popup_type =
+                                                        PackagePopupType::None;
                                                 }
                                             }
                                         }
@@ -850,10 +961,14 @@ impl App {
                                 }
                                 PackagePopupType::InstallMissing => {
                                     match key.code {
-                                        KeyCode::Char('y') | KeyCode::Char('Y') | KeyCode::Enter => {
+                                        KeyCode::Char('y')
+                                        | KeyCode::Char('Y')
+                                        | KeyCode::Enter => {
                                             // User confirmed - start installation
                                             let mut packages_to_install = Vec::new();
-                                            for (idx, status) in state.package_statuses.iter().enumerate() {
+                                            for (idx, status) in
+                                                state.package_statuses.iter().enumerate()
+                                            {
                                                 if matches!(status, PackageStatus::NotInstalled) {
                                                     packages_to_install.push(idx);
                                                 }
@@ -861,23 +976,31 @@ impl App {
 
                                             if !packages_to_install.is_empty() {
                                                 // Start installation
-                                                if let Some(&first_idx) = packages_to_install.first() {
-                                                    let package_name = state.packages[first_idx].name.clone();
+                                                if let Some(&first_idx) =
+                                                    packages_to_install.first()
+                                                {
+                                                    let package_name =
+                                                        state.packages[first_idx].name.clone();
                                                     let total = packages_to_install.len();
-                                                    let mut install_list = packages_to_install.clone();
+                                                    let mut install_list =
+                                                        packages_to_install.clone();
                                                     install_list.remove(0);
 
-                                                    state.installation_step = InstallationStep::Installing {
-                                                        package_index: first_idx,
-                                                        package_name,
-                                                        total_packages: total,
-                                                        packages_to_install: install_list,
-                                                        installed: Vec::new(),
-                                                        failed: Vec::new(),
-                                                        status_rx: None,
-                                                    };
+                                                    state.installation_step =
+                                                        InstallationStep::Installing {
+                                                            package_index: first_idx,
+                                                            package_name,
+                                                            total_packages: total,
+                                                            packages_to_install: install_list,
+                                                            installed: Vec::new(),
+                                                            failed: Vec::new(),
+                                                            status_rx: None,
+                                                        };
                                                     state.installation_output.clear();
-                                                    state.installation_delay_until = Some(std::time::Instant::now() + Duration::from_millis(100));
+                                                    state.installation_delay_until = Some(
+                                                        std::time::Instant::now()
+                                                            + Duration::from_millis(100),
+                                                    );
                                                 }
                                             }
                                             state.popup_type = PackagePopupType::None;
@@ -899,7 +1022,6 @@ impl App {
                     }
                     return Ok(());
                 }
-
 
                 match event {
                     Event::Key(key) if key.kind == KeyEventKind::Press => {
@@ -935,33 +1057,49 @@ impl App {
                             }
                             KeyCode::Char('c') | KeyCode::Char('C') => {
                                 // Check all packages (if not in popup and not already checking)
-                                if state.popup_type == PackagePopupType::None && !state.is_checking && !state.packages.is_empty() {
+                                if state.popup_type == PackagePopupType::None
+                                    && !state.is_checking
+                                    && !state.packages.is_empty()
+                                {
                                     // Initialize statuses if needed
                                     if state.package_statuses.len() != state.packages.len() {
-                                        state.package_statuses = vec![PackageStatus::Unknown; state.packages.len()];
+                                        state.package_statuses =
+                                            vec![PackageStatus::Unknown; state.packages.len()];
                                     }
                                     // Reset all statuses to Unknown to check all
-                                    state.package_statuses = vec![PackageStatus::Unknown; state.packages.len()];
+                                    state.package_statuses =
+                                        vec![PackageStatus::Unknown; state.packages.len()];
                                     state.is_checking = true;
                                     state.checking_index = None;
-                                    state.checking_delay_until = Some(std::time::Instant::now() + Duration::from_millis(100));
+                                    state.checking_delay_until = Some(
+                                        std::time::Instant::now() + Duration::from_millis(100),
+                                    );
                                 }
                             }
                             KeyCode::Char('s') | KeyCode::Char('S') => {
                                 // Check selected package only (if not in popup and not already checking)
-                                if state.popup_type == PackagePopupType::None && !state.is_checking {
+                                if state.popup_type == PackagePopupType::None && !state.is_checking
+                                {
                                     if let Some(selected_idx) = state.list_state.selected() {
                                         if selected_idx < state.packages.len() {
                                             // Initialize statuses if needed
-                                            if state.package_statuses.len() != state.packages.len() {
-                                                state.package_statuses = vec![PackageStatus::Unknown; state.packages.len()];
+                                            if state.package_statuses.len() != state.packages.len()
+                                            {
+                                                state.package_statuses = vec![
+                                                    PackageStatus::Unknown;
+                                                    state.packages.len()
+                                                ];
                                             }
                                             // Only check the selected package - set others to stay as they are
                                             // But we need to mark this one as Unknown so it gets checked
-                                            state.package_statuses[selected_idx] = PackageStatus::Unknown;
+                                            state.package_statuses[selected_idx] =
+                                                PackageStatus::Unknown;
                                             state.is_checking = true;
                                             state.checking_index = Some(selected_idx);
-                                            state.checking_delay_until = Some(std::time::Instant::now() + Duration::from_millis(100));
+                                            state.checking_delay_until = Some(
+                                                std::time::Instant::now()
+                                                    + Duration::from_millis(100),
+                                            );
                                         }
                                     }
                                 }
@@ -969,8 +1107,12 @@ impl App {
                             KeyCode::Char('i') | KeyCode::Char('I') => {
                                 // Start installing missing packages (if not in popup and not already installing)
                                 if state.popup_type == PackagePopupType::None
-                                    && matches!(state.installation_step, InstallationStep::NotStarted)
-                                    && !state.is_checking {
+                                    && matches!(
+                                        state.installation_step,
+                                        InstallationStep::NotStarted
+                                    )
+                                    && !state.is_checking
+                                {
                                     // Find packages that are not installed
                                     let mut packages_to_install = Vec::new();
                                     for (idx, status) in state.package_statuses.iter().enumerate() {
@@ -982,29 +1124,35 @@ impl App {
                                     if !packages_to_install.is_empty() {
                                         // Start installation
                                         if let Some(&first_idx) = packages_to_install.first() {
-                                            let package_name = state.packages[first_idx].name.clone();
+                                            let package_name =
+                                                state.packages[first_idx].name.clone();
                                             let total = packages_to_install.len();
                                             let mut install_list = packages_to_install.clone();
                                             install_list.remove(0);
 
-                                            state.installation_step = InstallationStep::Installing {
-                                                package_index: first_idx,
-                                                package_name,
-                                                total_packages: total,
-                                                packages_to_install: install_list,
-                                                installed: Vec::new(),
-                                                failed: Vec::new(),
-                                                status_rx: None,
-                                            };
+                                            state.installation_step =
+                                                InstallationStep::Installing {
+                                                    package_index: first_idx,
+                                                    package_name,
+                                                    total_packages: total,
+                                                    packages_to_install: install_list,
+                                                    installed: Vec::new(),
+                                                    failed: Vec::new(),
+                                                    status_rx: None,
+                                                };
                                             state.installation_output.clear();
-                                            state.installation_delay_until = Some(std::time::Instant::now() + Duration::from_millis(100));
+                                            state.installation_delay_until = Some(
+                                                std::time::Instant::now()
+                                                    + Duration::from_millis(100),
+                                            );
                                         }
                                     }
                                 }
                             }
                             KeyCode::Char('a') | KeyCode::Char('A') => {
                                 // Add new package
-                                if state.popup_type == PackagePopupType::None && !state.is_checking {
+                                if state.popup_type == PackagePopupType::None && !state.is_checking
+                                {
                                     // Release borrow before calling method
                                     let _ = state;
                                     self.start_add_package()?;
@@ -1012,7 +1160,8 @@ impl App {
                             }
                             KeyCode::Char('e') | KeyCode::Char('E') => {
                                 // Edit selected package
-                                if state.popup_type == PackagePopupType::None && !state.is_checking {
+                                if state.popup_type == PackagePopupType::None && !state.is_checking
+                                {
                                     if let Some(selected_idx) = state.list_state.selected() {
                                         if selected_idx < state.packages.len() {
                                             // Release borrow before calling method
@@ -1024,7 +1173,8 @@ impl App {
                             }
                             KeyCode::Char('d') | KeyCode::Char('D') => {
                                 // Delete selected package
-                                if state.popup_type == PackagePopupType::None && !state.is_checking {
+                                if state.popup_type == PackagePopupType::None && !state.is_checking
+                                {
                                     if let Some(selected_idx) = state.list_state.selected() {
                                         if selected_idx < state.packages.len() {
                                             state.delete_index = Some(selected_idx);
@@ -1064,23 +1214,33 @@ impl App {
                                             // Switch to next field
                                             if key.modifiers.contains(KeyModifiers::SHIFT) {
                                                 // Shift+Tab: go to previous field
-                                                state.create_focused_field = match state.create_focused_field {
+                                                state.create_focused_field = match state
+                                                    .create_focused_field
+                                                {
                                                     CreateField::Name => CreateField::CopyFrom,
                                                     CreateField::Description => CreateField::Name,
-                                                    CreateField::CopyFrom => CreateField::Description,
+                                                    CreateField::CopyFrom => {
+                                                        CreateField::Description
+                                                    }
                                                 };
                                             } else {
                                                 // Tab: go to next field
-                                                state.create_focused_field = match state.create_focused_field {
+                                                state.create_focused_field = match state
+                                                    .create_focused_field
+                                                {
                                                     CreateField::Name => CreateField::Description,
-                                                    CreateField::Description => CreateField::CopyFrom,
+                                                    CreateField::Description => {
+                                                        CreateField::CopyFrom
+                                                    }
                                                     CreateField::CopyFrom => CreateField::Name,
                                                 };
                                             }
                                         }
                                         KeyCode::BackTab => {
                                             // Shift+Tab: go to previous field
-                                            state.create_focused_field = match state.create_focused_field {
+                                            state.create_focused_field = match state
+                                                .create_focused_field
+                                            {
                                                 CreateField::Name => CreateField::CopyFrom,
                                                 CreateField::Description => CreateField::Name,
                                                 CreateField::CopyFrom => CreateField::Description,
@@ -1090,23 +1250,28 @@ impl App {
                                             // Navigate Copy From list (index 0 = "Start Blank", 1+ = profiles)
                                             if state.create_focused_field == CreateField::CopyFrom {
                                                 // Convert to UI index: None = 0, Some(idx) = idx + 1
-                                                let ui_current = if let Some(idx) = state.create_copy_from {
-                                                    idx + 1
-                                                } else {
-                                                    0
-                                                };
+                                                let ui_current =
+                                                    if let Some(idx) = state.create_copy_from {
+                                                        idx + 1
+                                                    } else {
+                                                        0
+                                                    };
 
                                                 if ui_current > 0 {
                                                     // Move up: if at profile, go to previous profile or "Start Blank"
                                                     if ui_current == 1 {
-                                                        state.create_copy_from = None; // Go to "Start Blank"
+                                                        state.create_copy_from = None;
+                                                    // Go to "Start Blank"
                                                     } else {
-                                                        state.create_copy_from = Some(ui_current - 2); // Previous profile
+                                                        state.create_copy_from =
+                                                            Some(ui_current - 2);
+                                                        // Previous profile
                                                     }
                                                 } else {
                                                     // At "Start Blank", wrap to last profile
                                                     if !profiles.is_empty() {
-                                                        state.create_copy_from = Some(profiles.len() - 1);
+                                                        state.create_copy_from =
+                                                            Some(profiles.len() - 1);
                                                     }
                                                 }
                                             }
@@ -1115,20 +1280,23 @@ impl App {
                                             // Navigate Copy From list (index 0 = "Start Blank", 1+ = profiles)
                                             if state.create_focused_field == CreateField::CopyFrom {
                                                 // Convert to UI index: None = 0, Some(idx) = idx + 1
-                                                let ui_current = if let Some(idx) = state.create_copy_from {
-                                                    idx + 1
-                                                } else {
-                                                    0
-                                                };
+                                                let ui_current =
+                                                    if let Some(idx) = state.create_copy_from {
+                                                        idx + 1
+                                                    } else {
+                                                        0
+                                                    };
 
                                                 let max_ui_idx = profiles.len(); // Last UI index (profiles.len() because "Start Blank" is at 0)
 
                                                 if ui_current < max_ui_idx {
                                                     // Move down: if at "Start Blank", go to first profile, otherwise next profile
                                                     if ui_current == 0 {
-                                                        state.create_copy_from = Some(0); // First profile
+                                                        state.create_copy_from = Some(0);
+                                                    // First profile
                                                     } else {
-                                                        state.create_copy_from = Some(ui_current); // Next profile
+                                                        state.create_copy_from = Some(ui_current);
+                                                        // Next profile
                                                     }
                                                 } else {
                                                     // At last profile, wrap to "Start Blank"
@@ -1140,11 +1308,12 @@ impl App {
                                             // Toggle Copy From selection when space is pressed (only if Copy From is focused)
                                             if state.create_focused_field == CreateField::CopyFrom {
                                                 // Get current UI index (0 = "Start Blank", 1+ = profiles)
-                                                let ui_current = if let Some(idx) = state.create_copy_from {
-                                                    idx + 1
-                                                } else {
-                                                    0
-                                                };
+                                                let ui_current =
+                                                    if let Some(idx) = state.create_copy_from {
+                                                        idx + 1
+                                                    } else {
+                                                        0
+                                                    };
 
                                                 if ui_current == 0 {
                                                     // "Start Blank" is already selected, keep it selected
@@ -1153,9 +1322,11 @@ impl App {
                                                     // Toggle profile selection
                                                     let profile_idx = ui_current - 1;
                                                     if state.create_copy_from == Some(profile_idx) {
-                                                        state.create_copy_from = None; // Deselect, go to "Start Blank"
+                                                        state.create_copy_from = None;
+                                                    // Deselect, go to "Start Blank"
                                                     } else {
-                                                        state.create_copy_from = Some(profile_idx); // Select this profile
+                                                        state.create_copy_from = Some(profile_idx);
+                                                        // Select this profile
                                                     }
                                                 }
                                             } else {
@@ -1178,11 +1349,12 @@ impl App {
                                             // If Copy From is focused, select the current item first, then create
                                             if state.create_focused_field == CreateField::CopyFrom {
                                                 // Get current UI index (0 = "Start Blank", 1+ = profiles)
-                                                let ui_current = if let Some(idx) = state.create_copy_from {
-                                                    idx + 1
-                                                } else {
-                                                    0
-                                                };
+                                                let ui_current =
+                                                    if let Some(idx) = state.create_copy_from {
+                                                        idx + 1
+                                                    } else {
+                                                        0
+                                                    };
 
                                                 if ui_current == 0 {
                                                     // "Start Blank" is selected, keep it
@@ -1197,11 +1369,12 @@ impl App {
                                             // Create profile (Enter always creates, regardless of focus)
                                             if !state.create_name_input.is_empty() {
                                                 let name = state.create_name_input.clone();
-                                                let description = if state.create_description_input.is_empty() {
-                                                    None
-                                                } else {
-                                                    Some(state.create_description_input.clone())
-                                                };
+                                                let description =
+                                                    if state.create_description_input.is_empty() {
+                                                        None
+                                                    } else {
+                                                        Some(state.create_description_input.clone())
+                                                    };
                                                 let copy_from = state.create_copy_from;
                                                 // Clone values before releasing borrow
                                                 let name_clone = name.clone();
@@ -1210,21 +1383,45 @@ impl App {
                                                 {
                                                     let _ = state;
                                                 }
-                                                match self.create_profile(&name_clone, description_clone, copy_from) {
+                                                match self.create_profile(
+                                                    &name_clone,
+                                                    description_clone,
+                                                    copy_from,
+                                                ) {
                                                     Ok(_) => {
                                                         // Refresh config
-                                                        self.config = Config::load_or_create(&self.config_path)?;
-                                                        self.ui_state.profile_manager.popup_type = ProfilePopupType::None;
-                                                        self.ui_state.profile_manager.create_name_input.clear();
-                                                        self.ui_state.profile_manager.create_description_input.clear();
-                                                        self.ui_state.profile_manager.create_focused_field = CreateField::Name;
+                                                        self.config = Config::load_or_create(
+                                                            &self.config_path,
+                                                        )?;
+                                                        self.ui_state.profile_manager.popup_type =
+                                                            ProfilePopupType::None;
+                                                        self.ui_state
+                                                            .profile_manager
+                                                            .create_name_input
+                                                            .clear();
+                                                        self.ui_state
+                                                            .profile_manager
+                                                            .create_description_input
+                                                            .clear();
+                                                        self.ui_state
+                                                            .profile_manager
+                                                            .create_focused_field =
+                                                            CreateField::Name;
                                                         // Refresh list
                                                         if let Ok(profiles) = self.get_profiles() {
                                                             if !profiles.is_empty() {
-                                                                let new_idx = profiles.iter()
+                                                                let new_idx = profiles
+                                                                    .iter()
                                                                     .position(|p| p.name == name)
-                                                                    .unwrap_or(profiles.len().saturating_sub(1));
-                                                                self.ui_state.profile_manager.list_state.select(Some(new_idx));
+                                                                    .unwrap_or(
+                                                                        profiles
+                                                                            .len()
+                                                                            .saturating_sub(1),
+                                                                    );
+                                                                self.ui_state
+                                                                    .profile_manager
+                                                                    .list_state
+                                                                    .select(Some(new_idx));
                                                             }
                                                         }
                                                     }
@@ -1240,12 +1437,18 @@ impl App {
                                             match state.create_focused_field {
                                                 CreateField::Name => {
                                                     if !state.create_name_input.is_empty() {
-                                                        crate::utils::text_input::handle_backspace(&mut state.create_name_input, &mut state.create_name_cursor);
+                                                        crate::utils::text_input::handle_backspace(
+                                                            &mut state.create_name_input,
+                                                            &mut state.create_name_cursor,
+                                                        );
                                                     }
                                                 }
                                                 CreateField::Description => {
                                                     if !state.create_description_input.is_empty() {
-                                                        crate::utils::text_input::handle_backspace(&mut state.create_description_input, &mut state.create_description_cursor);
+                                                        crate::utils::text_input::handle_backspace(
+                                                            &mut state.create_description_input,
+                                                            &mut state.create_description_cursor,
+                                                        );
                                                     }
                                                 }
                                                 CreateField::CopyFrom => {
@@ -1257,12 +1460,18 @@ impl App {
                                             match state.create_focused_field {
                                                 CreateField::Name => {
                                                     if !state.create_name_input.is_empty() {
-                                                        crate::utils::text_input::handle_delete(&mut state.create_name_input, &mut state.create_name_cursor);
+                                                        crate::utils::text_input::handle_delete(
+                                                            &mut state.create_name_input,
+                                                            &mut state.create_name_cursor,
+                                                        );
                                                     }
                                                 }
                                                 CreateField::Description => {
                                                     if !state.create_description_input.is_empty() {
-                                                        crate::utils::text_input::handle_delete(&mut state.create_description_input, &mut state.create_description_cursor);
+                                                        crate::utils::text_input::handle_delete(
+                                                            &mut state.create_description_input,
+                                                            &mut state.create_description_cursor,
+                                                        );
                                                     }
                                                 }
                                                 CreateField::CopyFrom => {
@@ -1299,10 +1508,18 @@ impl App {
                                         KeyCode::Char(c) => {
                                             match state.create_focused_field {
                                                 CreateField::Name => {
-                                                    crate::utils::text_input::handle_char_insertion(&mut state.create_name_input, &mut state.create_name_cursor, c);
+                                                    crate::utils::text_input::handle_char_insertion(
+                                                        &mut state.create_name_input,
+                                                        &mut state.create_name_cursor,
+                                                        c,
+                                                    );
                                                 }
                                                 CreateField::Description => {
-                                                    crate::utils::text_input::handle_char_insertion(&mut state.create_description_input, &mut state.create_description_cursor, c);
+                                                    crate::utils::text_input::handle_char_insertion(
+                                                        &mut state.create_description_input,
+                                                        &mut state.create_description_cursor,
+                                                        c,
+                                                    );
                                                 }
                                                 CreateField::CopyFrom => {
                                                     // No-op for Copy From field (navigation handled by Up/Down)
@@ -1330,22 +1547,41 @@ impl App {
                                                     match self.switch_profile(&profile_name) {
                                                         Ok(_) => {
                                                             // Refresh config
-                                                            self.config = Config::load_or_create(&self.config_path)?;
-                                                            self.ui_state.profile_manager.popup_type = ProfilePopupType::None;
+                                                            self.config = Config::load_or_create(
+                                                                &self.config_path,
+                                                            )?;
+                                                            self.ui_state
+                                                                .profile_manager
+                                                                .popup_type =
+                                                                ProfilePopupType::None;
                                                             // Update list selection
-                                                            if let Ok(profiles) = self.get_profiles() {
+                                                            if let Ok(profiles) =
+                                                                self.get_profiles()
+                                                            {
                                                                 if !profiles.is_empty() {
-                                                                    let new_idx = profiles.iter()
-                                                                        .position(|p| p.name == profile_name)
+                                                                    let new_idx = profiles
+                                                                        .iter()
+                                                                        .position(|p| {
+                                                                            p.name == profile_name
+                                                                        })
                                                                         .unwrap_or(0);
-                                                                    self.ui_state.profile_manager.list_state.select(Some(new_idx));
+                                                                    self.ui_state
+                                                                        .profile_manager
+                                                                        .list_state
+                                                                        .select(Some(new_idx));
                                                                 }
                                                             }
                                                         }
                                                         Err(e) => {
-                                                            error!("Failed to switch profile: {}", e);
+                                                            error!(
+                                                                "Failed to switch profile: {}",
+                                                                e
+                                                            );
                                                             // Show error message in UI
-                                                            self.ui_state.profile_manager.popup_type = ProfilePopupType::None;
+                                                            self.ui_state
+                                                                .profile_manager
+                                                                .popup_type =
+                                                                ProfilePopupType::None;
                                                             self.message_component = Some(MessageComponent::new(
                                                                 "Error".to_string(),
                                                                 format!("Failed to switch profile: {}", e),
@@ -1380,23 +1616,43 @@ impl App {
                                                             let _ = state;
                                                             let _ = profiles;
                                                         }
-                                                        match self.rename_profile(&old_name_clone, &new_name_clone) {
+                                                        match self.rename_profile(
+                                                            &old_name_clone,
+                                                            &new_name_clone,
+                                                        ) {
                                                             Ok(_) => {
                                                                 // Refresh config
-                                                                self.config = Config::load_or_create(&self.config_path)?;
-                                                                self.ui_state.profile_manager.popup_type = ProfilePopupType::None;
+                                                                self.config =
+                                                                    Config::load_or_create(
+                                                                        &self.config_path,
+                                                                    )?;
+                                                                self.ui_state
+                                                                    .profile_manager
+                                                                    .popup_type =
+                                                                    ProfilePopupType::None;
                                                                 // Update list selection
-                                                                if let Ok(profiles) = self.get_profiles() {
+                                                                if let Ok(profiles) =
+                                                                    self.get_profiles()
+                                                                {
                                                                     if !profiles.is_empty() {
-                                                                        let new_idx = profiles.iter()
-                                                                            .position(|p| p.name == new_name)
+                                                                        let new_idx = profiles
+                                                                            .iter()
+                                                                            .position(|p| {
+                                                                                p.name == new_name
+                                                                            })
                                                                             .unwrap_or(0);
-                                                                        self.ui_state.profile_manager.list_state.select(Some(new_idx));
+                                                                        self.ui_state
+                                                                            .profile_manager
+                                                                            .list_state
+                                                                            .select(Some(new_idx));
                                                                     }
                                                                 }
                                                             }
                                                             Err(e) => {
-                                                                error!("Failed to rename profile: {}", e);
+                                                                error!(
+                                                                    "Failed to rename profile: {}",
+                                                                    e
+                                                                );
                                                                 // TODO: Show error message in UI
                                                             }
                                                         }
@@ -1407,22 +1663,40 @@ impl App {
                                         }
                                         KeyCode::Backspace => {
                                             if !state.rename_input.is_empty() {
-                                                crate::utils::text_input::handle_backspace(&mut state.rename_input, &mut state.rename_cursor);
+                                                crate::utils::text_input::handle_backspace(
+                                                    &mut state.rename_input,
+                                                    &mut state.rename_cursor,
+                                                );
                                             }
                                         }
                                         KeyCode::Delete => {
                                             if !state.rename_input.is_empty() {
-                                                crate::utils::text_input::handle_delete(&mut state.rename_input, &mut state.rename_cursor);
+                                                crate::utils::text_input::handle_delete(
+                                                    &mut state.rename_input,
+                                                    &mut state.rename_cursor,
+                                                );
                                             }
                                         }
                                         KeyCode::Left => {
-                                            crate::utils::text_input::handle_cursor_movement(&state.rename_input, &mut state.rename_cursor, KeyCode::Left);
+                                            crate::utils::text_input::handle_cursor_movement(
+                                                &state.rename_input,
+                                                &mut state.rename_cursor,
+                                                KeyCode::Left,
+                                            );
                                         }
                                         KeyCode::Right => {
-                                            crate::utils::text_input::handle_cursor_movement(&state.rename_input, &mut state.rename_cursor, KeyCode::Right);
+                                            crate::utils::text_input::handle_cursor_movement(
+                                                &state.rename_input,
+                                                &mut state.rename_cursor,
+                                                KeyCode::Right,
+                                            );
                                         }
                                         KeyCode::Char(c) => {
-                                            crate::utils::text_input::handle_char_insertion(&mut state.rename_input, &mut state.rename_cursor, c);
+                                            crate::utils::text_input::handle_char_insertion(
+                                                &mut state.rename_input,
+                                                &mut state.rename_cursor,
+                                                c,
+                                            );
                                         }
                                         _ => {}
                                     }
@@ -1440,31 +1714,61 @@ impl App {
                                                         let profile_name = profile.name.clone();
                                                         let idx_clone = idx;
                                                         // Clone values before releasing borrows
-                                                        let profile_name_clone = profile_name.clone();
+                                                        let profile_name_clone =
+                                                            profile_name.clone();
                                                         // Release borrows by ending scope
                                                         {
                                                             let _ = state;
                                                             let _ = profiles;
                                                         }
-                                                        match self.delete_profile(&profile_name_clone) {
+                                                        match self
+                                                            .delete_profile(&profile_name_clone)
+                                                        {
                                                             Ok(_) => {
                                                                 // Refresh config
-                                                                self.config = Config::load_or_create(&self.config_path)?;
-                                                                self.ui_state.profile_manager.popup_type = ProfilePopupType::None;
+                                                                self.config =
+                                                                    Config::load_or_create(
+                                                                        &self.config_path,
+                                                                    )?;
+                                                                self.ui_state
+                                                                    .profile_manager
+                                                                    .popup_type =
+                                                                    ProfilePopupType::None;
                                                                 // Update list selection
-                                                                if let Ok(profiles) = self.get_profiles() {
+                                                                if let Ok(profiles) =
+                                                                    self.get_profiles()
+                                                                {
                                                                     if !profiles.is_empty() {
-                                                                        let new_idx = idx_clone.min(profiles.len().saturating_sub(1));
-                                                                        self.ui_state.profile_manager.list_state.select(Some(new_idx));
+                                                                        let new_idx = idx_clone
+                                                                            .min(
+                                                                                profiles
+                                                                                    .len()
+                                                                                    .saturating_sub(
+                                                                                        1,
+                                                                                    ),
+                                                                            );
+                                                                        self.ui_state
+                                                                            .profile_manager
+                                                                            .list_state
+                                                                            .select(Some(new_idx));
                                                                     } else {
-                                                                        self.ui_state.profile_manager.list_state.select(None);
+                                                                        self.ui_state
+                                                                            .profile_manager
+                                                                            .list_state
+                                                                            .select(None);
                                                                     }
                                                                 }
                                                             }
                                                             Err(e) => {
-                                                                error!("Failed to delete profile: {}", e);
+                                                                error!(
+                                                                    "Failed to delete profile: {}",
+                                                                    e
+                                                                );
                                                                 // Show error message in UI
-                                                                self.ui_state.profile_manager.popup_type = ProfilePopupType::None;
+                                                                self.ui_state
+                                                                    .profile_manager
+                                                                    .popup_type =
+                                                                    ProfilePopupType::None;
                                                                 self.message_component = Some(MessageComponent::new(
                                                                     "Error".to_string(),
                                                                     format!("Failed to delete profile: {}", e),
@@ -1479,22 +1783,40 @@ impl App {
                                         }
                                         KeyCode::Backspace => {
                                             if !state.delete_confirm_input.is_empty() {
-                                                crate::utils::text_input::handle_backspace(&mut state.delete_confirm_input, &mut state.delete_confirm_cursor);
+                                                crate::utils::text_input::handle_backspace(
+                                                    &mut state.delete_confirm_input,
+                                                    &mut state.delete_confirm_cursor,
+                                                );
                                             }
                                         }
                                         KeyCode::Delete => {
                                             if !state.delete_confirm_input.is_empty() {
-                                                crate::utils::text_input::handle_delete(&mut state.delete_confirm_input, &mut state.delete_confirm_cursor);
+                                                crate::utils::text_input::handle_delete(
+                                                    &mut state.delete_confirm_input,
+                                                    &mut state.delete_confirm_cursor,
+                                                );
                                             }
                                         }
                                         KeyCode::Left => {
-                                            crate::utils::text_input::handle_cursor_movement(&state.delete_confirm_input, &mut state.delete_confirm_cursor, KeyCode::Left);
+                                            crate::utils::text_input::handle_cursor_movement(
+                                                &state.delete_confirm_input,
+                                                &mut state.delete_confirm_cursor,
+                                                KeyCode::Left,
+                                            );
                                         }
                                         KeyCode::Right => {
-                                            crate::utils::text_input::handle_cursor_movement(&state.delete_confirm_input, &mut state.delete_confirm_cursor, KeyCode::Right);
+                                            crate::utils::text_input::handle_cursor_movement(
+                                                &state.delete_confirm_input,
+                                                &mut state.delete_confirm_cursor,
+                                                KeyCode::Right,
+                                            );
                                         }
                                         KeyCode::Char(c) => {
-                                            crate::utils::text_input::handle_char_insertion(&mut state.delete_confirm_input, &mut state.delete_confirm_cursor, c);
+                                            crate::utils::text_input::handle_char_insertion(
+                                                &mut state.delete_confirm_input,
+                                                &mut state.delete_confirm_cursor,
+                                                c,
+                                            );
                                         }
                                         _ => {}
                                     }
@@ -1582,7 +1904,9 @@ impl App {
                     }
                     Event::Mouse(mouse) => {
                         match mouse.kind {
-                            crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left) => {
+                            crossterm::event::MouseEventKind::Down(
+                                crossterm::event::MouseButton::Left,
+                            ) => {
                                 // Handle popup form field clicks
                                 if state.popup_type == ProfilePopupType::Create {
                                     use crate::components::profile_manager::CreateField;
@@ -1593,17 +1917,20 @@ impl App {
                                         if mouse.column >= name_area.x
                                             && mouse.column < name_area.x + name_area.width
                                             && mouse.row >= name_area.y
-                                            && mouse.row < name_area.y + name_area.height {
+                                            && mouse.row < name_area.y + name_area.height
+                                        {
                                             state.create_focused_field = CreateField::Name;
                                             // Set cursor position based on click
                                             // Account for left border (1 char) - InputField has borders
                                             let inner_x = name_area.x + 1;
                                             let click_x = if mouse.column > inner_x {
-                                                (mouse.column as usize).saturating_sub(inner_x as usize)
+                                                (mouse.column as usize)
+                                                    .saturating_sub(inner_x as usize)
                                             } else {
                                                 0
                                             };
-                                            state.create_name_cursor = click_x.min(state.create_name_input.chars().count());
+                                            state.create_name_cursor = click_x
+                                                .min(state.create_name_input.chars().count());
                                             return Ok(());
                                         }
                                     }
@@ -1614,17 +1941,21 @@ impl App {
                                         if mouse.column >= desc_area.x
                                             && mouse.column < desc_area.x + desc_area.width
                                             && mouse.row >= desc_area.y
-                                            && mouse.row < desc_area.y + desc_area.height {
+                                            && mouse.row < desc_area.y + desc_area.height
+                                        {
                                             state.create_focused_field = CreateField::Description;
                                             // Set cursor position based on click
                                             // Account for left border (1 char) - InputField has borders
                                             let inner_x = desc_area.x + 1;
                                             let click_x = if mouse.column > inner_x {
-                                                (mouse.column as usize).saturating_sub(inner_x as usize)
+                                                (mouse.column as usize)
+                                                    .saturating_sub(inner_x as usize)
                                             } else {
                                                 0
                                             };
-                                            state.create_description_cursor = click_x.min(state.create_description_input.chars().count());
+                                            state.create_description_cursor = click_x.min(
+                                                state.create_description_input.chars().count(),
+                                            );
                                             return Ok(());
                                         }
                                     }
@@ -1638,7 +1969,8 @@ impl App {
                                     if mouse.column >= rect.x
                                         && mouse.column < rect.x + rect.width
                                         && mouse.row >= rect.y
-                                        && mouse.row < rect.y + rect.height {
+                                        && mouse.row < rect.y + rect.height
+                                    {
                                         // Select the clicked profile
                                         state.list_state.select(Some(*profile_idx));
                                         return Ok(());
@@ -1680,11 +2012,8 @@ impl App {
         // Old event handling for screens not yet converted to components
         match event {
             Event::Key(key) if key.kind == KeyEventKind::Press => {
-                match self.ui_state.current_screen {
-                    Screen::DotfileSelection => {
-                        self.handle_dotfile_selection_input(key.code)?;
-                    }
-                    _ => {}
+                if self.ui_state.current_screen == Screen::DotfileSelection {
+                    self.handle_dotfile_selection_input(key.code)?;
                 }
             }
             Event::Mouse(mouse) => {
@@ -1715,9 +2044,10 @@ impl App {
                     self.ui_state.github_auth.repo_already_configured = true;
                     self.ui_state.github_auth.is_editing_token = false;
                     self.ui_state.github_auth.token_input = String::new(); // Clear for security
-                    // Load existing values
+                                                                           // Load existing values
                     self.ui_state.github_auth.repo_name_input = self.config.repo_name.clone();
-                    self.ui_state.github_auth.repo_location_input = self.config.repo_path.to_string_lossy().to_string();
+                    self.ui_state.github_auth.repo_location_input =
+                        self.config.repo_path.to_string_lossy().to_string();
                     self.ui_state.github_auth.is_private = true; // Default to private
                 } else {
                     self.ui_state.github_auth.repo_already_configured = false;
@@ -1762,7 +2092,8 @@ impl App {
                 if let Ok(Some(active_profile)) = self.get_active_profile_info() {
                     let packages = active_profile.packages.clone();
                     self.ui_state.package_manager.packages = packages;
-                    self.ui_state.package_manager.package_statuses = vec![PackageStatus::Unknown; self.ui_state.package_manager.packages.len()];
+                    self.ui_state.package_manager.package_statuses =
+                        vec![PackageStatus::Unknown; self.ui_state.package_manager.packages.len()];
                     if !self.ui_state.package_manager.packages.is_empty() {
                         self.ui_state.package_manager.list_state.select(Some(0));
                     }
@@ -1797,7 +2128,8 @@ impl App {
         match git_mgr.get_changed_files() {
             Ok(files) => {
                 self.ui_state.sync_with_remote.changed_files = files;
-                self.ui_state.has_changes_to_push = !self.ui_state.sync_with_remote.changed_files.is_empty();
+                self.ui_state.has_changes_to_push =
+                    !self.ui_state.sync_with_remote.changed_files.is_empty();
             }
             Err(_) => {
                 // Fallback to old method if get_changed_files fails
@@ -1805,9 +2137,12 @@ impl App {
                 let has_uncommitted = git_mgr.has_uncommitted_changes().unwrap_or(false);
 
                 // Check for unpushed commits
-                let branch = git_mgr.get_current_branch()
+                let branch = git_mgr
+                    .get_current_branch()
                     .unwrap_or_else(|| "main".to_string());
-                let has_unpushed = git_mgr.has_unpushed_commits("origin", &branch).unwrap_or(false);
+                let has_unpushed = git_mgr
+                    .has_unpushed_commits("origin", &branch)
+                    .unwrap_or(false);
 
                 self.ui_state.has_changes_to_push = has_uncommitted || has_unpushed;
             }
@@ -1855,7 +2190,11 @@ impl App {
 
                         // Validate token format first
                         if !token.starts_with("ghp_") {
-                            let actual_start = if token.len() >= 4 { &token[..4] } else { "too short" };
+                            let actual_start = if token.len() >= 4 {
+                                &token[..4]
+                            } else {
+                                "too short"
+                            };
                             auth_state.error_message = Some(
                                 format!(
                                     "❌ Invalid token format: Must start with 'ghp_' but starts with '{}'.\n\
@@ -1872,20 +2211,19 @@ impl App {
                         }
 
                         if token.len() < 40 {
-                            auth_state.error_message = Some(
-                                format!(
-                                    "❌ Token appears incomplete: {} characters (expected 40+).\n\
+                            auth_state.error_message = Some(format!(
+                                "❌ Token appears incomplete: {} characters (expected 40+).\n\
                                     First 10 chars: '{}'\n\
                                     Make sure you copied the entire token from GitHub.",
-                                    token.len(),
-                                    &token[..token.len().min(10)]
-                                )
-                            );
+                                token.len(),
+                                &token[..token.len().min(10)]
+                            ));
                             return Ok(());
                         }
 
                         // Initialize setup state machine
-                        auth_state.step = GitHubAuthStep::SetupStep(crate::ui::GitHubSetupStep::Connecting);
+                        auth_state.step =
+                            GitHubAuthStep::SetupStep(crate::ui::GitHubSetupStep::Connecting);
                         auth_state.status_message = Some("🔌 Connecting to GitHub...".to_string());
                         auth_state.setup_data = Some(crate::ui::GitHubSetupData {
                             token,
@@ -1893,7 +2231,9 @@ impl App {
                             username: None,
                             repo_exists: None,
                             is_private: auth_state.is_private,
-                            delay_until: Some(std::time::Instant::now() + Duration::from_millis(500)),
+                            delay_until: Some(
+                                std::time::Instant::now() + Duration::from_millis(500),
+                            ),
                             is_new_repo: false, // Will be set when we know if repo exists
                         });
                         *self.github_auth_component.get_auth_state_mut() = auth_state.clone();
@@ -1915,7 +2255,9 @@ impl App {
                         auth_state.cursor_position = match auth_state.focused_field {
                             GitHubAuthField::Token => auth_state.token_input.chars().count(),
                             GitHubAuthField::RepoName => auth_state.repo_name_input.chars().count(),
-                            GitHubAuthField::RepoLocation => auth_state.repo_location_input.chars().count(),
+                            GitHubAuthField::RepoLocation => {
+                                auth_state.repo_location_input.chars().count()
+                            }
                             GitHubAuthField::IsPrivate => 0,
                         };
                     }
@@ -1930,36 +2272,48 @@ impl App {
                         auth_state.cursor_position = match auth_state.focused_field {
                             GitHubAuthField::Token => auth_state.token_input.chars().count(),
                             GitHubAuthField::RepoName => auth_state.repo_name_input.chars().count(),
-                            GitHubAuthField::RepoLocation => auth_state.repo_location_input.chars().count(),
+                            GitHubAuthField::RepoLocation => {
+                                auth_state.repo_location_input.chars().count()
+                            }
                             GitHubAuthField::IsPrivate => 0,
                         };
                     }
                     KeyCode::Char(c) => {
                         // Handle Space for visibility toggle
-                        if c == ' ' && auth_state.focused_field == GitHubAuthField::IsPrivate && !auth_state.repo_already_configured {
+                        if c == ' '
+                            && auth_state.focused_field == GitHubAuthField::IsPrivate
+                            && !auth_state.repo_already_configured
+                        {
                             auth_state.is_private = !auth_state.is_private;
                         } else {
                             // Regular character input (only if not disabled)
                             match auth_state.focused_field {
-                                GitHubAuthField::Token if !auth_state.repo_already_configured || auth_state.is_editing_token => {
+                                GitHubAuthField::Token
+                                    if !auth_state.repo_already_configured
+                                        || auth_state.is_editing_token =>
+                                {
                                     crate::utils::handle_char_insertion(
                                         &mut auth_state.token_input,
                                         &mut auth_state.cursor_position,
-                                        c
+                                        c,
                                     );
                                 }
-                                GitHubAuthField::RepoName if !auth_state.repo_already_configured => {
+                                GitHubAuthField::RepoName
+                                    if !auth_state.repo_already_configured =>
+                                {
                                     crate::utils::handle_char_insertion(
                                         &mut auth_state.repo_name_input,
                                         &mut auth_state.cursor_position,
-                                        c
+                                        c,
                                     );
                                 }
-                                GitHubAuthField::RepoLocation if !auth_state.repo_already_configured => {
+                                GitHubAuthField::RepoLocation
+                                    if !auth_state.repo_already_configured =>
+                                {
                                     crate::utils::handle_char_insertion(
                                         &mut auth_state.repo_location_input,
                                         &mut auth_state.cursor_position,
-                                        c
+                                        c,
                                     );
                                 }
                                 _ => {}
@@ -1977,57 +2331,53 @@ impl App {
                         crate::utils::handle_cursor_movement(
                             current_input,
                             &mut auth_state.cursor_position,
-                            key.code
+                            key.code,
                         );
                     }
                     // Backspace
-                    KeyCode::Backspace => {
-                        match auth_state.focused_field {
-                            GitHubAuthField::Token => {
-                                crate::utils::handle_backspace(
-                                    &mut auth_state.token_input,
-                                    &mut auth_state.cursor_position
-                                );
-                            }
-                            GitHubAuthField::RepoName => {
-                                crate::utils::handle_backspace(
-                                    &mut auth_state.repo_name_input,
-                                    &mut auth_state.cursor_position
-                                );
-                            }
-                            GitHubAuthField::RepoLocation => {
-                                crate::utils::handle_backspace(
-                                    &mut auth_state.repo_location_input,
-                                    &mut auth_state.cursor_position
-                                );
-                            }
-                            GitHubAuthField::IsPrivate => {}
+                    KeyCode::Backspace => match auth_state.focused_field {
+                        GitHubAuthField::Token => {
+                            crate::utils::handle_backspace(
+                                &mut auth_state.token_input,
+                                &mut auth_state.cursor_position,
+                            );
                         }
-                    }
+                        GitHubAuthField::RepoName => {
+                            crate::utils::handle_backspace(
+                                &mut auth_state.repo_name_input,
+                                &mut auth_state.cursor_position,
+                            );
+                        }
+                        GitHubAuthField::RepoLocation => {
+                            crate::utils::handle_backspace(
+                                &mut auth_state.repo_location_input,
+                                &mut auth_state.cursor_position,
+                            );
+                        }
+                        GitHubAuthField::IsPrivate => {}
+                    },
                     // Delete
-                    KeyCode::Delete => {
-                        match auth_state.focused_field {
-                            GitHubAuthField::Token => {
-                                crate::utils::handle_delete(
-                                    &mut auth_state.token_input,
-                                    &mut auth_state.cursor_position
-                                );
-                            }
-                            GitHubAuthField::RepoName => {
-                                crate::utils::handle_delete(
-                                    &mut auth_state.repo_name_input,
-                                    &mut auth_state.cursor_position
-                                );
-                            }
-                            GitHubAuthField::RepoLocation => {
-                                crate::utils::handle_delete(
-                                    &mut auth_state.repo_location_input,
-                                    &mut auth_state.cursor_position
-                                );
-                            }
-                            GitHubAuthField::IsPrivate => {}
+                    KeyCode::Delete => match auth_state.focused_field {
+                        GitHubAuthField::Token => {
+                            crate::utils::handle_delete(
+                                &mut auth_state.token_input,
+                                &mut auth_state.cursor_position,
+                            );
                         }
-                    }
+                        GitHubAuthField::RepoName => {
+                            crate::utils::handle_delete(
+                                &mut auth_state.repo_name_input,
+                                &mut auth_state.cursor_position,
+                            );
+                        }
+                        GitHubAuthField::RepoLocation => {
+                            crate::utils::handle_delete(
+                                &mut auth_state.repo_location_input,
+                                &mut auth_state.cursor_position,
+                            );
+                        }
+                        GitHubAuthField::IsPrivate => {}
+                    },
                     KeyCode::Esc => {
                         self.ui_state.current_screen = Screen::MainMenu;
                         *auth_state = Default::default();
@@ -2058,13 +2408,10 @@ impl App {
             }
             GitHubAuthStep::SetupStep(_) => {
                 // Setup is in progress, ignore input (or allow Esc to cancel)
-                match key.code {
-                    KeyCode::Esc => {
-                        // Cancel setup
-                        *auth_state = Default::default();
-                        self.ui_state.current_screen = Screen::MainMenu;
-                    }
-                    _ => {}
+                if key.code == KeyCode::Esc {
+                    // Cancel setup
+                    *auth_state = Default::default();
+                    self.ui_state.current_screen = Screen::MainMenu;
                 }
             }
         }
@@ -2082,16 +2429,16 @@ impl App {
         }
 
         if !token.starts_with("ghp_") {
-            auth_state.error_message = Some(
-                "Token format error: GitHub tokens must start with 'ghp_'".to_string()
-            );
+            auth_state.error_message =
+                Some("Token format error: GitHub tokens must start with 'ghp_'".to_string());
             return Ok(());
         }
 
         if token.len() < 40 {
-            auth_state.error_message = Some(
-                format!("Token appears incomplete: {} characters (expected 40+)", token.len())
-            );
+            auth_state.error_message = Some(format!(
+                "Token appears incomplete: {} characters (expected 40+)",
+                token.len()
+            ));
             return Ok(());
         }
 
@@ -2123,21 +2470,25 @@ impl App {
                     // Sync back to component
                     *self.github_auth_component.get_auth_state_mut() = auth_state.clone();
                 } else {
-                    auth_state.error_message = Some("GitHub configuration not found. Please complete setup first.".to_string());
+                    auth_state.error_message = Some(
+                        "GitHub configuration not found. Please complete setup first.".to_string(),
+                    );
                     auth_state.status_message = None;
                 }
             }
             Ok(response) => {
                 let status = response.status();
-                auth_state.error_message = Some(
-                    format!("Token validation failed: HTTP {}\nPlease check your token.", status)
-                );
+                auth_state.error_message = Some(format!(
+                    "Token validation failed: HTTP {}\nPlease check your token.",
+                    status
+                ));
                 auth_state.status_message = None;
             }
             Err(e) => {
-                auth_state.error_message = Some(
-                    format!("Network error: {}\nPlease check your internet connection.", e)
-                );
+                auth_state.error_message = Some(format!(
+                    "Network error: {}\nPlease check your internet connection.",
+                    e
+                ));
                 auth_state.status_message = None;
             }
         }
@@ -2186,7 +2537,8 @@ impl App {
                 // Move to validating token
                 auth_state.step = GitHubAuthStep::SetupStep(GitHubSetupStep::ValidatingToken);
                 auth_state.status_message = Some("🔑 Validating your token...".to_string());
-                setup_data.delay_until = Some(std::time::Instant::now() + Duration::from_millis(800));
+                setup_data.delay_until =
+                    Some(std::time::Instant::now() + Duration::from_millis(800));
                 auth_state.setup_data = Some(setup_data);
                 *self.github_auth_component.get_auth_state_mut() = auth_state.clone();
             }
@@ -2206,11 +2558,13 @@ impl App {
                     Ok((username, exists)) => {
                         setup_data.username = Some(username.clone());
                         setup_data.repo_exists = Some(exists);
-                        setup_data.delay_until = Some(std::time::Instant::now() + Duration::from_millis(600));
+                        setup_data.delay_until =
+                            Some(std::time::Instant::now() + Duration::from_millis(600));
 
                         // Move to checking repo step
                         auth_state.step = GitHubAuthStep::SetupStep(GitHubSetupStep::CheckingRepo);
-                        auth_state.status_message = Some("🔍 Checking if repository exists...".to_string());
+                        auth_state.status_message =
+                            Some("🔍 Checking if repository exists...".to_string());
                         auth_state.setup_data = Some(setup_data); // Save setup_data with username and repo_exists
                         *self.github_auth_component.get_auth_state_mut() = auth_state.clone();
                     }
@@ -2229,7 +2583,9 @@ impl App {
                 // Ensure we have username and repo_exists set
                 if setup_data.username.is_none() || setup_data.repo_exists.is_none() {
                     error!("Invalid state: username or repo_exists not set in CheckingRepo step");
-                    auth_state.error_message = Some("❌ Internal error: Setup state is invalid. Please try again.".to_string());
+                    auth_state.error_message = Some(
+                        "❌ Internal error: Setup state is invalid. Please try again.".to_string(),
+                    );
                     auth_state.status_message = None;
                     auth_state.step = GitHubAuthStep::Input;
                     auth_state.setup_data = None;
@@ -2240,15 +2596,23 @@ impl App {
                 if setup_data.repo_exists == Some(true) {
                     auth_state.step = GitHubAuthStep::SetupStep(GitHubSetupStep::CloningRepo);
                     let username = setup_data.username.as_ref().unwrap(); // Safe now after check
-                    auth_state.status_message = Some(format!("📥 Cloning repository {}/{}...", username, setup_data.repo_name));
-                    setup_data.delay_until = Some(std::time::Instant::now() + Duration::from_millis(500));
+                    auth_state.status_message = Some(format!(
+                        "📥 Cloning repository {}/{}...",
+                        username, setup_data.repo_name
+                    ));
+                    setup_data.delay_until =
+                        Some(std::time::Instant::now() + Duration::from_millis(500));
                     auth_state.setup_data = Some(setup_data);
                     *self.github_auth_component.get_auth_state_mut() = auth_state.clone();
                 } else {
                     auth_state.step = GitHubAuthStep::SetupStep(GitHubSetupStep::CreatingRepo);
                     let username = setup_data.username.as_ref().unwrap(); // Safe now after check
-                    auth_state.status_message = Some(format!("📦 Creating repository {}/{}...", username, setup_data.repo_name));
-                    setup_data.delay_until = Some(std::time::Instant::now() + Duration::from_millis(600));
+                    auth_state.status_message = Some(format!(
+                        "📦 Creating repository {}/{}...",
+                        username, setup_data.repo_name
+                    ));
+                    setup_data.delay_until =
+                        Some(std::time::Instant::now() + Duration::from_millis(600));
                     auth_state.setup_data = Some(setup_data);
                     *self.github_auth_component.get_auth_state_mut() = auth_state.clone();
                 }
@@ -2265,10 +2629,14 @@ impl App {
                         .context("Failed to remove existing directory")?;
                 }
 
-                let remote_url = format!("https://github.com/{}/{}.git", username, setup_data.repo_name);
+                let remote_url = format!(
+                    "https://github.com/{}/{}.git",
+                    username, setup_data.repo_name
+                );
                 match GitManager::clone(&remote_url, &repo_path, Some(&token)) {
                     Ok(_) => {
-                        auth_state.status_message = Some("✅ Repository cloned successfully!".to_string());
+                        auth_state.status_message =
+                            Some("✅ Repository cloned successfully!".to_string());
                         *self.github_auth_component.get_auth_state_mut() = auth_state.clone();
 
                         // Update config
@@ -2278,18 +2646,22 @@ impl App {
                             token: Some(token.clone()),
                         });
                         self.config.repo_name = setup_data.repo_name.clone();
-                        self.config.save(&self.config_path)
+                        self.config
+                            .save(&self.config_path)
                             .context("Failed to save configuration")?;
 
                         // Move to discovering profiles
-                        auth_state.step = GitHubAuthStep::SetupStep(GitHubSetupStep::DiscoveringProfiles);
+                        auth_state.step =
+                            GitHubAuthStep::SetupStep(GitHubSetupStep::DiscoveringProfiles);
                         auth_state.status_message = Some("🔎 Discovering profiles...".to_string());
-                        setup_data.delay_until = Some(std::time::Instant::now() + Duration::from_millis(600));
+                        setup_data.delay_until =
+                            Some(std::time::Instant::now() + Duration::from_millis(600));
                         auth_state.setup_data = Some(setup_data);
                         *self.github_auth_component.get_auth_state_mut() = auth_state.clone();
                     }
                     Err(e) => {
-                        auth_state.error_message = Some(format!("❌ Failed to clone repository: {}", e));
+                        auth_state.error_message =
+                            Some(format!("❌ Failed to clone repository: {}", e));
                         auth_state.status_message = None;
                         auth_state.step = GitHubAuthStep::Input;
                         auth_state.setup_data = None;
@@ -2303,7 +2675,9 @@ impl App {
                 // Validate username is set (needed for next step)
                 if setup_data.username.is_none() {
                     error!("Invalid state: username not set in CreatingRepo step");
-                    auth_state.error_message = Some("❌ Internal error: Username not available. Please try again.".to_string());
+                    auth_state.error_message = Some(
+                        "❌ Internal error: Username not available. Please try again.".to_string(),
+                    );
                     auth_state.status_message = None;
                     auth_state.step = GitHubAuthStep::Input;
                     auth_state.setup_data = None;
@@ -2316,20 +2690,26 @@ impl App {
                 let is_private = setup_data.is_private;
                 let create_result = self.runtime.block_on(async {
                     let client = GitHubClient::new(token.clone());
-                    client.create_repo(&repo_name, "My dotfiles managed by dotstate", is_private).await
+                    client
+                        .create_repo(&repo_name, "My dotfiles managed by dotstate", is_private)
+                        .await
                 });
 
                 match create_result {
                     Ok(_) => {
-                        setup_data.delay_until = Some(std::time::Instant::now() + Duration::from_millis(500));
+                        setup_data.delay_until =
+                            Some(std::time::Instant::now() + Duration::from_millis(500));
                         setup_data.is_new_repo = true; // Mark as new repo creation
-                        auth_state.step = GitHubAuthStep::SetupStep(GitHubSetupStep::InitializingRepo);
-                        auth_state.status_message = Some("⚙️  Initializing local repository...".to_string());
+                        auth_state.step =
+                            GitHubAuthStep::SetupStep(GitHubSetupStep::InitializingRepo);
+                        auth_state.status_message =
+                            Some("⚙️  Initializing local repository...".to_string());
                         auth_state.setup_data = Some(setup_data); // Save setup_data
                         *self.github_auth_component.get_auth_state_mut() = auth_state.clone();
                     }
                     Err(e) => {
-                        auth_state.error_message = Some(format!("❌ Failed to create repository: {}", e));
+                        auth_state.error_message =
+                            Some(format!("❌ Failed to create repository: {}", e));
                         auth_state.status_message = None;
                         auth_state.step = GitHubAuthStep::Input;
                         auth_state.setup_data = None;
@@ -2344,7 +2724,10 @@ impl App {
                     Some(u) => u,
                     None => {
                         error!("Invalid state: username not set in InitializingRepo step");
-                        auth_state.error_message = Some("❌ Internal error: Username not available. Please try again.".to_string());
+                        auth_state.error_message = Some(
+                            "❌ Internal error: Username not available. Please try again."
+                                .to_string(),
+                        );
                         auth_state.status_message = None;
                         auth_state.step = GitHubAuthStep::Input;
                         auth_state.setup_data = None;
@@ -2362,12 +2745,17 @@ impl App {
                 let mut git_mgr = GitManager::open_or_init(&repo_path)?;
 
                 // Add remote
-                let remote_url = format!("https://{}@github.com/{}/{}.git", token, username, repo_name);
+                let remote_url = format!(
+                    "https://{}@github.com/{}/{}.git",
+                    token, username, repo_name
+                );
                 git_mgr.add_remote("origin", &remote_url)?;
 
                 // Create initial commit
-                std::fs::write(repo_path.join("README.md"),
-                    format!("# {}\n\nDotfiles managed by dotstate", repo_name))?;
+                std::fs::write(
+                    repo_path.join("README.md"),
+                    format!("# {}\n\nDotfiles managed by dotstate", repo_name),
+                )?;
 
                 // Create profile manifest with default profile
                 // Use "Personal" as default profile name if active_profile is empty
@@ -2389,14 +2777,18 @@ impl App {
 
                 git_mgr.commit_all("Initial commit")?;
 
-                let current_branch = git_mgr.get_current_branch()
+                let current_branch = git_mgr
+                    .get_current_branch()
                     .unwrap_or_else(|| self.config.default_branch.clone());
 
                 // Before pushing, fetch and merge any remote commits (GitHub might have created an initial commit)
                 // This prevents "NotFastForward" errors
                 if let Err(e) = git_mgr.pull("origin", &current_branch, Some(&token)) {
                     // If pull fails (e.g., remote branch doesn't exist yet), that's fine - we'll push
-                    info!("Could not pull from remote (this is normal for new repos): {}", e);
+                    info!(
+                        "Could not pull from remote (this is normal for new repos): {}",
+                        e
+                    );
                 } else {
                     info!("Successfully pulled from remote before pushing");
                 }
@@ -2412,19 +2804,20 @@ impl App {
                 });
                 self.config.repo_name = repo_name.clone();
                 self.config.active_profile = default_profile_name.clone();
-                self.config.save(&self.config_path)
+                self.config
+                    .save(&self.config_path)
                     .context("Failed to save configuration")?;
 
                 // Load manifest and populate profile selection state
                 let manifest = crate::utils::ProfileManifest::load_or_backfill(&repo_path)?;
-                self.ui_state.profile_selection.profiles = manifest.profiles.iter()
-                    .map(|p| p.name.clone())
-                    .collect();
+                self.ui_state.profile_selection.profiles =
+                    manifest.profiles.iter().map(|p| p.name.clone()).collect();
                 if !self.ui_state.profile_selection.profiles.is_empty() {
                     self.ui_state.profile_selection.list_state.select(Some(0));
                 }
 
-                auth_state.status_message = Some("✅ Repository created and initialized successfully".to_string());
+                auth_state.status_message =
+                    Some("✅ Repository created and initialized successfully".to_string());
                 *self.github_auth_component.get_auth_state_mut() = auth_state.clone();
 
                 // Move to complete step with delay to show success message
@@ -2435,7 +2828,8 @@ impl App {
                     username, repo_name, repo_path
                 ));
                 // Add delay to show success message before transitioning
-                setup_data.delay_until = Some(std::time::Instant::now() + Duration::from_millis(2000));
+                setup_data.delay_until =
+                    Some(std::time::Instant::now() + Duration::from_millis(2000));
                 setup_data.is_new_repo = true; // Mark as new repo creation
                 auth_state.setup_data = Some(setup_data);
                 *self.github_auth_component.get_auth_state_mut() = auth_state.clone();
@@ -2452,7 +2846,9 @@ impl App {
                     if profile_info.synced_files.is_empty() {
                         let profile_dir = repo_path.join(&profile_info.name);
                         if profile_dir.exists() && profile_dir.is_dir() {
-                            profile_info.synced_files = list_files_in_profile_dir(&profile_dir, &repo_path).unwrap_or_default();
+                            profile_info.synced_files =
+                                list_files_in_profile_dir(&profile_dir, &repo_path)
+                                    .unwrap_or_default();
                         }
                     }
                 }
@@ -2464,9 +2860,8 @@ impl App {
                 }
 
                 // Set up profile selection state
-                self.ui_state.profile_selection.profiles = manifest.profiles.iter()
-                    .map(|p| p.name.clone())
-                    .collect();
+                self.ui_state.profile_selection.profiles =
+                    manifest.profiles.iter().map(|p| p.name.clone()).collect();
                 if !self.ui_state.profile_selection.profiles.is_empty() {
                     self.ui_state.profile_selection.list_state.select(Some(0));
                 }
@@ -2480,7 +2875,9 @@ impl App {
                 } else {
                     // For new repos, we might not have username in setup_data
                     // Use config if available, otherwise use repo_name
-                    let username = setup_data.username.as_ref()
+                    let username = setup_data
+                        .username
+                        .as_ref()
                         .or_else(|| self.config.github.as_ref().map(|g| &g.owner))
                         .unwrap_or(&setup_data.repo_name);
                     let repo_name = setup_data.repo_name.clone();
@@ -2490,7 +2887,8 @@ impl App {
                     ));
                 }
                 // Add a delay to show the success message before transitioning
-                setup_data.delay_until = Some(std::time::Instant::now() + Duration::from_millis(2000));
+                setup_data.delay_until =
+                    Some(std::time::Instant::now() + Duration::from_millis(2000));
                 auth_state.step = GitHubAuthStep::SetupStep(GitHubSetupStep::Complete);
                 auth_state.setup_data = Some(setup_data);
                 *self.github_auth_component.get_auth_state_mut() = auth_state.clone();
@@ -2539,7 +2937,9 @@ impl App {
 
         // Save updated setup_data back (only if it wasn't already consumed/saved in the step)
         // Steps that complete set setup_data to None, so we only save if it's still needed
-        if auth_state.setup_data.is_none() && matches!(auth_state.step, GitHubAuthStep::SetupStep(_)) {
+        if auth_state.setup_data.is_none()
+            && matches!(auth_state.step, GitHubAuthStep::SetupStep(_))
+        {
             // Only save if we're still in setup and data wasn't consumed
             // But actually, each step that needs to continue already saves it
             // So we only need to save if the step didn't save it yet
@@ -2576,34 +2976,38 @@ impl App {
 
         // Validate token format before making API call
         if !token.starts_with("ghp_") {
-            let actual_start = if token.len() >= 4 { &token[..4] } else { "too short" };
-            auth_state.error_message = Some(
-                format!(
-                    "❌ Invalid token format: Must start with 'ghp_' but starts with '{}'.\n\
+            let actual_start = if token.len() >= 4 {
+                &token[..4]
+            } else {
+                "too short"
+            };
+            auth_state.error_message = Some(format!(
+                "❌ Invalid token format: Must start with 'ghp_' but starts with '{}'.\n\
                     Token length: {} characters.\n\
                     First 10 chars: '{}'\n\
                     Please check that you copied the entire token correctly.\n\
                     Make sure you're pasting the full token (40+ characters).",
-                    actual_start,
-                    token.len(),
-                    if token.len() >= 10 { &token[..10] } else { &token }
-                )
-            );
+                actual_start,
+                token.len(),
+                if token.len() >= 10 {
+                    &token[..10]
+                } else {
+                    &token
+                }
+            ));
             auth_state.step = GitHubAuthStep::Input;
             auth_state.status_message = None;
             return Ok(());
         }
 
         if token.len() < 40 {
-            auth_state.error_message = Some(
-                format!(
-                    "❌ Token appears incomplete: {} characters (expected 40+).\n\
+            auth_state.error_message = Some(format!(
+                "❌ Token appears incomplete: {} characters (expected 40+).\n\
                     First 10 chars: '{}'\n\
                     Make sure you copied the entire token from GitHub.",
-                    token.len(),
-                    &token[..token.len().min(10)]
-                )
-            );
+                token.len(),
+                &token[..token.len().min(10)]
+            ));
             auth_state.step = GitHubAuthStep::Input;
             auth_state.status_message = None;
             return Ok(());
@@ -2641,7 +3045,10 @@ impl App {
 
                 if exists {
                     // Step 4: Cloning the repo
-                    auth_state.status_message = Some(format!("📥 Cloning repository {}/{}...", username, repo_name));
+                    auth_state.status_message = Some(format!(
+                        "📥 Cloning repository {}/{}...",
+                        username, repo_name
+                    ));
                     *self.github_auth_component.get_auth_state_mut() = auth_state.clone();
 
                     // Small delay before cloning
@@ -2657,14 +3064,16 @@ impl App {
                     let remote_url = format!("https://github.com/{}/{}.git", username, repo_name);
                     match GitManager::clone(&remote_url, &repo_path, Some(&token)) {
                         Ok(_) => {
-                            auth_state.status_message = Some("✅ Repository cloned successfully!".to_string());
+                            auth_state.status_message =
+                                Some("✅ Repository cloned successfully!".to_string());
                             *self.github_auth_component.get_auth_state_mut() = auth_state.clone();
 
                             // Small delay after cloning
                             std::thread::sleep(Duration::from_millis(500));
                         }
                         Err(e) => {
-                            auth_state.error_message = Some(format!("❌ Failed to clone repository: {}", e));
+                            auth_state.error_message =
+                                Some(format!("❌ Failed to clone repository: {}", e));
                             auth_state.status_message = None;
                             auth_state.step = GitHubAuthStep::Input;
                             return Ok(());
@@ -2672,7 +3081,10 @@ impl App {
                     }
                 } else {
                     // Step 4: Creating new repository
-                    auth_state.status_message = Some(format!("📦 Creating repository {}/{}...", username, repo_name));
+                    auth_state.status_message = Some(format!(
+                        "📦 Creating repository {}/{}...",
+                        username, repo_name
+                    ));
                     *self.github_auth_component.get_auth_state_mut() = auth_state.clone();
 
                     // Small delay for UX
@@ -2682,12 +3094,15 @@ impl App {
                     let is_private = auth_state.is_private;
                     let create_result = self.runtime.block_on(async {
                         let client = GitHubClient::new(token.clone());
-                        client.create_repo(&repo_name, "My dotfiles managed by dotstate", is_private).await
+                        client
+                            .create_repo(&repo_name, "My dotfiles managed by dotstate", is_private)
+                            .await
                     });
 
                     match create_result {
                         Ok(_) => {
-                            auth_state.status_message = Some("⚙️  Initializing local repository...".to_string());
+                            auth_state.status_message =
+                                Some("⚙️  Initializing local repository...".to_string());
                             *self.github_auth_component.get_auth_state_mut() = auth_state.clone();
 
                             // Small delay for UX
@@ -2700,13 +3115,18 @@ impl App {
                             let mut git_mgr = GitManager::open_or_init(&repo_path)?;
 
                             // Add remote
-                            let remote_url = format!("https://{}@github.com/{}/{}.git", token, username, repo_name);
+                            let remote_url = format!(
+                                "https://{}@github.com/{}/{}.git",
+                                token, username, repo_name
+                            );
                             // Add remote (this also sets up tracking)
                             git_mgr.add_remote("origin", &remote_url)?;
 
                             // Create initial commit
-                            std::fs::write(repo_path.join("README.md"),
-                                format!("# {}\n\nDotfiles managed by dotstate", repo_name))?;
+                            std::fs::write(
+                                repo_path.join("README.md"),
+                                format!("# {}\n\nDotfiles managed by dotstate", repo_name),
+                            )?;
 
                             // Create profile manifest with default profile
                             // Use "Personal" as default profile name if active_profile is empty
@@ -2729,7 +3149,8 @@ impl App {
                             git_mgr.commit_all("Initial commit")?;
 
                             // Get current branch name (should be 'main' after ensure_main_branch)
-                            let current_branch = git_mgr.get_current_branch()
+                            let current_branch = git_mgr
+                                .get_current_branch()
                                 .unwrap_or_else(|| self.config.default_branch.clone());
 
                             // Push to remote using the actual branch name and set upstream
@@ -2740,14 +3161,18 @@ impl App {
 
                             // Update config with default profile name
                             self.config.active_profile = default_profile_name.clone();
-                            self.config.save(&self.config_path)
+                            self.config
+                                .save(&self.config_path)
                                 .context("Failed to save configuration")?;
 
-                            auth_state.status_message = Some("✅ Repository created and initialized successfully".to_string());
+                            auth_state.status_message = Some(
+                                "✅ Repository created and initialized successfully".to_string(),
+                            );
                             *self.github_auth_component.get_auth_state_mut() = auth_state.clone();
                         }
                         Err(e) => {
-                            auth_state.error_message = Some(format!("❌ Failed to create repository: {}", e));
+                            auth_state.error_message =
+                                Some(format!("❌ Failed to create repository: {}", e));
                             auth_state.status_message = None;
                             auth_state.step = GitHubAuthStep::Input;
                             return Ok(());
@@ -2762,12 +3187,16 @@ impl App {
                     token: Some(token.clone()),
                 });
                 self.config.repo_name = repo_name.clone();
-                self.config.save(&self.config_path)
+                self.config
+                    .save(&self.config_path)
                     .context("Failed to save configuration")?;
 
                 // Verify config was saved
                 if !self.config_path.exists() {
-                    auth_state.error_message = Some("Warning: Config file was not created. Please check permissions.".to_string());
+                    auth_state.error_message = Some(
+                        "Warning: Config file was not created. Please check permissions."
+                            .to_string(),
+                    );
                     auth_state.step = GitHubAuthStep::Input;
                     return Ok(());
                 }
@@ -2788,7 +3217,9 @@ impl App {
                         if profile_info.synced_files.is_empty() {
                             let profile_dir = repo_path.join(&profile_info.name);
                             if profile_dir.exists() && profile_dir.is_dir() {
-                                profile_info.synced_files = list_files_in_profile_dir(&profile_dir, &repo_path).unwrap_or_default();
+                                profile_info.synced_files =
+                                    list_files_in_profile_dir(&profile_dir, &repo_path)
+                                        .unwrap_or_default();
                             }
                         }
                     }
@@ -2811,10 +3242,11 @@ impl App {
                     // Set up profile selection state from manifest
                     // Get manifest before borrowing ui_state (repo_path already cloned above)
                     let repo_path_clone = self.config.repo_path.clone();
-                    let manifest = crate::utils::ProfileManifest::load_or_backfill(&repo_path_clone).unwrap_or_default();
-                    let profile_names: Vec<String> = manifest.profiles.iter()
-                        .map(|p| p.name.clone())
-                        .collect();
+                    let manifest =
+                        crate::utils::ProfileManifest::load_or_backfill(&repo_path_clone)
+                            .unwrap_or_default();
+                    let profile_names: Vec<String> =
+                        manifest.profiles.iter().map(|p| p.name.clone()).collect();
                     self.ui_state.profile_selection.profiles = profile_names;
                     if !self.ui_state.profile_selection.profiles.is_empty() {
                         self.ui_state.profile_selection.list_state.select(Some(0));
@@ -2880,7 +3312,8 @@ impl App {
                             }
                             DotfileSelectionFocus::FileBrowserPreview => {
                                 if state.file_browser_preview_scroll > 0 {
-                                    state.file_browser_preview_scroll = state.file_browser_preview_scroll.saturating_sub(1);
+                                    state.file_browser_preview_scroll =
+                                        state.file_browser_preview_scroll.saturating_sub(1);
                                 }
                             }
                             _ => {}
@@ -2912,7 +3345,8 @@ impl App {
                                 state.file_browser_list_state.select_next();
                             }
                             DotfileSelectionFocus::FileBrowserPreview => {
-                                state.file_browser_preview_scroll = state.file_browser_preview_scroll.saturating_add(1);
+                                state.file_browser_preview_scroll =
+                                    state.file_browser_preview_scroll.saturating_add(1);
                             }
                             _ => {}
                         }
@@ -2933,7 +3367,7 @@ impl App {
                     }
                     return Ok(());
                 }
-                MouseEventKind::Down(button) if button == MouseButton::Left => {
+                MouseEventKind::Down(MouseButton::Left) => {
                     let terminal_size = self.tui.terminal_mut().size()?;
                     let header_height = 6; // Header is 6 lines
                     let footer_height = 1; // Footer is 1 line
@@ -2946,8 +3380,11 @@ impl App {
                         let popup_x = (terminal_size.width - popup_width) / 2;
                         let popup_y = (terminal_size.height - popup_height) / 2;
 
-                        if mouse.column >= popup_x && mouse.column < popup_x + popup_width &&
-                           mouse.row >= popup_y && mouse.row < popup_y + popup_height {
+                        if mouse.column >= popup_x
+                            && mouse.column < popup_x + popup_width
+                            && mouse.row >= popup_y
+                            && mouse.row < popup_y + popup_height
+                        {
                             let popup_inner_y = mouse.row.saturating_sub(popup_y);
                             let popup_inner_x = mouse.column.saturating_sub(popup_x);
 
@@ -2956,7 +3393,7 @@ impl App {
                                 // Clicked on path display - focus input
                                 state.focus = DotfileSelectionFocus::FileBrowserInput;
                                 state.file_browser_path_focused = true;
-                            } else if popup_inner_y >= 1 && popup_inner_y < 4 {
+                            } else if (1..4).contains(&popup_inner_y) {
                                 // Clicked on path input field
                                 state.focus = DotfileSelectionFocus::FileBrowserInput;
                                 state.file_browser_path_focused = true;
@@ -2972,7 +3409,9 @@ impl App {
                                     if list_preview_y >= 1 {
                                         let clicked_index = (list_preview_y - 1) as usize;
                                         if clicked_index < state.file_browser_entries.len() {
-                                            state.file_browser_list_state.select(Some(clicked_index));
+                                            state
+                                                .file_browser_list_state
+                                                .select(Some(clicked_index));
                                         }
                                     }
                                 } else {
@@ -2993,7 +3432,8 @@ impl App {
                                 state.focus = DotfileSelectionFocus::FilesList;
 
                                 // Calculate which item was clicked
-                                let clicked_row = mouse.row.saturating_sub(content_start_y) as usize;
+                                let clicked_row =
+                                    mouse.row.saturating_sub(content_start_y) as usize;
                                 if clicked_row < state.dotfiles.len() {
                                     state.dotfile_list_state.select(Some(clicked_row));
                                     state.preview_scroll = 0;
@@ -3020,23 +3460,21 @@ impl App {
                 let mouse_x = mouse.column;
 
                 // Check if click is in GitHub auth screen
-                if self.ui_state.current_screen == Screen::GitHubAuth {
-                    match auth_state.step {
-                        GitHubAuthStep::Input => {
-                            // Check if click is in token input area (roughly row 4-6, column 2-78)
-                            // This is approximate - we'd need to track exact widget positions for precision
-                            // For now, clicking anywhere in the left half focuses token input
-                            if mouse_x < terminal_size.width / 2 {
-                                auth_state.input_focused = true;
-                                // Move cursor to clicked position (approximate)
-                                let relative_x = mouse_x.saturating_sub(2) as usize;
-                                auth_state.cursor_position = relative_x.min(auth_state.token_input.chars().count());
-                            } else {
-                                // Click in help area - unfocus input
-                                auth_state.input_focused = false;
-                            }
-                        }
-                        _ => {}
+                if self.ui_state.current_screen == Screen::GitHubAuth
+                    && auth_state.step == GitHubAuthStep::Input
+                {
+                    // Check if click is in token input area (roughly row 4-6, column 2-78)
+                    // This is approximate - we'd need to track exact widget positions for precision
+                    // For now, clicking anywhere in the left half focuses token input
+                    if mouse_x < terminal_size.width / 2 {
+                        auth_state.input_focused = true;
+                        // Move cursor to clicked position (approximate)
+                        let relative_x = mouse_x.saturating_sub(2) as usize;
+                        auth_state.cursor_position =
+                            relative_x.min(auth_state.token_input.chars().count());
+                    } else {
+                        // Click in help area - unfocus input
+                        auth_state.input_focused = false;
                     }
                 }
             }
@@ -3047,7 +3485,6 @@ impl App {
     /// Handle input for dotfile selection screen
     fn handle_dotfile_selection_input(&mut self, key_code: KeyCode) -> Result<()> {
         let state = &mut self.ui_state.dotfile_selection;
-
 
         // PRIORITY 1: Handle custom file confirmation modal
         if state.show_custom_file_confirm {
@@ -3062,8 +3499,8 @@ impl App {
                     state.custom_file_confirm_path = None;
                     state.custom_file_confirm_relative = None;
 
-                        // Release borrow
-                        let _ = state;
+                    // Release borrow
+                    let _ = state;
 
                     // Sync the file
                     if let Err(e) = self.add_custom_file_to_sync(&full_path, &relative_path) {
@@ -3077,7 +3514,11 @@ impl App {
 
                     // Find and select the file in the list
                     let state = &mut self.ui_state.dotfile_selection;
-                    if let Some(index) = state.dotfiles.iter().position(|d| d.relative_path.to_string_lossy() == relative_path) {
+                    if let Some(index) = state
+                        .dotfiles
+                        .iter()
+                        .position(|d| d.relative_path.to_string_lossy() == relative_path)
+                    {
                         state.dotfile_list_state.select(Some(index));
                         state.selected_for_sync.insert(index);
                     }
@@ -3191,7 +3632,9 @@ impl App {
                         state.dotfile_list_state.select(Some(new_index));
                         state.preview_scroll = 0;
                     } else if !state.dotfiles.is_empty() {
-                        state.dotfile_list_state.select(Some(10.min(state.dotfiles.len() - 1)));
+                        state
+                            .dotfile_list_state
+                            .select(Some(10.min(state.dotfiles.len() - 1)));
                         state.preview_scroll = 0;
                     }
                 } else if state.focus == DotfileSelectionFocus::Preview {
@@ -3201,10 +3644,8 @@ impl App {
             }
             KeyCode::Char('u') => {
                 // Scroll preview up (only if preview is focused)
-                if state.focus == DotfileSelectionFocus::Preview {
-                    if state.preview_scroll > 0 {
-                        state.preview_scroll = state.preview_scroll.saturating_sub(10);
-                    }
+                if state.focus == DotfileSelectionFocus::Preview && state.preview_scroll > 0 {
+                    state.preview_scroll = state.preview_scroll.saturating_sub(10);
                 }
             }
             KeyCode::Char('d') => {
@@ -3238,7 +3679,8 @@ impl App {
                 state.file_browser_path = crate::utils::get_home_dir();
                 state.file_browser_selected = 0;
                 // Initialize path input with current directory
-                state.file_browser_path_input = state.file_browser_path.to_string_lossy().to_string();
+                state.file_browser_path_input =
+                    state.file_browser_path.to_string_lossy().to_string();
                 state.file_browser_path_cursor = state.file_browser_path_input.chars().count();
                 state.file_browser_path_focused = false;
                 state.file_browser_preview_scroll = 0;
@@ -3288,17 +3730,31 @@ impl App {
             // Character input - capture ALL characters including 's', 'a', 'q', etc.
             // Text input handling - use text input utility
             KeyCode::Char(c) => {
-                crate::utils::handle_char_insertion(&mut state.custom_file_input, &mut state.custom_file_cursor, c);
+                crate::utils::handle_char_insertion(
+                    &mut state.custom_file_input,
+                    &mut state.custom_file_cursor,
+                    c,
+                );
                 return Ok(());
             }
             KeyCode::Left | KeyCode::Right | KeyCode::Home | KeyCode::End => {
-                crate::utils::handle_cursor_movement(&state.custom_file_input, &mut state.custom_file_cursor, key_code);
+                crate::utils::handle_cursor_movement(
+                    &state.custom_file_input,
+                    &mut state.custom_file_cursor,
+                    key_code,
+                );
             }
             KeyCode::Backspace => {
-                crate::utils::handle_backspace(&mut state.custom_file_input, &mut state.custom_file_cursor);
+                crate::utils::handle_backspace(
+                    &mut state.custom_file_input,
+                    &mut state.custom_file_cursor,
+                );
             }
             KeyCode::Delete => {
-                crate::utils::handle_delete(&mut state.custom_file_input, &mut state.custom_file_cursor);
+                crate::utils::handle_delete(
+                    &mut state.custom_file_input,
+                    &mut state.custom_file_cursor,
+                );
             }
             KeyCode::Tab => {
                 state.custom_file_focused = false;
@@ -3313,7 +3769,8 @@ impl App {
                     let full_path = crate::utils::expand_path(path_str);
 
                     if !full_path.exists() {
-                        state.status_message = Some(format!("Error: File does not exist: {:?}", full_path));
+                        state.status_message =
+                            Some(format!("Error: File does not exist: {:?}", full_path));
                     } else {
                         // Calculate relative path
                         let home_dir = crate::utils::get_home_dir();
@@ -3359,7 +3816,11 @@ impl App {
 
                         // Add custom file to list if it's synced but not in scanned list
                         let state = &mut self.ui_state.dotfile_selection;
-                        if !state.dotfiles.iter().any(|d| d.relative_path.to_string_lossy() == relative_path_clone) {
+                        if !state
+                            .dotfiles
+                            .iter()
+                            .any(|d| d.relative_path.to_string_lossy() == relative_path_clone)
+                        {
                             // File is synced but not in default list, add it manually
                             use crate::file_manager::Dotfile;
                             state.dotfiles.push(Dotfile {
@@ -3371,7 +3832,11 @@ impl App {
                         }
 
                         // Find and select the file in the list
-                        if let Some(index) = state.dotfiles.iter().position(|d| d.relative_path.to_string_lossy() == relative_path_clone) {
+                        if let Some(index) = state
+                            .dotfiles
+                            .iter()
+                            .position(|d| d.relative_path.to_string_lossy() == relative_path_clone)
+                        {
                             state.dotfile_list_state.select(Some(index));
                             // Mark as selected for sync
                             state.selected_for_sync.insert(index);
@@ -3398,16 +3863,20 @@ impl App {
         let state = &self.ui_state.dotfile_selection;
 
         // Get currently selected file paths
-        let currently_selected: std::collections::HashSet<String> = state.selected_for_sync
+        let currently_selected: std::collections::HashSet<String> = state
+            .selected_for_sync
             .iter()
             .filter_map(|&idx| {
-                state.dotfiles.get(idx)
+                state
+                    .dotfiles
+                    .get(idx)
                     .map(|d| d.relative_path.to_string_lossy().to_string())
             })
             .collect();
 
         // Get previously synced files from active profile
-        let previously_synced: std::collections::HashSet<String> = self.get_active_profile_info()
+        let previously_synced: std::collections::HashSet<String> = self
+            .get_active_profile_info()
             .ok()
             .flatten()
             .map(|p| p.synced_files.iter().cloned().collect())
@@ -3424,7 +3893,8 @@ impl App {
         // Get profile info before borrowing state
         let profile_name = self.config.active_profile.clone();
         let repo_path = self.config.repo_path.clone();
-        let previously_synced: std::collections::HashSet<String> = self.get_active_profile_info()
+        let previously_synced: std::collections::HashSet<String> = self
+            .get_active_profile_info()
             .ok()
             .flatten()
             .map(|p| p.synced_files.iter().cloned().collect())
@@ -3451,8 +3921,7 @@ impl App {
 
         // Create parent directories
         if let Some(parent) = repo_file_path.parent() {
-            std::fs::create_dir_all(parent)
-                .context("Failed to create repo directory")?;
+            std::fs::create_dir_all(parent).context("Failed to create repo directory")?;
         }
 
         // Handle symlinks: resolve to original file
@@ -3463,18 +3932,22 @@ impl App {
         };
 
         // Copy to repo
-        file_manager.copy_to_repo(&source_path, &repo_file_path)
+        file_manager
+            .copy_to_repo(&source_path, &repo_file_path)
             .context("Failed to copy file to repo")?;
 
         // Create symlink using SymlinkManager
         let backup_enabled = state.backup_enabled;
         let mut symlink_mgr = SymlinkManager::new_with_backup(repo_path.clone(), backup_enabled)?;
-        symlink_mgr.activate_profile(&profile_name, &[relative_str.clone()])
+        symlink_mgr
+            .activate_profile(&profile_name, std::slice::from_ref(&relative_str))
             .context("Failed to create symlink")?;
 
         // Update manifest
         let mut manifest = crate::utils::ProfileManifest::load_or_backfill(&repo_path)?;
-        let current_files = manifest.profiles.iter()
+        let current_files = manifest
+            .profiles
+            .iter()
             .find(|p| p.name == profile_name)
             .map(|p| p.synced_files.clone())
             .unwrap_or_default();
@@ -3493,13 +3966,14 @@ impl App {
     }
 
     /// Add a custom file directly to sync (bypasses scan_dotfiles since custom files aren't in default list)
-    fn add_custom_file_to_sync(&mut self, full_path: &PathBuf, relative_path: &str) -> Result<()> {
+    fn add_custom_file_to_sync(&mut self, full_path: &Path, relative_path: &str) -> Result<()> {
         use crate::utils::SymlinkManager;
 
         // Get profile info before borrowing state
         let profile_name = self.config.active_profile.clone();
         let repo_path = self.config.repo_path.clone();
-        let previously_synced: std::collections::HashSet<String> = self.get_active_profile_info()
+        let previously_synced: std::collections::HashSet<String> = self
+            .get_active_profile_info()
             .ok()
             .flatten()
             .map(|p| p.synced_files.iter().cloned().collect())
@@ -3518,30 +3992,33 @@ impl App {
 
         // Create parent directories
         if let Some(parent) = repo_file_path.parent() {
-            std::fs::create_dir_all(parent)
-                .context("Failed to create repo directory")?;
+            std::fs::create_dir_all(parent).context("Failed to create repo directory")?;
         }
 
         // Handle symlinks: resolve to original file
         let source_path = if file_manager.is_symlink(full_path) {
             file_manager.resolve_symlink(full_path)?
         } else {
-            full_path.clone()
+            full_path.to_path_buf()
         };
 
         // Copy to repo
-        file_manager.copy_to_repo(&source_path, &repo_file_path)
+        file_manager
+            .copy_to_repo(&source_path, &repo_file_path)
             .context("Failed to copy file to repo")?;
 
         // Create symlink using SymlinkManager
         let backup_enabled = self.ui_state.dotfile_selection.backup_enabled;
         let mut symlink_mgr = SymlinkManager::new_with_backup(repo_path.clone(), backup_enabled)?;
-        symlink_mgr.activate_profile(&profile_name, &[relative_path.to_string()])
+        symlink_mgr
+            .activate_profile(&profile_name, &[relative_path.to_string()])
             .context("Failed to create symlink")?;
 
         // Update manifest
         let mut manifest = crate::utils::ProfileManifest::load_or_backfill(&repo_path)?;
-        let current_files = manifest.profiles.iter()
+        let current_files = manifest
+            .profiles
+            .iter()
             .find(|p| p.name == profile_name)
             .map(|p| p.synced_files.clone())
             .unwrap_or_default();
@@ -3559,7 +4036,11 @@ impl App {
 
         if is_custom {
             // Add to config.custom_files if not already there
-            if !self.config.custom_files.contains(&relative_path.to_string()) {
+            if !self
+                .config
+                .custom_files
+                .contains(&relative_path.to_string())
+            {
                 self.config.custom_files.push(relative_path.to_string());
                 self.config.save(&self.config_path)?;
             }
@@ -3578,7 +4059,8 @@ impl App {
         let profile_name = self.config.active_profile.clone();
         let repo_path = self.config.repo_path.clone();
         let home_dir = crate::utils::get_home_dir();
-        let previously_synced: std::collections::HashSet<String> = self.get_active_profile_info()
+        let previously_synced: std::collections::HashSet<String> = self
+            .get_active_profile_info()
             .ok()
             .flatten()
             .map(|p| p.synced_files.iter().cloned().collect())
@@ -3606,8 +4088,7 @@ impl App {
             let metadata = target_path.symlink_metadata().unwrap();
             if metadata.is_symlink() {
                 // Remove symlink
-                std::fs::remove_file(&target_path)
-                    .context("Failed to remove symlink")?;
+                std::fs::remove_file(&target_path).context("Failed to remove symlink")?;
 
                 // Copy file from repo back to home
                 if repo_file_path.exists() {
@@ -3626,12 +4107,17 @@ impl App {
         let mut symlink_mgr = SymlinkManager::new(repo_path.clone())?;
         let remaining_files: Vec<String> = {
             let manifest = crate::utils::ProfileManifest::load_or_backfill(&repo_path)?;
-            manifest.profiles.iter()
+            manifest
+                .profiles
+                .iter()
                 .find(|p| p.name == profile_name)
-                .map(|p| p.synced_files.iter()
-                    .filter(|f| f != &&relative_str)
-                    .cloned()
-                    .collect())
+                .map(|p| {
+                    p.synced_files
+                        .iter()
+                        .filter(|f| f != &&relative_str)
+                        .cloned()
+                        .collect()
+                })
                 .unwrap_or_default()
         };
 
@@ -3647,8 +4133,7 @@ impl App {
                 std::fs::remove_dir_all(&repo_file_path)
                     .context("Failed to remove directory from repo")?;
             } else {
-                std::fs::remove_file(&repo_file_path)
-                    .context("Failed to remove file from repo")?;
+                std::fs::remove_file(&repo_file_path).context("Failed to remove file from repo")?;
             }
         }
 
@@ -3676,7 +4161,8 @@ impl App {
         let mut found = file_manager.scan_dotfiles(&dotfile_names);
 
         // Mark files that are already synced - use active profile's synced_files from manifest
-        let synced_set: std::collections::HashSet<String> = self.get_active_profile_info()
+        let synced_set: std::collections::HashSet<String> = self
+            .get_active_profile_info()
             .ok()
             .flatten()
             .map(|p| p.synced_files.iter().cloned().collect())
@@ -3694,8 +4180,13 @@ impl App {
         }
 
         // Add any synced files that aren't in the default list (custom files)
-        let synced_files_not_found: Vec<String> = synced_set.iter()
-            .filter(|s| !found.iter().any(|d| d.relative_path.to_string_lossy() == **s))
+        let synced_files_not_found: Vec<String> = synced_set
+            .iter()
+            .filter(|s| {
+                !found
+                    .iter()
+                    .any(|d| d.relative_path.to_string_lossy() == **s)
+            })
             .cloned()
             .collect();
 
@@ -3717,7 +4208,10 @@ impl App {
 
         // Add custom files from config (even if not synced) - these are known files
         for custom_file in &self.config.custom_files {
-            if !found.iter().any(|d| d.relative_path.to_string_lossy() == *custom_file) {
+            if !found
+                .iter()
+                .any(|d| d.relative_path.to_string_lossy() == *custom_file)
+            {
                 let full_path = home_dir.join(custom_file);
                 if full_path.exists() {
                     let relative_path_buf = PathBuf::from(custom_file);
@@ -3744,9 +4238,15 @@ impl App {
         self.ui_state.dotfile_selection.selected_for_sync = selected_indices;
         // Initialize ListState with first item selected if available
         if !self.ui_state.dotfile_selection.dotfiles.is_empty() {
-            self.ui_state.dotfile_selection.dotfile_list_state.select(Some(0));
+            self.ui_state
+                .dotfile_selection
+                .dotfile_list_state
+                .select(Some(0));
         } else {
-            self.ui_state.dotfile_selection.dotfile_list_state.select(None);
+            self.ui_state
+                .dotfile_selection
+                .dotfile_list_state
+                .select(None);
         }
 
         Ok(())
@@ -3762,7 +4262,8 @@ impl App {
         // Get profile info before borrowing state
         let profile_name = self.config.active_profile.clone();
         let repo_path = self.config.repo_path.clone();
-        let previously_synced: std::collections::HashSet<String> = self.get_active_profile_info()
+        let previously_synced: std::collections::HashSet<String> = self
+            .get_active_profile_info()
             .ok()
             .flatten()
             .map(|p| p.synced_files.iter().cloned().collect())
@@ -3776,7 +4277,8 @@ impl App {
         let mut errors = Vec::new();
 
         // Get list of currently selected indices
-        let currently_selected: std::collections::HashSet<usize> = state.selected_for_sync.iter().cloned().collect();
+        let currently_selected: std::collections::HashSet<usize> =
+            state.selected_for_sync.iter().cloned().collect();
 
         // Files to sync
         let mut files_to_sync: Vec<String> = Vec::new();
@@ -3798,7 +4300,10 @@ impl App {
                 // Create parent directories in repo
                 if let Some(parent) = repo_file_path.parent() {
                     if let Err(e) = std::fs::create_dir_all(parent) {
-                        errors.push(format!("Failed to create repo directory for {}: {}", relative_str, e));
+                        errors.push(format!(
+                            "Failed to create repo directory for {}: {}",
+                            relative_str, e
+                        ));
                         continue;
                     }
                 }
@@ -3808,7 +4313,10 @@ impl App {
                     match file_manager.resolve_symlink(&dotfile.original_path) {
                         Ok(p) => p,
                         Err(e) => {
-                            errors.push(format!("Failed to resolve symlink for {}: {}", relative_str, e));
+                            errors.push(format!(
+                                "Failed to resolve symlink for {}: {}",
+                                relative_str, e
+                            ));
                             continue;
                         }
                     }
@@ -3835,15 +4343,16 @@ impl App {
         if !files_to_sync.is_empty() {
             // Use backup_enabled from UI state (which may have been toggled)
             let backup_enabled = state.backup_enabled;
-            let mut symlink_mgr = SymlinkManager::new_with_backup(
-                repo_path.clone(),
-                backup_enabled
-            )?;
+            let mut symlink_mgr =
+                SymlinkManager::new_with_backup(repo_path.clone(), backup_enabled)?;
 
             match symlink_mgr.activate_profile(&profile_name, &files_to_sync) {
                 Ok(operations) => {
                     for op in operations {
-                        if matches!(op.status, crate::utils::symlink_manager::OperationStatus::Success) {
+                        if matches!(
+                            op.status,
+                            crate::utils::symlink_manager::OperationStatus::Success
+                        ) {
                             synced_count += 1;
                         }
                     }
@@ -3854,117 +4363,138 @@ impl App {
             }
         }
 
-    // Step 3: Handle unsyncing (deselected files)
-    let dotfiles_to_unsync: Vec<(usize, String)> = state.dotfiles.iter()
-        .enumerate()
-        .filter(|(index, dotfile)| {
-            let relative_str = dotfile.relative_path.to_string_lossy().to_string();
-            previously_synced.contains(&relative_str) && !currently_selected.contains(index)
-        })
-        .map(|(index, dotfile)| (index, dotfile.relative_path.to_string_lossy().to_string()))
-        .collect();
+        // Step 3: Handle unsyncing (deselected files)
+        let dotfiles_to_unsync: Vec<(usize, String)> = state
+            .dotfiles
+            .iter()
+            .enumerate()
+            .filter(|(index, dotfile)| {
+                let relative_str = dotfile.relative_path.to_string_lossy().to_string();
+                previously_synced.contains(&relative_str) && !currently_selected.contains(index)
+            })
+            .map(|(index, dotfile)| (index, dotfile.relative_path.to_string_lossy().to_string()))
+            .collect();
 
-    if !dotfiles_to_unsync.is_empty() {
-        let mut symlink_mgr = SymlinkManager::new(repo_path.clone())?;
-        let home_dir = crate::utils::get_home_dir();
+        if !dotfiles_to_unsync.is_empty() {
+            let mut symlink_mgr = SymlinkManager::new(repo_path.clone())?;
+            let home_dir = crate::utils::get_home_dir();
 
-        for (index, relative_str) in dotfiles_to_unsync {
-            let dotfile = &state.dotfiles[index];
-            let target_path = home_dir.join(&dotfile.relative_path);
-            let repo_file_path = repo_path.join(&profile_name).join(&dotfile.relative_path);
+            for (index, relative_str) in dotfiles_to_unsync {
+                let dotfile = &state.dotfiles[index];
+                let target_path = home_dir.join(&dotfile.relative_path);
+                let repo_file_path = repo_path.join(&profile_name).join(&dotfile.relative_path);
 
-            // Step 1: If target is a symlink, restore the original file from repo BEFORE deleting from repo
-            if target_path.symlink_metadata().is_ok() {
-                let metadata = target_path.symlink_metadata().unwrap();
-                if metadata.is_symlink() {
-                    // It's a symlink, restore the actual file from repo
-                    if repo_file_path.exists() {
-                        // Remove the symlink first
-                        if let Err(e) = std::fs::remove_file(&target_path) {
-                            errors.push(format!("Failed to remove symlink for {}: {}", relative_str, e));
-                            continue;
-                        }
+                // Step 1: If target is a symlink, restore the original file from repo BEFORE deleting from repo
+                if target_path.symlink_metadata().is_ok() {
+                    let metadata = target_path.symlink_metadata().unwrap();
+                    if metadata.is_symlink() {
+                        // It's a symlink, restore the actual file from repo
+                        if repo_file_path.exists() {
+                            // Remove the symlink first
+                            if let Err(e) = std::fs::remove_file(&target_path) {
+                                errors.push(format!(
+                                    "Failed to remove symlink for {}: {}",
+                                    relative_str, e
+                                ));
+                                continue;
+                            }
 
-                        // Copy the file from repo back to home directory
-                        let copy_result = if repo_file_path.is_dir() {
-                            crate::file_manager::copy_dir_all(&repo_file_path, &target_path)
+                            // Copy the file from repo back to home directory
+                            let copy_result = if repo_file_path.is_dir() {
+                                crate::file_manager::copy_dir_all(&repo_file_path, &target_path)
+                            } else {
+                                std::fs::copy(&repo_file_path, &target_path)
+                                    .map(|_| ())
+                                    .context("Failed to copy file")
+                            };
+
+                            if let Err(e) = copy_result {
+                                errors.push(format!(
+                                    "Failed to restore {} from repo: {}",
+                                    relative_str, e
+                                ));
+                                continue;
+                            }
+
+                            info!("Restored {} from repo before unsyncing", relative_str);
                         } else {
-                            std::fs::copy(&repo_file_path, &target_path)
-                                .map(|_| ())
-                                .context("Failed to copy file")
-                        };
-
-                        if let Err(e) = copy_result {
-                            errors.push(format!("Failed to restore {} from repo: {}", relative_str, e));
-                            continue;
+                            // Repo file doesn't exist, just remove the orphaned symlink
+                            if let Err(e) = std::fs::remove_file(&target_path) {
+                                errors.push(format!(
+                                    "Failed to remove orphaned symlink for {}: {}",
+                                    relative_str, e
+                                ));
+                            }
+                            info!("Removed orphaned symlink for {}", relative_str);
                         }
-
-                        info!("Restored {} from repo before unsyncing", relative_str);
-                    } else {
-                        // Repo file doesn't exist, just remove the orphaned symlink
-                        if let Err(e) = std::fs::remove_file(&target_path) {
-                            errors.push(format!("Failed to remove orphaned symlink for {}: {}", relative_str, e));
-                        }
-                        info!("Removed orphaned symlink for {}", relative_str);
                     }
                 }
-            }
 
-            // Step 2: Now remove from SymlinkManager tracking
-            // Get remaining files before deactivating (need to get from manifest)
-            let remaining_files: Vec<String> = {
-                // Clone what we need from state before the borrow
-                let relative_str_clone = relative_str.clone();
-                // Get from manifest (state is still borrowed, but we can work around it)
-                // Actually, we need to get this before the loop or restructure
-                // For now, just get it from the manifest directly
-                crate::utils::ProfileManifest::load_or_backfill(&repo_path)
-                    .ok()
-                    .and_then(|manifest| {
-                        manifest.profiles.iter()
-                            .find(|p| p.name == profile_name)
-                            .map(|p| p.synced_files.iter()
-                                .filter(|f| f != &&relative_str_clone)
-                                .cloned()
-                                .collect())
-                    })
-                    .unwrap_or_default()
-            };
-
-            match symlink_mgr.deactivate_profile(&profile_name) {
-                Ok(_) => {
-                    // Re-activate with remaining files
-
-                    if !remaining_files.is_empty() {
-                        let _ = symlink_mgr.activate_profile(&profile_name, &remaining_files);
-                    }
-                }
-                Err(e) => {
-                    info!("Note: Could not update symlink tracking: {}", e);
-                }
-            }
-
-            // Step 3: Finally, remove from repo
-            if repo_file_path.exists() {
-                let remove_result = if repo_file_path.is_dir() {
-                    std::fs::remove_dir_all(&repo_file_path)
-                } else {
-                    std::fs::remove_file(&repo_file_path)
+                // Step 2: Now remove from SymlinkManager tracking
+                // Get remaining files before deactivating (need to get from manifest)
+                let remaining_files: Vec<String> = {
+                    // Clone what we need from state before the borrow
+                    let relative_str_clone = relative_str.clone();
+                    // Get from manifest (state is still borrowed, but we can work around it)
+                    // Actually, we need to get this before the loop or restructure
+                    // For now, just get it from the manifest directly
+                    crate::utils::ProfileManifest::load_or_backfill(&repo_path)
+                        .ok()
+                        .and_then(|manifest| {
+                            manifest
+                                .profiles
+                                .iter()
+                                .find(|p| p.name == profile_name)
+                                .map(|p| {
+                                    p.synced_files
+                                        .iter()
+                                        .filter(|f| f != &&relative_str_clone)
+                                        .cloned()
+                                        .collect()
+                                })
+                        })
+                        .unwrap_or_default()
                 };
 
-                if let Err(e) = remove_result {
-                    errors.push(format!("Failed to remove {} from repo: {}", relative_str, e));
-                    continue;
-                }
-            }
+                match symlink_mgr.deactivate_profile(&profile_name) {
+                    Ok(_) => {
+                        // Re-activate with remaining files
 
-            unsynced_count += 1;
-            state.dotfiles[index].synced = false;
+                        if !remaining_files.is_empty() {
+                            let _ = symlink_mgr.activate_profile(&profile_name, &remaining_files);
+                        }
+                    }
+                    Err(e) => {
+                        info!("Note: Could not update symlink tracking: {}", e);
+                    }
+                }
+
+                // Step 3: Finally, remove from repo
+                if repo_file_path.exists() {
+                    let remove_result = if repo_file_path.is_dir() {
+                        std::fs::remove_dir_all(&repo_file_path)
+                    } else {
+                        std::fs::remove_file(&repo_file_path)
+                    };
+
+                    if let Err(e) = remove_result {
+                        errors.push(format!(
+                            "Failed to remove {} from repo: {}",
+                            relative_str, e
+                        ));
+                        continue;
+                    }
+                }
+
+                unsynced_count += 1;
+                state.dotfiles[index].synced = false;
+            }
         }
-    }
 
         // Step 4: Update manifest with new synced files
-        let new_synced_files: Vec<String> = state.dotfiles.iter()
+        let new_synced_files: Vec<String> = state
+            .dotfiles
+            .iter()
             .enumerate()
             .filter(|(i, _)| currently_selected.contains(i))
             .map(|(_, d)| d.relative_path.to_string_lossy().to_string())
@@ -4058,9 +4588,10 @@ impl App {
 
         // Check if repo exists
         if !repo_path.exists() {
-            self.ui_state.sync_with_remote.sync_result = Some(
-                format!("Error: Repository not found at {:?}\n\nPlease sync some files first.", repo_path)
-            );
+            self.ui_state.sync_with_remote.sync_result = Some(format!(
+                "Error: Repository not found at {:?}\n\nPlease sync some files first.",
+                repo_path
+            ));
             self.ui_state.sync_with_remote.show_result_popup = true;
             return Ok(());
         }
@@ -4078,42 +4609,53 @@ impl App {
             Err(e) => {
                 self.ui_state.sync_with_remote.is_syncing = false;
                 self.ui_state.sync_with_remote.sync_progress = None;
-                self.ui_state.sync_with_remote.sync_result = Some(format!("Error: Failed to open repository: {}", e));
+                self.ui_state.sync_with_remote.sync_result =
+                    Some(format!("Error: Failed to open repository: {}", e));
                 self.ui_state.sync_with_remote.show_result_popup = true;
                 return Ok(());
             }
         };
 
-        let branch = git_mgr.get_current_branch()
+        let branch = git_mgr
+            .get_current_branch()
             .unwrap_or_else(|| self.config.default_branch.clone());
-        let token = self.config.github.as_ref()
+        let token = self
+            .config
+            .github
+            .as_ref()
             .and_then(|gh| gh.token.as_deref());
 
         // Step 1: Commit all changes
         let result = match git_mgr.commit_all("Update dotfiles") {
             Ok(_) => {
                 // Step 2: Pull with rebase
-                self.ui_state.sync_with_remote.sync_progress = Some("Pulling changes from remote...".to_string());
+                self.ui_state.sync_with_remote.sync_progress =
+                    Some("Pulling changes from remote...".to_string());
 
                 match git_mgr.pull_with_rebase("origin", &branch, token) {
                     Ok(pulled_count) => {
                         self.ui_state.sync_with_remote.pulled_changes_count = Some(pulled_count);
 
                         // Step 3: Push to remote
-                        self.ui_state.sync_with_remote.sync_progress = Some("Pushing to remote...".to_string());
+                        self.ui_state.sync_with_remote.sync_progress =
+                            Some("Pushing to remote...".to_string());
 
                         match git_mgr.push("origin", &branch, token) {
                             Ok(_) => {
                                 let mut success_msg = format!("✓ Successfully synced with remote!\n\nBranch: {}\nRepository: {:?}", branch, repo_path);
                                 if pulled_count > 0 {
-                                    success_msg.push_str(&format!("\n\nPulled {} change(s) from remote.", pulled_count));
+                                    success_msg.push_str(&format!(
+                                        "\n\nPulled {} change(s) from remote.",
+                                        pulled_count
+                                    ));
                                 } else {
                                     success_msg.push_str("\n\nNo changes pulled from remote.");
                                 }
                                 success_msg
                             }
                             Err(e) => {
-                                let mut error_msg = format!("Error: Failed to push to remote: {}", e);
+                                let mut error_msg =
+                                    format!("Error: Failed to push to remote: {}", e);
                                 let mut source = e.source();
                                 while let Some(err) = source {
                                     error_msg.push_str(&format!("\n  Caused by: {}", err));
@@ -4170,9 +4712,10 @@ impl App {
 
         // Check if repo exists
         if !repo_path.exists() {
-            self.ui_state.dotfile_selection.status_message = Some(
-                format!("Error: Repository not found at {:?}\n\nPlease sync some files first.", repo_path)
-            );
+            self.ui_state.dotfile_selection.status_message = Some(format!(
+                "Error: Repository not found at {:?}\n\nPlease sync some files first.",
+                repo_path
+            ));
             return Ok(());
         }
 
@@ -4180,20 +4723,23 @@ impl App {
         let git_mgr = match GitManager::open_or_init(repo_path) {
             Ok(mgr) => mgr,
             Err(e) => {
-                self.ui_state.dotfile_selection.status_message = Some(
-                    format!("Error: Failed to open repository: {}", e)
-                );
+                self.ui_state.dotfile_selection.status_message =
+                    Some(format!("Error: Failed to open repository: {}", e));
                 return Ok(());
             }
         };
 
         // Get current branch
-        let branch = git_mgr.get_current_branch()
+        let branch = git_mgr
+            .get_current_branch()
             .unwrap_or_else(|| self.config.default_branch.clone());
 
         // Pull from remote
         // Get token from config for pull
-        let token = self.config.github.as_ref()
+        let token = self
+            .config
+            .github
+            .as_ref()
             .and_then(|gh| gh.token.as_deref());
         match git_mgr.pull("origin", &branch, token) {
             Ok(_) => {
@@ -4202,9 +4748,8 @@ impl App {
                 );
             }
             Err(e) => {
-                self.ui_state.dotfile_selection.status_message = Some(
-                    format!("Error: Failed to pull from remote: {}", e)
-                );
+                self.ui_state.dotfile_selection.status_message =
+                    Some(format!("Error: Failed to pull from remote: {}", e));
             }
         }
 
@@ -4217,23 +4762,38 @@ impl App {
         let state = &mut self.ui_state.dotfile_selection;
 
         // Handle path input if focused
-        if state.file_browser_path_focused && state.focus == DotfileSelectionFocus::FileBrowserInput {
+        if state.file_browser_path_focused && state.focus == DotfileSelectionFocus::FileBrowserInput
+        {
             match key_code {
                 // Text input handling - use text input utility
                 KeyCode::Char(c) => {
-                    crate::utils::handle_char_insertion(&mut state.file_browser_path_input, &mut state.file_browser_path_cursor, c);
+                    crate::utils::handle_char_insertion(
+                        &mut state.file_browser_path_input,
+                        &mut state.file_browser_path_cursor,
+                        c,
+                    );
                     return Ok(());
                 }
                 KeyCode::Left | KeyCode::Right | KeyCode::Home | KeyCode::End => {
-                    crate::utils::handle_cursor_movement(&state.file_browser_path_input, &mut state.file_browser_path_cursor, key_code);
+                    crate::utils::handle_cursor_movement(
+                        &state.file_browser_path_input,
+                        &mut state.file_browser_path_cursor,
+                        key_code,
+                    );
                     return Ok(());
                 }
                 KeyCode::Backspace => {
-                    crate::utils::handle_backspace(&mut state.file_browser_path_input, &mut state.file_browser_path_cursor);
+                    crate::utils::handle_backspace(
+                        &mut state.file_browser_path_input,
+                        &mut state.file_browser_path_cursor,
+                    );
                     return Ok(());
                 }
                 KeyCode::Delete => {
-                    crate::utils::handle_delete(&mut state.file_browser_path_input, &mut state.file_browser_path_cursor);
+                    crate::utils::handle_delete(
+                        &mut state.file_browser_path_input,
+                        &mut state.file_browser_path_cursor,
+                    );
                     return Ok(());
                 }
                 KeyCode::Enter => {
@@ -4246,18 +4806,22 @@ impl App {
                             if full_path.is_dir() {
                                 state.file_browser_path = full_path.clone();
                                 // Update path input to show the new directory
-                                state.file_browser_path_input = state.file_browser_path.to_string_lossy().to_string();
-                                state.file_browser_path_cursor = state.file_browser_path_input.chars().count();
+                                state.file_browser_path_input =
+                                    state.file_browser_path.to_string_lossy().to_string();
+                                state.file_browser_path_cursor =
+                                    state.file_browser_path_input.chars().count();
                                 state.file_browser_list_state.select(Some(0));
                                 state.focus = DotfileSelectionFocus::FileBrowserList;
                                 // Refresh after updating path
-                                self.ui_state.dotfile_selection.file_browser_path = state.file_browser_path.clone();
+                                self.ui_state.dotfile_selection.file_browser_path =
+                                    state.file_browser_path.clone();
                                 self.refresh_file_browser()?;
                                 return Ok(());
                             } else {
                                 // It's a file - directly sync it
                                 let home_dir = crate::utils::get_home_dir();
-                                let relative_path = full_path.strip_prefix(&home_dir)
+                                let relative_path = full_path
+                                    .strip_prefix(&home_dir)
                                     .map(|p| p.to_string_lossy().to_string())
                                     .unwrap_or_else(|_| full_path.to_string_lossy().to_string());
 
@@ -4271,8 +4835,8 @@ impl App {
                                 // Store relative_path before releasing borrow
                                 let relative_path_clone = relative_path.clone();
 
-                        // Release borrow
-                        let _ = state;
+                                // Release borrow
+                                let _ = state;
 
                                 // Re-scan to include the new file
                                 self.scan_dotfiles()?;
@@ -4280,7 +4844,9 @@ impl App {
                                 // Find the file index and sync it
                                 let file_index = {
                                     let state = &self.ui_state.dotfile_selection;
-                                    state.dotfiles.iter().position(|d| d.relative_path.to_string_lossy() == relative_path_clone)
+                                    state.dotfiles.iter().position(|d| {
+                                        d.relative_path.to_string_lossy() == relative_path_clone
+                                    })
                                 };
 
                                 if let Some(index) = file_index {
@@ -4338,29 +4904,33 @@ impl App {
             KeyCode::Up => {
                 if state.focus == DotfileSelectionFocus::FileBrowserList {
                     state.file_browser_list_state.select_previous();
-                } else if state.focus == DotfileSelectionFocus::FileBrowserPreview {
-                    if state.file_browser_preview_scroll > 0 {
-                        state.file_browser_preview_scroll = state.file_browser_preview_scroll.saturating_sub(1);
-                    }
+                } else if state.focus == DotfileSelectionFocus::FileBrowserPreview
+                    && state.file_browser_preview_scroll > 0
+                {
+                    state.file_browser_preview_scroll =
+                        state.file_browser_preview_scroll.saturating_sub(1);
                 }
             }
             KeyCode::Down => {
                 if state.focus == DotfileSelectionFocus::FileBrowserList {
                     state.file_browser_list_state.select_next();
                 } else if state.focus == DotfileSelectionFocus::FileBrowserPreview {
-                    state.file_browser_preview_scroll = state.file_browser_preview_scroll.saturating_add(1);
+                    state.file_browser_preview_scroll =
+                        state.file_browser_preview_scroll.saturating_add(1);
                 }
             }
             KeyCode::Char('u') => {
-                if state.focus == DotfileSelectionFocus::FileBrowserPreview {
-                    if state.file_browser_preview_scroll > 0 {
-                        state.file_browser_preview_scroll = state.file_browser_preview_scroll.saturating_sub(10);
-                    }
+                if state.focus == DotfileSelectionFocus::FileBrowserPreview
+                    && state.file_browser_preview_scroll > 0
+                {
+                    state.file_browser_preview_scroll =
+                        state.file_browser_preview_scroll.saturating_sub(10);
                 }
             }
             KeyCode::Char('d') => {
                 if state.focus == DotfileSelectionFocus::FileBrowserPreview {
-                    state.file_browser_preview_scroll = state.file_browser_preview_scroll.saturating_add(10);
+                    state.file_browser_preview_scroll =
+                        state.file_browser_preview_scroll.saturating_add(10);
                 }
             }
             KeyCode::PageUp => {
@@ -4369,22 +4939,27 @@ impl App {
                         let new_index = current.saturating_sub(10);
                         state.file_browser_list_state.select(Some(new_index));
                     }
-                } else if state.focus == DotfileSelectionFocus::FileBrowserPreview {
-                    if state.file_browser_preview_scroll > 0 {
-                        state.file_browser_preview_scroll = state.file_browser_preview_scroll.saturating_sub(20);
-                    }
+                } else if state.focus == DotfileSelectionFocus::FileBrowserPreview
+                    && state.file_browser_preview_scroll > 0
+                {
+                    state.file_browser_preview_scroll =
+                        state.file_browser_preview_scroll.saturating_sub(20);
                 }
             }
             KeyCode::PageDown => {
                 if state.focus == DotfileSelectionFocus::FileBrowserList {
                     if let Some(current) = state.file_browser_list_state.selected() {
-                        let new_index = (current + 10).min(state.file_browser_entries.len().saturating_sub(1));
+                        let new_index =
+                            (current + 10).min(state.file_browser_entries.len().saturating_sub(1));
                         state.file_browser_list_state.select(Some(new_index));
                     } else if !state.file_browser_entries.is_empty() {
-                        state.file_browser_list_state.select(Some(10.min(state.file_browser_entries.len() - 1)));
+                        state
+                            .file_browser_list_state
+                            .select(Some(10.min(state.file_browser_entries.len() - 1)));
                     }
                 } else if state.focus == DotfileSelectionFocus::FileBrowserPreview {
-                    state.file_browser_preview_scroll = state.file_browser_preview_scroll.saturating_add(20);
+                    state.file_browser_preview_scroll =
+                        state.file_browser_preview_scroll.saturating_add(20);
                 }
             }
             KeyCode::Enter => {
@@ -4399,11 +4974,14 @@ impl App {
                                 let parent_path = parent.to_path_buf();
                                 state.file_browser_path = parent_path.clone();
                                 // Update path input to show the new directory
-                                state.file_browser_path_input = state.file_browser_path.to_string_lossy().to_string();
-                                state.file_browser_path_cursor = state.file_browser_path_input.chars().count();
+                                state.file_browser_path_input =
+                                    state.file_browser_path.to_string_lossy().to_string();
+                                state.file_browser_path_cursor =
+                                    state.file_browser_path_input.chars().count();
                                 state.file_browser_list_state.select(Some(0));
                                 // Refresh after updating path
-                                self.ui_state.dotfile_selection.file_browser_path = state.file_browser_path.clone();
+                                self.ui_state.dotfile_selection.file_browser_path =
+                                    state.file_browser_path.clone();
                                 self.refresh_file_browser()?;
                                 return Ok(());
                             }
@@ -4411,13 +4989,15 @@ impl App {
                             // Add current folder
                             let current_folder = state.file_browser_path.clone();
                             let home_dir = crate::utils::get_home_dir();
-                            let relative_path = current_folder.strip_prefix(&home_dir)
+                            let relative_path = current_folder
+                                .strip_prefix(&home_dir)
                                 .map(|p| p.to_string_lossy().to_string())
                                 .unwrap_or_else(|_| current_folder.to_string_lossy().to_string());
 
                             // Sanity checks
                             let repo_path = &self.config.repo_path;
-                            let (is_safe, reason) = crate::utils::is_safe_to_add(&current_folder, repo_path);
+                            let (is_safe, reason) =
+                                crate::utils::is_safe_to_add(&current_folder, repo_path);
                             if !is_safe {
                                 let state = &mut self.ui_state.dotfile_selection;
                                 state.status_message = Some(format!(
@@ -4461,13 +5041,15 @@ impl App {
                                 state.file_browser_path = full_path.clone();
                                 state.file_browser_list_state.select(Some(0));
                                 // Refresh after updating path
-                                self.ui_state.dotfile_selection.file_browser_path = state.file_browser_path.clone();
+                                self.ui_state.dotfile_selection.file_browser_path =
+                                    state.file_browser_path.clone();
                                 self.refresh_file_browser()?;
                                 return Ok(());
                             } else if full_path.is_file() {
                                 // It's a file - directly sync it
                                 let home_dir = crate::utils::get_home_dir();
-                                let relative_path = full_path.strip_prefix(&home_dir)
+                                let relative_path = full_path
+                                    .strip_prefix(&home_dir)
                                     .map(|p| p.to_string_lossy().to_string())
                                     .unwrap_or_else(|_| full_path.to_string_lossy().to_string());
 
@@ -4482,18 +5064,23 @@ impl App {
                                 let relative_path_clone = relative_path.clone();
                                 let full_path_clone = full_path.clone();
 
-                        // Release borrow
-                        let _ = state;
+                                // Release borrow
+                                let _ = state;
 
                                 // Add the file directly to the dotfiles list and sync it
-                                self.add_custom_file_to_sync(&full_path_clone, &relative_path_clone)?;
+                                self.add_custom_file_to_sync(
+                                    &full_path_clone,
+                                    &relative_path_clone,
+                                )?;
 
                                 // Re-scan to refresh the list (will include the file if it's in default paths)
                                 self.scan_dotfiles()?;
 
                                 // Find and select the file in the list
                                 let state = &mut self.ui_state.dotfile_selection;
-                                if let Some(index) = state.dotfiles.iter().position(|d| d.relative_path.to_string_lossy() == relative_path_clone) {
+                                if let Some(index) = state.dotfiles.iter().position(|d| {
+                                    d.relative_path.to_string_lossy() == relative_path_clone
+                                }) {
                                     state.dotfile_list_state.select(Some(index));
                                 }
                             }
@@ -4528,12 +5115,10 @@ impl App {
 
         // Read directory entries
         if let Ok(entries_iter) = std::fs::read_dir(path) {
-            for entry in entries_iter {
-                if let Ok(entry) = entry {
-                    let entry_path = entry.path();
-                    // Show all files for now (user can navigate)
-                    entries.push(entry_path);
-                }
+            for entry in entries_iter.flatten() {
+                let entry_path = entry.path();
+                // Show all files for now (user can navigate)
+                entries.push(entry_path);
             }
         }
 
@@ -4579,7 +5164,9 @@ impl App {
                 if state.file_browser_entries.is_empty() {
                     state.file_browser_list_state.select(None);
                 } else {
-                    state.file_browser_list_state.select(Some(state.file_browser_entries.len() - 1));
+                    state
+                        .file_browser_list_state
+                        .select(Some(state.file_browser_entries.len() - 1));
                 }
             }
         } else if !state.file_browser_entries.is_empty() {
@@ -4608,13 +5195,20 @@ impl App {
     /// Helper: Get active profile info from manifest
     fn get_active_profile_info(&self) -> Result<Option<crate::utils::ProfileInfo>> {
         let manifest = self.load_manifest()?;
-        Ok(manifest.profiles.into_iter()
+        Ok(manifest
+            .profiles
+            .into_iter()
             .find(|p| p.name == self.config.active_profile))
     }
 
     /// Create a new profile
-    fn create_profile(&mut self, name: &str, description: Option<String>, copy_from: Option<usize>) -> Result<()> {
-        use crate::utils::{validate_profile_name, sanitize_profile_name};
+    fn create_profile(
+        &mut self,
+        name: &str,
+        description: Option<String>,
+        copy_from: Option<usize>,
+    ) -> Result<()> {
+        use crate::utils::{sanitize_profile_name, validate_profile_name};
 
         // Validate and sanitize profile name
         let sanitized_name = sanitize_profile_name(name);
@@ -4624,7 +5218,8 @@ impl App {
 
         // Get existing profile names from manifest
         let mut manifest = self.load_manifest()?;
-        let existing_names: Vec<String> = manifest.profiles.iter().map(|p| p.name.clone()).collect();
+        let existing_names: Vec<String> =
+            manifest.profiles.iter().map(|p| p.name.clone()).collect();
         if let Err(e) = validate_profile_name(&sanitized_name, &existing_names) {
             return Err(anyhow::anyhow!("Invalid profile name: {}", e));
         }
@@ -4632,11 +5227,13 @@ impl App {
         // Create profile folder in repo
         let profile_path = self.config.repo_path.join(&sanitized_name);
         if profile_path.exists() {
-            return Err(anyhow::anyhow!("Profile folder already exists: {:?}", profile_path));
+            return Err(anyhow::anyhow!(
+                "Profile folder already exists: {:?}",
+                profile_path
+            ));
         }
 
-        std::fs::create_dir_all(&profile_path)
-            .context("Failed to create profile directory")?;
+        std::fs::create_dir_all(&profile_path).context("Failed to create profile directory")?;
 
         // Copy files from source profile if specified
         let synced_files = if let Some(source_idx) = copy_from {
@@ -4687,7 +5284,9 @@ impl App {
 
         // Get target profile from manifest
         let manifest = self.load_manifest()?;
-        let target_profile = manifest.profiles.iter()
+        let target_profile = manifest
+            .profiles
+            .iter()
             .find(|p| p.name == target_profile_name)
             .ok_or_else(|| anyhow::anyhow!("Profile '{}' not found", target_profile_name))?;
 
@@ -4700,10 +5299,8 @@ impl App {
         let repo_path = self.config.repo_path.clone();
 
         // Use SymlinkManager to switch profiles
-        let mut symlink_mgr = SymlinkManager::new_with_backup(
-            repo_path.clone(),
-            self.config.backup_enabled
-        )?;
+        let mut symlink_mgr =
+            SymlinkManager::new_with_backup(repo_path.clone(), self.config.backup_enabled)?;
 
         let switch_result = symlink_mgr.switch_profile(
             &old_profile_name,
@@ -4715,19 +5312,31 @@ impl App {
         self.config.active_profile = target_profile_name.to_string();
         self.config.save(&self.config_path)?;
 
-        info!("Switched from '{}' to '{}'", old_profile_name, target_profile_name);
-        info!("Removed {} symlinks, created {} symlinks", switch_result.removed.len(), switch_result.created.len());
+        info!(
+            "Switched from '{}' to '{}'",
+            old_profile_name, target_profile_name
+        );
+        info!(
+            "Removed {} symlinks, created {} symlinks",
+            switch_result.removed.len(),
+            switch_result.created.len()
+        );
 
         // Phase 6: Check packages after profile switch
         if !target_profile.packages.is_empty() {
-            info!("Profile '{}' has {} packages, checking installation status", target_profile_name, target_profile.packages.len());
+            info!(
+                "Profile '{}' has {} packages, checking installation status",
+                target_profile_name,
+                target_profile.packages.len()
+            );
             // Initialize package checking state
             let state = &mut self.ui_state.package_manager;
             state.packages = target_profile.packages.clone();
             state.package_statuses = vec![PackageStatus::Unknown; state.packages.len()];
             state.is_checking = true;
             state.checking_index = None;
-            state.checking_delay_until = Some(std::time::Instant::now() + Duration::from_millis(100));
+            state.checking_delay_until =
+                Some(std::time::Instant::now() + Duration::from_millis(100));
         }
 
         Ok(())
@@ -4735,7 +5344,7 @@ impl App {
 
     /// Rename a profile
     fn rename_profile(&mut self, old_name: &str, new_name: &str) -> Result<()> {
-        use crate::utils::{validate_profile_name, sanitize_profile_name};
+        use crate::utils::{sanitize_profile_name, validate_profile_name};
 
         // Validate new name
         let sanitized_name = sanitize_profile_name(new_name);
@@ -4745,7 +5354,9 @@ impl App {
 
         // Get existing profile names from manifest
         let mut manifest = self.load_manifest()?;
-        let existing_names: Vec<String> = manifest.profiles.iter()
+        let existing_names: Vec<String> = manifest
+            .profiles
+            .iter()
             .filter(|p| p.name != old_name)
             .map(|p| p.name.clone())
             .collect();
@@ -4767,8 +5378,7 @@ impl App {
         let new_path = repo_path.join(&sanitized_name);
 
         if old_path.exists() {
-            std::fs::rename(&old_path, &new_path)
-                .context("Failed to rename profile directory")?;
+            std::fs::rename(&old_path, &new_path).context("Failed to rename profile directory")?;
         }
 
         // Update active profile name if this was the active profile
@@ -4784,15 +5394,16 @@ impl App {
         // Update symlinks if profile is active (has symlinks)
         if self.config.profile_activated && was_active {
             use crate::utils::SymlinkManager;
-            let mut symlink_mgr = SymlinkManager::new_with_backup(
-                repo_path.clone(),
-                self.config.backup_enabled,
-            )?;
+            let mut symlink_mgr =
+                SymlinkManager::new_with_backup(repo_path.clone(), self.config.backup_enabled)?;
 
             match symlink_mgr.rename_profile(old_name, &sanitized_name) {
                 Ok(ops) => {
-                    let success_count = ops.iter()
-                        .filter(|op| op.status == crate::utils::symlink_manager::OperationStatus::Success)
+                    let success_count = ops
+                        .iter()
+                        .filter(|op| {
+                            op.status == crate::utils::symlink_manager::OperationStatus::Success
+                        })
                         .count();
                     info!("Updated {} symlinks for renamed profile", success_count);
                 }
@@ -4803,7 +5414,10 @@ impl App {
             }
         }
 
-        info!("Renamed profile from '{}' to '{}'", old_name, sanitized_name);
+        info!(
+            "Renamed profile from '{}' to '{}'",
+            old_name, sanitized_name
+        );
         Ok(())
     }
 
@@ -4811,14 +5425,16 @@ impl App {
     fn delete_profile(&mut self, profile_name: &str) -> Result<()> {
         // Cannot delete active profile
         if self.config.active_profile == profile_name {
-            return Err(anyhow::anyhow!("Cannot delete active profile '{}'. Please switch to another profile first.", profile_name));
+            return Err(anyhow::anyhow!(
+                "Cannot delete active profile '{}'. Please switch to another profile first.",
+                profile_name
+            ));
         }
 
         // Remove profile folder from repo
         let profile_path = self.config.repo_path.join(profile_name);
         if profile_path.exists() {
-            std::fs::remove_dir_all(&profile_path)
-                .context("Failed to remove profile directory")?;
+            std::fs::remove_dir_all(&profile_path).context("Failed to remove profile directory")?;
         }
 
         // Remove from manifest
@@ -4843,7 +5459,8 @@ impl App {
         self.config.save(&self.config_path)?;
 
         // Get profile to activate from manifest
-        let profile = self.get_profiles()?
+        let profile = self
+            .get_profiles()?
             .into_iter()
             .find(|p| p.name == profile_name)
             .ok_or_else(|| anyhow::anyhow!("Profile '{}' not found", profile_name))?;
@@ -4862,16 +5479,25 @@ impl App {
         // Create SymlinkManager with backup enabled (from config)
         let mut symlink_mgr = SymlinkManager::new_with_backup(
             self.config.repo_path.clone(),
-            self.config.backup_enabled
+            self.config.backup_enabled,
         )?;
 
         // Activate profile (this will create symlinks and sync files)
         match symlink_mgr.activate_profile(profile_name, &files_to_sync) {
             Ok(operations) => {
-                let success_count = operations.iter()
-                    .filter(|op| matches!(op.status, crate::utils::symlink_manager::OperationStatus::Success))
+                let success_count = operations
+                    .iter()
+                    .filter(|op| {
+                        matches!(
+                            op.status,
+                            crate::utils::symlink_manager::OperationStatus::Success
+                        )
+                    })
                     .count();
-                info!("Activated profile '{}' with {} files", profile_name, success_count);
+                info!(
+                    "Activated profile '{}' with {} files",
+                    profile_name, success_count
+                );
 
                 // Mark as activated
                 self.config.profile_activated = true;
@@ -4879,14 +5505,19 @@ impl App {
 
                 // Phase 6: Check packages after activation
                 if !profile.packages.is_empty() {
-                    info!("Profile '{}' has {} packages, checking installation status", profile_name, profile.packages.len());
+                    info!(
+                        "Profile '{}' has {} packages, checking installation status",
+                        profile_name,
+                        profile.packages.len()
+                    );
                     // Initialize package checking state
                     let state = &mut self.ui_state.package_manager;
                     state.packages = profile.packages.clone();
                     state.package_statuses = vec![PackageStatus::Unknown; state.packages.len()];
                     state.is_checking = true;
                     state.checking_index = None;
-                    state.checking_delay_until = Some(std::time::Instant::now() + Duration::from_millis(100));
+                    state.checking_delay_until =
+                        Some(std::time::Instant::now() + Duration::from_millis(100));
                 }
 
                 Ok(())
@@ -4963,7 +5594,11 @@ impl App {
             // Initialize available managers
             state.available_managers = PackageManagerImpl::get_available_managers();
             // Find current manager in list
-            if let Some(pos) = state.available_managers.iter().position(|m| *m == package.manager) {
+            if let Some(pos) = state
+                .available_managers
+                .iter()
+                .position(|m| *m == package.manager)
+            {
                 state.add_manager_selected = pos;
                 state.manager_list_state.select(Some(pos));
             } else {
@@ -5005,9 +5640,10 @@ impl App {
                     Ok((false, _)) => {
                         // Package not found - check if manager is installed for installation purposes
                         if !PackageManagerImpl::is_manager_installed(&package.manager) {
-                            state.package_statuses[index] = PackageStatus::Error(
-                                format!("Package not found and package manager '{:?}' is not installed", package.manager)
-                            );
+                            state.package_statuses[index] = PackageStatus::Error(format!(
+                                "Package not found and package manager '{:?}' is not installed",
+                                package.manager
+                            ));
                         } else {
                             state.package_statuses[index] = PackageStatus::NotInstalled;
                         }
@@ -5026,7 +5662,9 @@ impl App {
         }
 
         // Find next unchecked package (for "Check All")
-        let next_index = state.package_statuses.iter()
+        let next_index = state
+            .package_statuses
+            .iter()
             .position(|s| matches!(s, PackageStatus::Unknown));
 
         if let Some(index) = next_index {
@@ -5045,9 +5683,10 @@ impl App {
                 Ok((false, _)) => {
                     // Package not found - check if manager is installed for installation purposes
                     if !PackageManagerImpl::is_manager_installed(&package.manager) {
-                        state.package_statuses[index] = PackageStatus::Error(
-                            format!("Package not found and package manager '{:?}' is not installed", package.manager)
-                        );
+                        state.package_statuses[index] = PackageStatus::Error(format!(
+                            "Package not found and package manager '{:?}' is not installed",
+                            package.manager
+                        ));
                     } else {
                         state.package_statuses[index] = PackageStatus::NotInstalled;
                     }
@@ -5060,14 +5699,17 @@ impl App {
             state.checking_index = None;
 
             // Add a small delay before checking next package (allows UI to update)
-            state.checking_delay_until = Some(std::time::Instant::now() + Duration::from_millis(100));
+            state.checking_delay_until =
+                Some(std::time::Instant::now() + Duration::from_millis(100));
         } else {
             // All packages checked
             state.is_checking = false;
             state.checking_delay_until = None;
 
             // Check if any packages are missing and show prompt
-            let missing_count = state.package_statuses.iter()
+            let missing_count = state
+                .package_statuses
+                .iter()
                 .filter(|s| matches!(s, PackageStatus::NotInstalled))
                 .count();
 
@@ -5081,13 +5723,12 @@ impl App {
 
     /// Handle popup events for package manager (text input and cursor movement only)
     /// Tab/Esc/Enter are handled inline in the main event handler
-    fn handle_package_popup_event(
-        &mut self,
-        event: Event,
-    ) -> Result<()> {
+    fn handle_package_popup_event(&mut self, event: Event) -> Result<()> {
         let state = &mut self.ui_state.package_manager;
-        use crate::utils::text_input::{handle_char_insertion, handle_backspace, handle_delete, handle_cursor_movement};
         use crate::utils::package_manager::PackageManagerImpl;
+        use crate::utils::text_input::{
+            handle_backspace, handle_char_insertion, handle_cursor_movement, handle_delete,
+        };
         use crossterm::event::{KeyCode, KeyEventKind};
 
         match state.popup_type {
@@ -5099,22 +5740,46 @@ impl App {
                                 // Handle cursor movement in focused field
                                 match state.add_focused_field {
                                     AddPackageField::Name => {
-                                        handle_cursor_movement(&state.add_name_input, &mut state.add_name_cursor, key.code);
+                                        handle_cursor_movement(
+                                            &state.add_name_input,
+                                            &mut state.add_name_cursor,
+                                            key.code,
+                                        );
                                     }
                                     AddPackageField::Description => {
-                                        handle_cursor_movement(&state.add_description_input, &mut state.add_description_cursor, key.code);
+                                        handle_cursor_movement(
+                                            &state.add_description_input,
+                                            &mut state.add_description_cursor,
+                                            key.code,
+                                        );
                                     }
                                     AddPackageField::PackageName => {
-                                        handle_cursor_movement(&state.add_package_name_input, &mut state.add_package_name_cursor, key.code);
+                                        handle_cursor_movement(
+                                            &state.add_package_name_input,
+                                            &mut state.add_package_name_cursor,
+                                            key.code,
+                                        );
                                     }
                                     AddPackageField::BinaryName => {
-                                        handle_cursor_movement(&state.add_binary_name_input, &mut state.add_binary_name_cursor, key.code);
+                                        handle_cursor_movement(
+                                            &state.add_binary_name_input,
+                                            &mut state.add_binary_name_cursor,
+                                            key.code,
+                                        );
                                     }
                                     AddPackageField::InstallCommand => {
-                                        handle_cursor_movement(&state.add_install_command_input, &mut state.add_install_command_cursor, key.code);
+                                        handle_cursor_movement(
+                                            &state.add_install_command_input,
+                                            &mut state.add_install_command_cursor,
+                                            key.code,
+                                        );
                                     }
                                     AddPackageField::ExistenceCheck => {
-                                        handle_cursor_movement(&state.add_existence_check_input, &mut state.add_existence_check_cursor, key.code);
+                                        handle_cursor_movement(
+                                            &state.add_existence_check_input,
+                                            &mut state.add_existence_check_cursor,
+                                            key.code,
+                                        );
                                     }
                                     AddPackageField::ManagerCheck => {
                                         // ManagerCheck is not shown in UI, but exists in enum
@@ -5127,29 +5792,56 @@ impl App {
                             KeyCode::Backspace => {
                                 match state.add_focused_field {
                                     AddPackageField::Name => {
-                                        handle_backspace(&mut state.add_name_input, &mut state.add_name_cursor);
+                                        handle_backspace(
+                                            &mut state.add_name_input,
+                                            &mut state.add_name_cursor,
+                                        );
                                     }
                                     AddPackageField::Description => {
-                                        handle_backspace(&mut state.add_description_input, &mut state.add_description_cursor);
+                                        handle_backspace(
+                                            &mut state.add_description_input,
+                                            &mut state.add_description_cursor,
+                                        );
                                     }
                                     AddPackageField::PackageName => {
                                         let old_package_name = state.add_package_name_input.clone();
-                                        handle_backspace(&mut state.add_package_name_input, &mut state.add_package_name_cursor);
+                                        handle_backspace(
+                                            &mut state.add_package_name_input,
+                                            &mut state.add_package_name_cursor,
+                                        );
                                         // Update binary name suggestion when package name is edited
-                                        let new_suggestion = PackageManagerImpl::suggest_binary_name(&state.add_package_name_input);
-                                        if state.add_binary_name_input.is_empty() || state.add_binary_name_input == PackageManagerImpl::suggest_binary_name(&old_package_name) {
+                                        let new_suggestion =
+                                            PackageManagerImpl::suggest_binary_name(
+                                                &state.add_package_name_input,
+                                            );
+                                        if state.add_binary_name_input.is_empty()
+                                            || state.add_binary_name_input
+                                                == PackageManagerImpl::suggest_binary_name(
+                                                    &old_package_name,
+                                                )
+                                        {
                                             state.add_binary_name_input = new_suggestion;
-                                            state.add_binary_name_cursor = state.add_binary_name_input.chars().count();
+                                            state.add_binary_name_cursor =
+                                                state.add_binary_name_input.chars().count();
                                         }
                                     }
                                     AddPackageField::BinaryName => {
-                                        handle_backspace(&mut state.add_binary_name_input, &mut state.add_binary_name_cursor);
+                                        handle_backspace(
+                                            &mut state.add_binary_name_input,
+                                            &mut state.add_binary_name_cursor,
+                                        );
                                     }
                                     AddPackageField::InstallCommand => {
-                                        handle_backspace(&mut state.add_install_command_input, &mut state.add_install_command_cursor);
+                                        handle_backspace(
+                                            &mut state.add_install_command_input,
+                                            &mut state.add_install_command_cursor,
+                                        );
                                     }
                                     AddPackageField::ExistenceCheck => {
-                                        handle_backspace(&mut state.add_existence_check_input, &mut state.add_existence_check_cursor);
+                                        handle_backspace(
+                                            &mut state.add_existence_check_input,
+                                            &mut state.add_existence_check_cursor,
+                                        );
                                     }
                                     AddPackageField::ManagerCheck => {
                                         // ManagerCheck is not shown in UI, but exists in enum
@@ -5160,22 +5852,40 @@ impl App {
                             KeyCode::Delete => {
                                 match state.add_focused_field {
                                     AddPackageField::Name => {
-                                        handle_delete(&mut state.add_name_input, &mut state.add_name_cursor);
+                                        handle_delete(
+                                            &mut state.add_name_input,
+                                            &mut state.add_name_cursor,
+                                        );
                                     }
                                     AddPackageField::Description => {
-                                        handle_delete(&mut state.add_description_input, &mut state.add_description_cursor);
+                                        handle_delete(
+                                            &mut state.add_description_input,
+                                            &mut state.add_description_cursor,
+                                        );
                                     }
                                     AddPackageField::PackageName => {
-                                        handle_delete(&mut state.add_package_name_input, &mut state.add_package_name_cursor);
+                                        handle_delete(
+                                            &mut state.add_package_name_input,
+                                            &mut state.add_package_name_cursor,
+                                        );
                                     }
                                     AddPackageField::BinaryName => {
-                                        handle_delete(&mut state.add_binary_name_input, &mut state.add_binary_name_cursor);
+                                        handle_delete(
+                                            &mut state.add_binary_name_input,
+                                            &mut state.add_binary_name_cursor,
+                                        );
                                     }
                                     AddPackageField::InstallCommand => {
-                                        handle_delete(&mut state.add_install_command_input, &mut state.add_install_command_cursor);
+                                        handle_delete(
+                                            &mut state.add_install_command_input,
+                                            &mut state.add_install_command_cursor,
+                                        );
                                     }
                                     AddPackageField::ExistenceCheck => {
-                                        handle_delete(&mut state.add_existence_check_input, &mut state.add_existence_check_cursor);
+                                        handle_delete(
+                                            &mut state.add_existence_check_input,
+                                            &mut state.add_existence_check_cursor,
+                                        );
                                     }
                                     AddPackageField::ManagerCheck => {
                                         // ManagerCheck is not shown in UI, but exists in enum
@@ -5186,29 +5896,72 @@ impl App {
                             KeyCode::Char(c) => {
                                 match state.add_focused_field {
                                     AddPackageField::Name => {
-                                        handle_char_insertion(&mut state.add_name_input, &mut state.add_name_cursor, c);
+                                        handle_char_insertion(
+                                            &mut state.add_name_input,
+                                            &mut state.add_name_cursor,
+                                            c,
+                                        );
                                     }
                                     AddPackageField::Description => {
-                                        handle_char_insertion(&mut state.add_description_input, &mut state.add_description_cursor, c);
+                                        handle_char_insertion(
+                                            &mut state.add_description_input,
+                                            &mut state.add_description_cursor,
+                                            c,
+                                        );
                                     }
                                     AddPackageField::PackageName => {
-                                        handle_char_insertion(&mut state.add_package_name_input, &mut state.add_package_name_cursor, c);
+                                        handle_char_insertion(
+                                            &mut state.add_package_name_input,
+                                            &mut state.add_package_name_cursor,
+                                            c,
+                                        );
                                         // Auto-suggest binary name only if it's empty or matches the previous suggestion
                                         // This allows it to update as user types, but stops if they manually edit it
-                                        let current_suggestion = PackageManagerImpl::suggest_binary_name(&state.add_package_name_input);
-                                        if state.add_binary_name_input.is_empty() || state.add_binary_name_input == PackageManagerImpl::suggest_binary_name(&state.add_package_name_input.chars().take(state.add_package_name_input.chars().count().saturating_sub(1)).collect::<String>()) {
+                                        let current_suggestion =
+                                            PackageManagerImpl::suggest_binary_name(
+                                                &state.add_package_name_input,
+                                            );
+                                        if state.add_binary_name_input.is_empty()
+                                            || state.add_binary_name_input
+                                                == PackageManagerImpl::suggest_binary_name(
+                                                    &state
+                                                        .add_package_name_input
+                                                        .chars()
+                                                        .take(
+                                                            state
+                                                                .add_package_name_input
+                                                                .chars()
+                                                                .count()
+                                                                .saturating_sub(1),
+                                                        )
+                                                        .collect::<String>(),
+                                                )
+                                        {
                                             state.add_binary_name_input = current_suggestion;
-                                            state.add_binary_name_cursor = state.add_binary_name_input.chars().count();
+                                            state.add_binary_name_cursor =
+                                                state.add_binary_name_input.chars().count();
                                         }
                                     }
                                     AddPackageField::BinaryName => {
-                                        handle_char_insertion(&mut state.add_binary_name_input, &mut state.add_binary_name_cursor, c);
+                                        handle_char_insertion(
+                                            &mut state.add_binary_name_input,
+                                            &mut state.add_binary_name_cursor,
+                                            c,
+                                        );
                                     }
                                     AddPackageField::InstallCommand => {
-                                        handle_char_insertion(&mut state.add_install_command_input, &mut state.add_install_command_cursor, c);
+                                        handle_char_insertion(
+                                            &mut state.add_install_command_input,
+                                            &mut state.add_install_command_cursor,
+                                            c,
+                                        );
                                     }
                                     AddPackageField::ExistenceCheck => {
-                                        handle_char_insertion(&mut state.add_existence_check_input, &mut state.add_existence_check_cursor, c);
+                                        handle_char_insertion(
+                                            &mut state.add_existence_check_input,
+                                            &mut state.add_existence_check_cursor,
+                                            c,
+                                        );
                                     }
                                     AddPackageField::ManagerCheck => {
                                         // ManagerCheck is not shown in UI, but exists in enum
@@ -5222,28 +5975,38 @@ impl App {
                     _ => {}
                 }
             }
-            PackagePopupType::Delete => {
-                match event {
-                    Event::Key(key) if key.kind == KeyEventKind::Press => {
-                        match key.code {
-                            KeyCode::Left | KeyCode::Right | KeyCode::Home | KeyCode::End => {
-                                handle_cursor_movement(&state.delete_confirm_input, &mut state.delete_confirm_cursor, key.code);
-                            }
-                            KeyCode::Backspace => {
-                                handle_backspace(&mut state.delete_confirm_input, &mut state.delete_confirm_cursor);
-                            }
-                            KeyCode::Delete => {
-                                handle_delete(&mut state.delete_confirm_input, &mut state.delete_confirm_cursor);
-                            }
-                            KeyCode::Char(c) => {
-                                handle_char_insertion(&mut state.delete_confirm_input, &mut state.delete_confirm_cursor, c);
-                            }
-                            _ => {}
-                        }
+            PackagePopupType::Delete => match event {
+                Event::Key(key) if key.kind == KeyEventKind::Press => match key.code {
+                    KeyCode::Left | KeyCode::Right | KeyCode::Home | KeyCode::End => {
+                        handle_cursor_movement(
+                            &state.delete_confirm_input,
+                            &mut state.delete_confirm_cursor,
+                            key.code,
+                        );
+                    }
+                    KeyCode::Backspace => {
+                        handle_backspace(
+                            &mut state.delete_confirm_input,
+                            &mut state.delete_confirm_cursor,
+                        );
+                    }
+                    KeyCode::Delete => {
+                        handle_delete(
+                            &mut state.delete_confirm_input,
+                            &mut state.delete_confirm_cursor,
+                        );
+                    }
+                    KeyCode::Char(c) => {
+                        handle_char_insertion(
+                            &mut state.delete_confirm_input,
+                            &mut state.delete_confirm_cursor,
+                            c,
+                        );
                     }
                     _ => {}
-                }
-            }
+                },
+                _ => {}
+            },
             _ => {}
         }
 
@@ -5253,7 +6016,19 @@ impl App {
     /// Validate and save package
     fn validate_and_save_package(&mut self) -> Result<bool> {
         // Clone data from state before calling methods that need immutable access
-        let (name, description, package_name, binary_name, install_command, existence_check, manager_check, manager, is_custom, edit_idx, active_profile_name) = {
+        let (
+            name,
+            description,
+            package_name,
+            binary_name,
+            install_command,
+            existence_check,
+            manager_check,
+            manager,
+            is_custom,
+            edit_idx,
+            active_profile_name,
+        ) = {
             let state = &self.ui_state.package_manager;
             (
                 state.add_name_input.clone(),
@@ -5333,7 +6108,11 @@ impl App {
         // Save to manifest
         let manifest = self.load_manifest()?;
 
-        if let Some(profile) = manifest.profiles.iter().find(|p| p.name == active_profile_name) {
+        if let Some(profile) = manifest
+            .profiles
+            .iter()
+            .find(|p| p.name == active_profile_name)
+        {
             let mut packages = profile.packages.clone();
 
             if let Some(edit_idx) = edit_idx {
@@ -5348,7 +6127,11 @@ impl App {
 
             // Update manifest
             let mut updated_manifest = manifest;
-            if let Some(profile) = updated_manifest.profiles.iter_mut().find(|p| p.name == active_profile_name) {
+            if let Some(profile) = updated_manifest
+                .profiles
+                .iter_mut()
+                .find(|p| p.name == active_profile_name)
+            {
                 profile.packages = packages;
             }
             self.save_manifest(&updated_manifest)?;
@@ -5371,7 +6154,10 @@ impl App {
 
             Ok(true)
         } else {
-            Err(anyhow::anyhow!("Active profile '{}' not found", active_profile_name))
+            Err(anyhow::anyhow!(
+                "Active profile '{}' not found",
+                active_profile_name
+            ))
         }
     }
 
@@ -5380,7 +6166,11 @@ impl App {
         let active_profile_name = self.config.active_profile.clone();
         let manifest = self.load_manifest()?;
 
-        if let Some(profile) = manifest.profiles.iter().find(|p| p.name == *active_profile_name) {
+        if let Some(profile) = manifest
+            .profiles
+            .iter()
+            .find(|p| p.name == *active_profile_name)
+        {
             let mut packages = profile.packages.clone();
 
             if index < packages.len() {
@@ -5389,7 +6179,11 @@ impl App {
 
             // Update manifest
             let mut updated_manifest = manifest;
-            if let Some(profile) = updated_manifest.profiles.iter_mut().find(|p| p.name == *active_profile_name) {
+            if let Some(profile) = updated_manifest
+                .profiles
+                .iter_mut()
+                .find(|p| p.name == *active_profile_name)
+            {
                 profile.packages = packages;
             }
             self.save_manifest(&updated_manifest)?;
@@ -5448,11 +6242,17 @@ impl App {
 
                 // Get the package being installed
                 if let Some(package) = state.packages.get(*package_index) {
-                    info!("process_installation_step: Processing package: {} (manager: {:?})", package.name, package.manager);
+                    info!(
+                        "process_installation_step: Processing package: {} (manager: {:?})",
+                        package.name, package.manager
+                    );
 
                     // Check if manager is installed
                     if !PackageManagerImpl::is_manager_installed(&package.manager) {
-                        warn!("process_installation_step: Package manager '{:?}' is not installed", package.manager);
+                        warn!(
+                            "process_installation_step: Package manager '{:?}' is not installed",
+                            package.manager
+                        );
                         let error_msg = format!(
                             "Package manager '{:?}' is not installed. {}",
                             package.manager,
@@ -5466,7 +6266,8 @@ impl App {
                             packages_to_install.remove(0);
                             *package_name = state.packages[next_idx].name.clone();
                             state.installation_output.clear();
-                            state.installation_delay_until = Some(std::time::Instant::now() + Duration::from_millis(100));
+                            state.installation_delay_until =
+                                Some(std::time::Instant::now() + Duration::from_millis(100));
                         } else {
                             // All packages processed
                             let installed_clone = installed.clone();
@@ -5481,7 +6282,10 @@ impl App {
 
                     // Check sudo requirement
                     if PackageManagerImpl::check_sudo_required(&package.manager) {
-                        warn!("process_installation_step: Sudo password required for package {}", package.name);
+                        warn!(
+                            "process_installation_step: Sudo password required for package {}",
+                            package.name
+                        );
                         let error_msg = "sudo password required. Please run this in a terminal or configure passwordless sudo.".to_string();
                         failed.push((*package_index, error_msg));
 
@@ -5491,7 +6295,8 @@ impl App {
                             packages_to_install.remove(0);
                             *package_name = state.packages[next_idx].name.clone();
                             state.installation_output.clear();
-                            state.installation_delay_until = Some(std::time::Instant::now() + Duration::from_millis(100));
+                            state.installation_delay_until =
+                                Some(std::time::Instant::now() + Duration::from_millis(100));
                         } else {
                             // All packages processed
                             let installed_clone = installed.clone();
@@ -5505,9 +6310,9 @@ impl App {
                     }
 
                     // Start installation (non-blocking using background thread)
+                    use crate::ui::InstallationStatus;
                     use std::sync::mpsc;
                     use std::thread;
-                    use crate::ui::InstallationStatus;
 
                     // Check if we already started this installation
                     if status_rx.is_none() {
@@ -5519,11 +6324,15 @@ impl App {
 
                         // Spawn thread to run installation with real-time output streaming
                         thread::spawn(move || {
-                            use std::process::Stdio;
                             use std::io::{BufRead, BufReader};
+                            use std::process::Stdio;
 
-                            info!("Installation thread: Starting installation for package: {}", package_name_for_log);
-                            let mut cmd = PackageManagerImpl::get_install_command_builder(&package_clone);
+                            info!(
+                                "Installation thread: Starting installation for package: {}",
+                                package_name_for_log
+                            );
+                            let mut cmd =
+                                PackageManagerImpl::get_install_command_builder(&package_clone);
 
                             // Set up stdout and stderr as piped for streaming
                             cmd.stdout(Stdio::piped());
@@ -5533,35 +6342,48 @@ impl App {
                             match cmd.spawn() {
                                 Ok(mut child) => {
                                     // Spawn thread to read stdout in real-time
-                                    let stdout = child.stdout.take().expect("Failed to capture stdout");
+                                    let stdout =
+                                        child.stdout.take().expect("Failed to capture stdout");
                                     let tx_stdout = tx.clone();
                                     thread::spawn(move || {
                                         let reader = BufReader::new(stdout);
-                                        for line in reader.lines() {
-                                            if let Ok(line) = line {
-                                                if !line.trim().is_empty() {
-                                                    if let Err(_) = tx_stdout.send(InstallationStatus::Output(line)) {
-                                                        // Channel closed, stop reading
-                                                        break;
-                                                    }
-                                                }
+                                        #[allow(
+                                            clippy::unnecessary_lazy_evaluations,
+                                            clippy::lines_filter_map_ok
+                                        )]
+                                        for line in reader.lines().flatten() {
+                                            if !line.trim().is_empty()
+                                                && tx_stdout
+                                                    .send(InstallationStatus::Output(line))
+                                                    .is_err()
+                                            {
+                                                // Channel closed, stop reading
+                                                break;
                                             }
                                         }
                                     });
 
                                     // Spawn thread to read stderr in real-time
-                                    let stderr = child.stderr.take().expect("Failed to capture stderr");
+                                    let stderr =
+                                        child.stderr.take().expect("Failed to capture stderr");
                                     let tx_stderr = tx.clone();
                                     thread::spawn(move || {
                                         let reader = BufReader::new(stderr);
-                                        for line in reader.lines() {
-                                            if let Ok(line) = line {
-                                                if !line.trim().is_empty() {
-                                                    if let Err(_) = tx_stderr.send(InstallationStatus::Output(format!("[stderr] {}", line))) {
-                                                        // Channel closed, stop reading
-                                                        break;
-                                                    }
-                                                }
+                                        #[allow(
+                                            clippy::unnecessary_lazy_evaluations,
+                                            clippy::lines_filter_map_ok
+                                        )]
+                                        for line in reader.lines().flatten() {
+                                            if !line.trim().is_empty()
+                                                && tx_stderr
+                                                    .send(InstallationStatus::Output(format!(
+                                                        "[stderr] {}",
+                                                        line
+                                                    )))
+                                                    .is_err()
+                                            {
+                                                // Channel closed, stop reading
+                                                break;
                                             }
                                         }
                                     });
@@ -5573,22 +6395,46 @@ impl App {
                                             // Send completion status
                                             if status.success() {
                                                 info!("Installation thread: Installation succeeded for {}", package_name_for_log);
-                                                let _ = tx.send(InstallationStatus::Complete { success: true, error: None });
+                                                let _ = tx.send(InstallationStatus::Complete {
+                                                    success: true,
+                                                    error: None,
+                                                });
                                             } else {
-                                                let error_msg = format!("Installation failed with exit code: {}", status.code().unwrap_or(-1));
+                                                let error_msg = format!(
+                                                    "Installation failed with exit code: {}",
+                                                    status.code().unwrap_or(-1)
+                                                );
                                                 error!("Installation thread: Installation failed for {}: {}", package_name_for_log, error_msg);
-                                                let _ = tx.send(InstallationStatus::Complete { success: false, error: Some(error_msg) });
+                                                let _ = tx.send(InstallationStatus::Complete {
+                                                    success: false,
+                                                    error: Some(error_msg),
+                                                });
                                             }
                                         }
                                         Err(e) => {
                                             error!("Installation thread: Failed to wait for process for {}: {}", package_name_for_log, e);
-                                            let _ = tx.send(InstallationStatus::Complete { success: false, error: Some(format!("Failed to wait for installation: {}", e)) });
+                                            let _ = tx.send(InstallationStatus::Complete {
+                                                success: false,
+                                                error: Some(format!(
+                                                    "Failed to wait for installation: {}",
+                                                    e
+                                                )),
+                                            });
                                         }
                                     }
                                 }
                                 Err(e) => {
-                                    error!("Installation thread: Failed to spawn command for {}: {}", package_name_for_log, e);
-                                    let _ = tx.send(InstallationStatus::Complete { success: false, error: Some(format!("Failed to execute installation: {}", e)) });
+                                    error!(
+                                        "Installation thread: Failed to spawn command for {}: {}",
+                                        package_name_for_log, e
+                                    );
+                                    let _ = tx.send(InstallationStatus::Complete {
+                                        success: false,
+                                        error: Some(format!(
+                                            "Failed to execute installation: {}",
+                                            e
+                                        )),
+                                    });
                                 }
                             }
                         });
@@ -5606,7 +6452,10 @@ impl App {
                             match status {
                                 InstallationStatus::Output(line) => {
                                     // Regular output line
-                                    trace!("process_installation_step: Received output line: {}", line);
+                                    trace!(
+                                        "process_installation_step: Received output line: {}",
+                                        line
+                                    );
                                     state.installation_output.push(line);
                                 }
                                 InstallationStatus::Complete { success, error } => {
@@ -5614,7 +6463,10 @@ impl App {
                                     if success {
                                         installed.push(*package_index);
                                     } else {
-                                        failed.push((*package_index, error.unwrap_or_else(|| "Unknown error".to_string())));
+                                        failed.push((
+                                            *package_index,
+                                            error.unwrap_or_else(|| "Unknown error".to_string()),
+                                        ));
                                     }
 
                                     // Move to next package
@@ -5624,7 +6476,9 @@ impl App {
                                         *package_name = state.packages[next_idx].name.clone();
                                         state.installation_output.clear();
                                         *status_rx = None;
-                                        state.installation_delay_until = Some(std::time::Instant::now() + Duration::from_millis(100));
+                                        state.installation_delay_until = Some(
+                                            std::time::Instant::now() + Duration::from_millis(100),
+                                        );
                                     } else {
                                         // All packages processed
                                         let installed_clone = installed.clone();
@@ -5643,14 +6497,14 @@ impl App {
             }
             InstallationStep::Complete { installed, failed } => {
                 // Installation complete, do nothing
-                trace!("process_installation_step: Complete - installed: {}, failed: {}", installed.len(), failed.len());
+                trace!(
+                    "process_installation_step: Complete - installed: {}, failed: {}",
+                    installed.len(),
+                    failed.len()
+                );
             }
         }
 
         Ok(())
     }
-
 }
-
-
-

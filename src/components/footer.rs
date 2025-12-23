@@ -29,17 +29,18 @@ impl Footer {
             if let Some((label, keys)) = part.split_once(": ") {
                 spans.push(Span::styled(
                     format!("{}: ", label),
-                    Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)
+                    Style::default()
+                        .fg(Color::Cyan)
+                        .add_modifier(Modifier::BOLD),
                 ));
                 spans.push(Span::styled(
                     keys,
-                    Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD),
                 ));
             } else {
-                spans.push(Span::styled(
-                    *part,
-                    Style::default().fg(Color::White)
-                ));
+                spans.push(Span::styled(*part, Style::default().fg(Color::White)));
             }
         }
 
@@ -50,8 +51,7 @@ impl Footer {
             .style(Style::default().bg(Color::Black));
 
         let footer_inner = footer_block.inner(area);
-        let footer = Paragraph::new(Line::from(spans))
-            .alignment(Alignment::Center);
+        let footer = Paragraph::new(Line::from(spans)).alignment(Alignment::Center);
 
         frame.render_widget(footer_block, area);
         frame.render_widget(footer, footer_inner);
@@ -59,4 +59,3 @@ impl Footer {
         Ok(2) // Footer uses 2 lines (1 for border, 1 for text)
     }
 }
-

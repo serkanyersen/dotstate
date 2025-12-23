@@ -146,4 +146,3 @@ mod tests {
         assert_eq!(logo.size, Size::Small);
     }
 }
-

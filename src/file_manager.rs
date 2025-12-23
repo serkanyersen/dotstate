@@ -25,8 +25,7 @@ pub struct Dotfile {
 
 impl FileManager {
     pub fn new() -> Result<Self> {
-        let home_dir = dirs::home_dir()
-            .context("Could not determine home directory")?;
+        let home_dir = dirs::home_dir().context("Could not determine home directory")?;
 
         Ok(Self { home_dir })
     }
@@ -123,10 +122,14 @@ impl FileManager {
             fs::copy(source, dest)
                 .with_context(|| format!("Failed to copy file from {:?} to {:?}", source, dest))?;
         } else if source_metadata.is_dir() {
-            copy_dir_all(source, dest)
-                .with_context(|| format!("Failed to copy directory from {:?} to {:?}", source, dest))?;
+            copy_dir_all(source, dest).with_context(|| {
+                format!("Failed to copy directory from {:?} to {:?}", source, dest)
+            })?;
         } else {
-            return Err(anyhow::anyhow!("Source path is neither file nor directory: {:?}", source));
+            return Err(anyhow::anyhow!(
+                "Source path is neither file nor directory: {:?}",
+                source
+            ));
         }
 
         Ok(())
@@ -144,8 +147,8 @@ pub fn copy_dir_all(src: &Path, dst: &Path) -> Result<()> {
     fs::create_dir_all(dst)
         .with_context(|| format!("Failed to create destination directory: {:?}", dst))?;
 
-    for entry in fs::read_dir(src)
-        .with_context(|| format!("Failed to read directory: {:?}", src))?
+    for entry in
+        fs::read_dir(src).with_context(|| format!("Failed to read directory: {:?}", src))?
     {
         let entry = entry?;
         let path = entry.path();
@@ -166,9 +169,9 @@ pub fn copy_dir_all(src: &Path, dst: &Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
     use std::fs::File;
     use std::io::Write;
+    use tempfile::TempDir;
 
     #[test]
     fn test_file_manager_creation() {
@@ -188,14 +191,14 @@ mod tests {
 
         // Create some test files
         let test_file1 = home_dir.join(".testrc");
-        File::create(&test_file1).unwrap().write_all(b"test").unwrap();
+        File::create(&test_file1)
+            .unwrap()
+            .write_all(b"test")
+            .unwrap();
 
         // Don't create .nonexistent - it shouldn't be found
 
-        let dotfiles = fm.scan_dotfiles(&[
-            ".testrc".to_string(),
-            ".nonexistent".to_string(),
-        ]);
+        let dotfiles = fm.scan_dotfiles(&[".testrc".to_string(), ".nonexistent".to_string()]);
 
         assert_eq!(dotfiles.len(), 1);
         assert_eq!(dotfiles[0].relative_path, PathBuf::from(".testrc"));
@@ -248,7 +251,10 @@ mod tests {
 
         // Create target file
         let target = temp_dir.path().join("target");
-        File::create(&target).unwrap().write_all(b"content").unwrap();
+        File::create(&target)
+            .unwrap()
+            .write_all(b"content")
+            .unwrap();
 
         // Create symlink
         let symlink = temp_dir.path().join("symlink");
@@ -306,7 +312,10 @@ mod tests {
 
         // Create source file
         let source = temp_dir.path().join("source.txt");
-        File::create(&source).unwrap().write_all(b"test content").unwrap();
+        File::create(&source)
+            .unwrap()
+            .write_all(b"test content")
+            .unwrap();
 
         // Copy to destination
         let dest = temp_dir.path().join("dest.txt");
@@ -360,11 +369,17 @@ mod tests {
 
         // Create existing destination
         let dest = temp_dir.path().join("dest.txt");
-        File::create(&dest).unwrap().write_all(b"old content").unwrap();
+        File::create(&dest)
+            .unwrap()
+            .write_all(b"old content")
+            .unwrap();
 
         // Create new source
         let source = temp_dir.path().join("source.txt");
-        File::create(&source).unwrap().write_all(b"new content").unwrap();
+        File::create(&source)
+            .unwrap()
+            .write_all(b"new content")
+            .unwrap();
 
         // Copy should overwrite
         fm.copy_to_repo(&source, &dest).unwrap();
@@ -381,12 +396,21 @@ mod tests {
         let source = temp_dir.path().join("source");
         std::fs::create_dir_all(&source).unwrap();
 
-        File::create(source.join("a.txt")).unwrap().write_all(b"a").unwrap();
-        File::create(source.join("b.txt")).unwrap().write_all(b"b").unwrap();
+        File::create(source.join("a.txt"))
+            .unwrap()
+            .write_all(b"a")
+            .unwrap();
+        File::create(source.join("b.txt"))
+            .unwrap()
+            .write_all(b"b")
+            .unwrap();
 
         let nested = source.join("nested");
         std::fs::create_dir_all(&nested).unwrap();
-        File::create(nested.join("c.txt")).unwrap().write_all(b"c").unwrap();
+        File::create(nested.join("c.txt"))
+            .unwrap()
+            .write_all(b"c")
+            .unwrap();
 
         // Copy
         let dest = temp_dir.path().join("dest");
@@ -397,7 +421,10 @@ mod tests {
         assert!(dest.is_dir());
         assert_eq!(std::fs::read_to_string(dest.join("a.txt")).unwrap(), "a");
         assert_eq!(std::fs::read_to_string(dest.join("b.txt")).unwrap(), "b");
-        assert_eq!(std::fs::read_to_string(dest.join("nested/c.txt")).unwrap(), "c");
+        assert_eq!(
+            std::fs::read_to_string(dest.join("nested/c.txt")).unwrap(),
+            "c"
+        );
     }
 
     #[test]
@@ -419,7 +446,10 @@ mod tests {
         // Resolving should fail due to max depth
         let result = fm.resolve_symlink(&current);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Symlink depth exceeded"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Symlink depth exceeded"));
     }
 
     #[test]
@@ -440,4 +470,3 @@ mod tests {
         assert!(!fm.is_symlink(&nonexistent));
     }
 }
-

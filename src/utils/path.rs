@@ -31,12 +31,18 @@ pub fn is_safe_to_add(path: &Path, repo_path: &Path) -> (bool, Option<String>) {
 
     // Check if it's the storage repo itself
     if path == repo_path {
-        return (false, Some("Cannot add storage repository folder".to_string()));
+        return (
+            false,
+            Some("Cannot add storage repository folder".to_string()),
+        );
     }
 
     // Check if it's a parent of the storage repo
-    if let Ok(_) = repo_path.strip_prefix(path) {
-        return (false, Some("Cannot add a parent folder of the storage repository".to_string()));
+    if repo_path.strip_prefix(path).is_ok() {
+        return (
+            false,
+            Some("Cannot add a parent folder of the storage repository".to_string()),
+        );
     }
 
     // Check if storage repo is a parent of this path (this is actually OK, but we should warn)
@@ -67,8 +73,8 @@ pub fn expand_path(path_str: &str) -> PathBuf {
 
     if path_str.starts_with('/') {
         PathBuf::from(path_str)
-    } else if path_str.starts_with("~/") {
-        home_dir.join(&path_str[2..])
+    } else if let Some(stripped) = path_str.strip_prefix("~/") {
+        home_dir.join(stripped)
     } else if path_str == "~" {
         home_dir
     } else {
@@ -125,4 +131,3 @@ pub fn get_repository_path() -> anyhow::Result<PathBuf> {
         .map_err(|e| anyhow::anyhow!("Failed to load config: {}", e))?;
     Ok(config.repo_path)
 }
-

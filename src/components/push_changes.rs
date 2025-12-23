@@ -1,13 +1,16 @@
+use crate::components::component::{Component, ComponentAction};
+use crate::components::footer::Footer;
+use crate::components::header::Header;
+use crate::components::message_box::MessageBox;
+use crate::ui::SyncWithRemoteState;
+use crate::utils::{center_popup, create_standard_layout, focused_border_style};
 use anyhow::Result;
 use crossterm::event::Event;
 use ratatui::prelude::*;
-use ratatui::widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Scrollbar, ScrollbarOrientation, StatefulWidget, Wrap};
-use crate::components::component::{Component, ComponentAction};
-use crate::components::header::Header;
-use crate::components::footer::Footer;
-use crate::components::message_box::MessageBox;
-use crate::ui::SyncWithRemoteState;
-use crate::utils::{create_standard_layout, center_popup, focused_border_style};
+use ratatui::widgets::{
+    Block, Borders, Clear, List, ListItem, Paragraph, Scrollbar, ScrollbarOrientation,
+    StatefulWidget, Wrap,
+};
 
 /// Push changes component - shows list of changes and allows pushing
 pub struct PushChangesComponent;
@@ -24,8 +27,7 @@ impl Component for PushChangesComponent {
         frame.render_widget(Clear, area);
 
         // Background
-        let background = Block::default()
-            .style(Style::default().bg(Color::Black));
+        let background = Block::default().style(Style::default().bg(Color::Black));
         frame.render_widget(background, area);
 
         Ok(())
@@ -48,8 +50,7 @@ impl PushChangesComponent {
         frame.render_widget(Clear, area);
 
         // Background
-        let background = Block::default()
-            .style(Style::default().bg(Color::Black));
+        let background = Block::default().style(Style::default().bg(Color::Black));
         frame.render_widget(background, area);
 
         let (header_chunk, content_chunk, footer_chunk) = create_standard_layout(area, 5, 2);
@@ -73,12 +74,19 @@ impl PushChangesComponent {
             let popup_area = center_popup(area, 80, 50);
             frame.render_widget(Clear, popup_area);
 
-            let mut result_text = state.sync_result.as_deref().unwrap_or("Unknown result").to_string();
+            let mut result_text = state
+                .sync_result
+                .as_deref()
+                .unwrap_or("Unknown result")
+                .to_string();
             // Add pulled changes count if available
             if let Some(pulled_count) = state.pulled_changes_count {
                 if !result_text.contains("Pulled") {
                     if pulled_count > 0 {
-                        result_text.push_str(&format!("\n\nPulled {} change(s) from remote.", pulled_count));
+                        result_text.push_str(&format!(
+                            "\n\nPulled {} change(s) from remote.",
+                            pulled_count
+                        ));
                     } else {
                         result_text.push_str("\n\nNo changes pulled from remote.");
                     }
@@ -92,7 +100,11 @@ impl PushChangesComponent {
                 popup_area,
                 &result_text,
                 None,
-                if is_error { Some(Color::Red) } else { Some(Color::Green) },
+                if is_error {
+                    Some(Color::Red)
+                } else {
+                    Some(Color::Green)
+                },
             )?;
         } else if state.is_syncing {
             // Show progress message
@@ -101,36 +113,42 @@ impl PushChangesComponent {
                 .style(Style::default().fg(Color::Yellow))
                 .alignment(Alignment::Center)
                 .wrap(Wrap { trim: true })
-                .block(Block::default()
-                    .borders(Borders::ALL)
-                    .title("Progress")
-                    .title_alignment(Alignment::Center)
-                    .border_style(focused_border_style())
-                    .padding(ratatui::widgets::Padding::new(2, 2, 2, 2)));
+                .block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .title("Progress")
+                        .title_alignment(Alignment::Center)
+                        .border_style(focused_border_style())
+                        .padding(ratatui::widgets::Padding::new(2, 2, 2, 2)),
+                );
             frame.render_widget(progress_para, content_chunk);
         } else {
             // Show list of changed files
             if state.changed_files.is_empty() {
                 let empty_message = Paragraph::new(
-                    "No changes to sync.\n\nAll files are up to date with the remote repository."
+                    "No changes to sync.\n\nAll files are up to date with the remote repository.",
                 )
-                    .style(Style::default().fg(Color::DarkGray))
-                    .wrap(Wrap { trim: true })
-                    .block(Block::default()
+                .style(Style::default().fg(Color::DarkGray))
+                .wrap(Wrap { trim: true })
+                .block(
+                    Block::default()
                         .borders(Borders::ALL)
                         .title("No Changes")
                         .title_alignment(Alignment::Center)
-                        .padding(ratatui::widgets::Padding::new(2, 2, 2, 2)));
+                        .padding(ratatui::widgets::Padding::new(2, 2, 2, 2)),
+                );
                 frame.render_widget(empty_message, content_chunk);
             } else {
                 // Update scrollbar state
                 let total_items = state.changed_files.len();
                 let selected_index = state.list_state.selected().unwrap_or(0);
-                state.scrollbar_state = state.scrollbar_state
+                state.scrollbar_state = state
+                    .scrollbar_state
                     .content_length(total_items)
                     .position(selected_index);
 
-                let items: Vec<ListItem> = state.changed_files
+                let items: Vec<ListItem> = state
+                    .changed_files
                     .iter()
                     .map(|file| {
                         let style = if file.starts_with("A ") {
@@ -147,20 +165,27 @@ impl PushChangesComponent {
                     .collect();
 
                 let list = List::new(items)
-                    .block(Block::default()
-                        .borders(Borders::ALL)
-                        .border_style(focused_border_style())
-                        .title(format!("Changed Files ({})", state.changed_files.len()))
-                        .title_alignment(Alignment::Center)
-                        .padding(ratatui::widgets::Padding::new(1, 1, 1, 1)))
+                    .block(
+                        Block::default()
+                            .borders(Borders::ALL)
+                            .border_style(focused_border_style())
+                            .title(format!("Changed Files ({})", state.changed_files.len()))
+                            .title_alignment(Alignment::Center)
+                            .padding(ratatui::widgets::Padding::new(1, 1, 1, 1)),
+                    )
                     .highlight_style(
                         Style::default()
                             .fg(Color::Yellow)
-                            .add_modifier(Modifier::BOLD | Modifier::REVERSED)
+                            .add_modifier(Modifier::BOLD | Modifier::REVERSED),
                     )
                     .highlight_symbol("> ");
 
-                StatefulWidget::render(list, content_chunk, frame.buffer_mut(), &mut state.list_state);
+                StatefulWidget::render(
+                    list,
+                    content_chunk,
+                    frame.buffer_mut(),
+                    &mut state.list_state,
+                );
 
                 // Render scrollbar
                 frame.render_stateful_widget(
@@ -188,4 +213,3 @@ impl PushChangesComponent {
         Ok(())
     }
 }
-

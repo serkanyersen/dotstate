@@ -1,13 +1,16 @@
+use crate::components::component::{Component, ComponentAction};
+use crate::components::footer::Footer;
+use crate::components::header::Header;
+use crate::config::Config;
+use crate::ui::Screen;
+use crate::utils::{create_standard_layout, focused_border_style, get_home_dir};
 use anyhow::Result;
 use crossterm::event::{Event, KeyCode, KeyEventKind, MouseButton, MouseEventKind};
 use ratatui::prelude::*;
-use ratatui::widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Wrap};
-use crate::components::component::{Component, ComponentAction};
-use crate::components::header::Header;
-use crate::components::footer::Footer;
-use crate::config::Config;
-use crate::ui::Screen;
-use crate::utils::{create_standard_layout, get_home_dir, focused_border_style};
+use ratatui::widgets::{
+    Block, Borders, Clear, List, ListItem, ListState, Paragraph, Scrollbar, ScrollbarOrientation,
+    ScrollbarState, Wrap,
+};
 
 /// Synced files view component
 pub struct SyncedFilesComponent {
@@ -48,7 +51,9 @@ impl SyncedFilesComponent {
         crate::utils::ProfileManifest::load_or_backfill(&config.repo_path)
             .ok()
             .and_then(|manifest| {
-                manifest.profiles.iter()
+                manifest
+                    .profiles
+                    .iter()
                     .find(|p| p.name == config.active_profile)
                     .map(|p| p.synced_files.clone())
             })
@@ -62,8 +67,7 @@ impl Component for SyncedFilesComponent {
         frame.render_widget(Clear, area);
 
         // Background
-        let background = Block::default()
-            .style(Style::default().bg(Color::Black));
+        let background = Block::default().style(Style::default().bg(Color::Black));
         frame.render_widget(background, area);
 
         let (header_chunk, content_chunk, footer_chunk) = create_standard_layout(area, 5, 2);
@@ -104,7 +108,8 @@ impl Component for SyncedFilesComponent {
                         "⚠ Missing"
                     } else if std::fs::symlink_metadata(&full_path)
                         .map(|m| m.file_type().is_symlink())
-                        .unwrap_or(false) {
+                        .unwrap_or(false)
+                    {
                         "✓ Synced"
                     } else {
                         "⚠ Not symlinked"
@@ -118,18 +123,18 @@ impl Component for SyncedFilesComponent {
                         Style::default().fg(Color::White)
                     };
 
-                    ListItem::new(format!("{} {}", status, path))
-                        .style(style)
+                    ListItem::new(format!("{} {}", status, path)).style(style)
                 })
                 .collect();
 
-            let list = List::new(items)
-                .block(Block::default()
+            let list = List::new(items).block(
+                Block::default()
                     .borders(Borders::ALL)
                     .border_style(focused_border_style())
                     .title(format!("Synced Files ({})", synced_files.len()))
                     .title_alignment(Alignment::Center)
-                    .padding(ratatui::widgets::Padding::new(1, 1, 1, 1)));
+                    .padding(ratatui::widgets::Padding::new(1, 1, 1, 1)),
+            );
 
             frame.render_stateful_widget(list, content_chunk, &mut self.list_state);
 
@@ -154,28 +159,26 @@ impl Component for SyncedFilesComponent {
 
     fn handle_event(&mut self, event: Event) -> Result<ComponentAction> {
         match event {
-            Event::Key(key) if key.kind == KeyEventKind::Press => {
-                match key.code {
-                    KeyCode::Char('q') | KeyCode::Esc => {
-                        Ok(ComponentAction::Navigate(Screen::MainMenu))
-                    }
-                    KeyCode::Up => {
-                        let synced_files = Self::get_synced_files(&self.config);
-                        if !synced_files.is_empty() {
-                            self.list_state.select_previous();
-                        }
-                        Ok(ComponentAction::Update)
-                    }
-                    KeyCode::Down => {
-                        let synced_files = Self::get_synced_files(&self.config);
-                        if !synced_files.is_empty() {
-                            self.list_state.select_next();
-                        }
-                        Ok(ComponentAction::Update)
-                    }
-                    _ => Ok(ComponentAction::None),
+            Event::Key(key) if key.kind == KeyEventKind::Press => match key.code {
+                KeyCode::Char('q') | KeyCode::Esc => {
+                    Ok(ComponentAction::Navigate(Screen::MainMenu))
                 }
-            }
+                KeyCode::Up => {
+                    let synced_files = Self::get_synced_files(&self.config);
+                    if !synced_files.is_empty() {
+                        self.list_state.select_previous();
+                    }
+                    Ok(ComponentAction::Update)
+                }
+                KeyCode::Down => {
+                    let synced_files = Self::get_synced_files(&self.config);
+                    if !synced_files.is_empty() {
+                        self.list_state.select_next();
+                    }
+                    Ok(ComponentAction::Update)
+                }
+                _ => Ok(ComponentAction::None),
+            },
             Event::Mouse(mouse) => {
                 match mouse.kind {
                     MouseEventKind::Down(MouseButton::Left) => {
@@ -206,5 +209,4 @@ impl Component for SyncedFilesComponent {
             _ => Ok(ComponentAction::None),
         }
     }
-
 }

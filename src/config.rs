@@ -62,8 +62,8 @@ impl Config {
         if config_path.exists() {
             let content = std::fs::read_to_string(config_path)
                 .with_context(|| format!("Failed to read config file: {:?}", config_path))?;
-            let mut config: Config = toml::from_str(&content)
-                .with_context(|| "Failed to parse config file")?;
+            let mut config: Config =
+                toml::from_str(&content).with_context(|| "Failed to parse config file")?;
 
             // Set defaults for missing fields (for backward compatibility)
             if config.repo_name.is_empty() {
@@ -77,7 +77,9 @@ impl Config {
 
             // If active_profile is empty and repo exists, try to set it from manifest
             if config.active_profile.is_empty() && config.repo_path.exists() {
-                if let Ok(manifest) = crate::utils::ProfileManifest::load_or_backfill(&config.repo_path) {
+                if let Ok(manifest) =
+                    crate::utils::ProfileManifest::load_or_backfill(&config.repo_path)
+                {
                     if let Some(first_profile) = manifest.profiles.first() {
                         config.active_profile = first_profile.name.clone();
                         config.save(config_path)?;
@@ -92,7 +94,9 @@ impl Config {
 
             // Try to discover active profile from the repo manifest if repo_path exists
             if config.repo_path.exists() {
-                if let Ok(manifest) = crate::utils::ProfileManifest::load_or_backfill(&config.repo_path) {
+                if let Ok(manifest) =
+                    crate::utils::ProfileManifest::load_or_backfill(&config.repo_path)
+                {
                     if let Some(first_profile) = manifest.profiles.first() {
                         config.active_profile = first_profile.name.clone();
                     }
@@ -106,8 +110,7 @@ impl Config {
 
     /// Save configuration to file with secure permissions
     pub fn save(&self, config_path: &Path) -> Result<()> {
-        let content = toml::to_string_pretty(self)
-            .with_context(|| "Failed to serialize config")?;
+        let content = toml::to_string_pretty(self).with_context(|| "Failed to serialize config")?;
 
         if let Some(parent) = config_path.parent() {
             std::fs::create_dir_all(parent)
@@ -178,5 +181,3 @@ mod tests {
         assert_eq!(config.active_profile, loaded.active_profile);
     }
 }
-
-

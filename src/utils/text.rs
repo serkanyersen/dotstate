@@ -43,4 +43,3 @@ pub fn truncate_with_ellipsis(text: &str, max_width: usize) -> String {
         format!("{}...", truncated)
     }
 }
-

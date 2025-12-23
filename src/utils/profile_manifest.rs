@@ -6,18 +6,18 @@ use std::path::{Path, PathBuf};
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum PackageManager {
-    Brew,      // Homebrew (macOS/Linux)
-    Apt,       // Advanced Package Tool (Debian/Ubuntu)
-    Yum,       // Yellowdog Updater Modified (RHEL/CentOS)
-    Dnf,       // Dandified Yum (Fedora)
-    Pacman,    // Arch Linux
-    Snap,      // Snap packages
-    Cargo,     // Rust packages
-    Npm,       // Node.js packages
-    Pip,       // Python packages (pip)
-    Pip3,      // Python packages (pip3)
-    Gem,       // Ruby gems
-    Custom,    // Custom install command
+    Brew,   // Homebrew (macOS/Linux)
+    Apt,    // Advanced Package Tool (Debian/Ubuntu)
+    Yum,    // Yellowdog Updater Modified (RHEL/CentOS)
+    Dnf,    // Dandified Yum (Fedora)
+    Pacman, // Arch Linux
+    Snap,   // Snap packages
+    Cargo,  // Rust packages
+    Npm,    // Node.js packages
+    Pip,    // Python packages (pip)
+    Pip3,   // Python packages (pip3)
+    Gem,    // Ruby gems
+    Custom, // Custom install command
 }
 
 /// Package definition
@@ -84,8 +84,8 @@ impl ProfileManifest {
         if manifest_path.exists() {
             let content = std::fs::read_to_string(&manifest_path)
                 .with_context(|| format!("Failed to read profile manifest: {:?}", manifest_path))?;
-            let mut manifest: ProfileManifest = toml::from_str(&content)
-                .with_context(|| "Failed to parse profile manifest")?;
+            let mut manifest: ProfileManifest =
+                toml::from_str(&content).with_context(|| "Failed to parse profile manifest")?;
 
             // Sort synced_files alphabetically for all profiles to ensure consistent ordering
             for profile in &mut manifest.profiles {
@@ -111,32 +111,30 @@ impl ProfileManifest {
         // Scan repo directory for profile folders
         // Profile folders are directories at the repo root that aren't .git or other system files
         if let Ok(entries) = std::fs::read_dir(repo_path) {
-            for entry in entries {
-                if let Ok(entry) = entry {
-                    let path = entry.path();
+            for entry in entries.flatten() {
+                let path = entry.path();
 
-                    // Skip if not a directory
-                    if !path.is_dir() {
-                        continue;
-                    }
+                // Skip if not a directory
+                if !path.is_dir() {
+                    continue;
+                }
 
-                    let name = match path.file_name().and_then(|n| n.to_str()) {
-                        Some(n) => n,
-                        None => continue,
-                    };
+                let name = match path.file_name().and_then(|n| n.to_str()) {
+                    Some(n) => n,
+                    None => continue,
+                };
 
-                    // Skip system directories
-                    if name.starts_with('.') || name == "target" || name == "node_modules" {
-                        continue;
-                    }
+                // Skip system directories
+                if name.starts_with('.') || name == "target" || name == "node_modules" {
+                    continue;
+                }
 
-                    // Check if this looks like a profile folder (has files in it)
-                    if let Ok(dir_entries) = std::fs::read_dir(&path) {
-                        let has_files = dir_entries.into_iter().next().is_some();
-                        if has_files {
-                            // This looks like a profile folder
-                            manifest.add_profile(name.to_string(), None);
-                        }
+                // Check if this looks like a profile folder (has files in it)
+                if let Ok(dir_entries) = std::fs::read_dir(&path) {
+                    let has_files = dir_entries.into_iter().next().is_some();
+                    if has_files {
+                        // This looks like a profile folder
+                        manifest.add_profile(name.to_string(), None);
                     }
                 }
             }
@@ -152,7 +150,10 @@ impl ProfileManifest {
             profile.packages = packages;
             Ok(())
         } else {
-            Err(anyhow::anyhow!("Profile '{}' not found in manifest", profile_name))
+            Err(anyhow::anyhow!(
+                "Profile '{}' not found in manifest",
+                profile_name
+            ))
         }
     }
 
@@ -179,8 +180,8 @@ impl ProfileManifest {
     pub fn save(&self, repo_path: &Path) -> Result<()> {
         let manifest_path = Self::manifest_path(repo_path);
 
-        let content = toml::to_string_pretty(self)
-            .with_context(|| "Failed to serialize profile manifest")?;
+        let content =
+            toml::to_string_pretty(self).with_context(|| "Failed to serialize profile manifest")?;
 
         std::fs::write(&manifest_path, content)
             .with_context(|| format!("Failed to write profile manifest: {:?}", manifest_path))?;
@@ -202,7 +203,11 @@ impl ProfileManifest {
     }
 
     /// Update synced files for a profile
-    pub fn update_synced_files(&mut self, profile_name: &str, synced_files: Vec<String>) -> Result<()> {
+    pub fn update_synced_files(
+        &mut self,
+        profile_name: &str,
+        synced_files: Vec<String>,
+    ) -> Result<()> {
         if let Some(profile) = self.profiles.iter_mut().find(|p| p.name == profile_name) {
             // Sort alphabetically to ensure consistent ordering and prevent unnecessary diffs
             let mut sorted_files = synced_files;
@@ -210,7 +215,10 @@ impl ProfileManifest {
             profile.synced_files = sorted_files;
             Ok(())
         } else {
-            Err(anyhow::anyhow!("Profile '{}' not found in manifest", profile_name))
+            Err(anyhow::anyhow!(
+                "Profile '{}' not found in manifest",
+                profile_name
+            ))
         }
     }
 
@@ -229,7 +237,10 @@ impl ProfileManifest {
             profile.name = new_name.to_string();
             Ok(())
         } else {
-            Err(anyhow::anyhow!("Profile '{}' not found in manifest", old_name))
+            Err(anyhow::anyhow!(
+                "Profile '{}' not found in manifest",
+                old_name
+            ))
         }
     }
 
@@ -266,18 +277,16 @@ mod tests {
         manifest.add_profile("Work".to_string(), None);
 
         // Add packages to a profile
-        let packages = vec![
-            Package {
-                name: "eza".to_string(),
-                description: Some("Modern replacement for ls".to_string()),
-                manager: PackageManager::Brew,
-                package_name: Some("eza".to_string()),
-                binary_name: "eza".to_string(),
-                install_command: None,
-                existence_check: None,
-                manager_check: None,
-            },
-        ];
+        let packages = vec![Package {
+            name: "eza".to_string(),
+            description: Some("Modern replacement for ls".to_string()),
+            manager: PackageManager::Brew,
+            package_name: Some("eza".to_string()),
+            binary_name: "eza".to_string(),
+            install_command: None,
+            existence_check: None,
+            manager_check: None,
+        }];
         manifest.update_packages("Personal", packages).unwrap();
 
         // Save
@@ -299,4 +308,3 @@ mod tests {
         assert!(!loaded.has_profile("Work"));
     }
 }
-

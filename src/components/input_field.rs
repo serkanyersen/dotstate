@@ -1,7 +1,10 @@
+use crate::utils::{
+    disabled_border_style, disabled_text_style, focused_border_style, input_placeholder_style,
+    input_text_style, unfocused_border_style,
+};
 use anyhow::Result;
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Paragraph};
-use crate::utils::{focused_border_style, unfocused_border_style, disabled_border_style, disabled_text_style, input_placeholder_style, input_text_style};
 
 /// Common input field component
 pub struct InputField;
@@ -22,6 +25,7 @@ impl InputField {
     ///
     /// # Returns
     /// Result indicating success or failure
+    #[allow(clippy::too_many_arguments)]
     pub fn render(
         frame: &mut Frame,
         area: Rect,
@@ -84,4 +88,3 @@ impl InputField {
         Ok(())
     }
 }
-

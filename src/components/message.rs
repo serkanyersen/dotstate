@@ -1,13 +1,13 @@
+use crate::components::component::{Component, ComponentAction};
+use crate::components::footer::Footer;
+use crate::components::header::Header;
+use crate::components::message_box::MessageBox;
+use crate::ui::Screen;
+use crate::utils::create_standard_layout;
 use anyhow::Result;
 use crossterm::event::{Event, KeyCode, KeyEventKind, MouseButton, MouseEventKind};
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Clear};
-use crate::components::component::{Component, ComponentAction};
-use crate::components::header::Header;
-use crate::components::footer::Footer;
-use crate::components::message_box::MessageBox;
-use crate::ui::Screen;
-use crate::utils::create_standard_layout;
 
 /// Message component for displaying status messages
 pub struct MessageComponent {
@@ -24,7 +24,6 @@ impl MessageComponent {
             screen_type,
         }
     }
-
 }
 
 impl Component for MessageComponent {
@@ -33,8 +32,7 @@ impl Component for MessageComponent {
         frame.render_widget(Clear, area);
 
         // Background
-        let background = Block::default()
-            .style(Style::default().bg(Color::Black));
+        let background = Block::default().style(Style::default().bg(Color::Black));
         frame.render_widget(background, area);
 
         let (header_chunk, content_chunk, footer_chunk) = create_standard_layout(area, 5, 2);
@@ -49,7 +47,7 @@ impl Component for MessageComponent {
         // Message with styled block - use MessageBox component
         let message_color = match self.screen_type {
             Screen::SyncWithRemote => Some(Color::Green), // Success color for sync
-            _ => Some(Color::Yellow), // Warning color for deactivation
+            _ => Some(Color::Yellow),                     // Warning color for deactivation
         };
 
         MessageBox::render(
@@ -68,14 +66,12 @@ impl Component for MessageComponent {
 
     fn handle_event(&mut self, event: Event) -> Result<ComponentAction> {
         match event {
-            Event::Key(key) if key.kind == KeyEventKind::Press => {
-                match key.code {
-                    KeyCode::Enter | KeyCode::Char(' ') | KeyCode::Char('q') | KeyCode::Esc => {
-                        Ok(ComponentAction::Navigate(Screen::MainMenu))
-                    }
-                    _ => Ok(ComponentAction::None),
+            Event::Key(key) if key.kind == KeyEventKind::Press => match key.code {
+                KeyCode::Enter | KeyCode::Char(' ') | KeyCode::Char('q') | KeyCode::Esc => {
+                    Ok(ComponentAction::Navigate(Screen::MainMenu))
                 }
-            }
+                _ => Ok(ComponentAction::None),
+            },
             Event::Mouse(mouse) => {
                 match mouse.kind {
                     MouseEventKind::Down(MouseButton::Left) => {
@@ -88,5 +84,4 @@ impl Component for MessageComponent {
             _ => Ok(ComponentAction::None),
         }
     }
-
 }

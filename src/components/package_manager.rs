@@ -1,14 +1,16 @@
+use crate::components::footer;
+use crate::components::header::Header;
+use crate::components::input_field::InputField;
+use crate::config::Config;
+use crate::ui::{
+    AddPackageField, InstallationStep, PackageManagerState, PackagePopupType, PackageStatus,
+};
+use crate::utils::package_manager::PackageManagerImpl;
+use crate::utils::profile_manifest::{Package, PackageManager};
+use crate::utils::{center_popup, create_standard_layout};
 use anyhow::Result;
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Wrap};
-use crate::components::header::Header;
-use crate::components::footer;
-use crate::config::Config;
-use crate::utils::{create_standard_layout, center_popup};
-use crate::ui::{PackageManagerState, PackagePopupType, PackageStatus, AddPackageField, InstallationStep};
-use crate::utils::profile_manifest::{Package, PackageManager};
-use crate::utils::package_manager::PackageManagerImpl;
-use crate::components::input_field::InputField;
 // Text input functions are used in app.rs, not here
 
 /// Package manager component
@@ -42,8 +44,7 @@ impl PackageManagerComponent {
         // Check if popup is active or installation is in progress - if so, render dark background and popup/progress
         if state.popup_type != PackagePopupType::None {
             // Render dark background to dim the screen
-            let background = Block::default()
-                .style(Style::default().bg(Color::Black));
+            let background = Block::default().style(Style::default().bg(Color::Black));
             frame.render_widget(background, area);
 
             // Render popup
@@ -56,7 +57,12 @@ impl PackageManagerComponent {
             let layout = create_standard_layout(area, 5, 2);
 
             // Header
-            let _header_height = Header::render(frame, layout.0, "DotState - Manage Packages", "Manage CLI tools and dependencies for your profile")?;
+            let _header_height = Header::render(
+                frame,
+                layout.0,
+                "DotState - Manage Packages",
+                "Manage CLI tools and dependencies for your profile",
+            )?;
 
             // Main content area
             let main_area = layout.1;
@@ -87,24 +93,31 @@ impl PackageManagerComponent {
         Ok(())
     }
 
-    fn render_package_list(&self, frame: &mut Frame, area: Rect, state: &mut PackageManagerState) -> Result<()> {
+    fn render_package_list(
+        &self,
+        frame: &mut Frame,
+        area: Rect,
+        state: &mut PackageManagerState,
+    ) -> Result<()> {
         use crate::utils::{focused_border_style, unfocused_border_style};
 
         if state.packages.is_empty() {
             // Show empty state message
-            let paragraph = Paragraph::new("No packages yet.\n\nPress 'A' to add your first package.")
-                .block(
-                    Block::default()
-                        .borders(Borders::ALL)
-                        .title("Packages")
-                        .border_style(unfocused_border_style())
-                        .padding(ratatui::widgets::Padding::new(1, 1, 1, 1))
-                )
-                .wrap(Wrap { trim: true })
-                .alignment(Alignment::Center);
+            let paragraph =
+                Paragraph::new("No packages yet.\n\nPress 'A' to add your first package.")
+                    .block(
+                        Block::default()
+                            .borders(Borders::ALL)
+                            .title("Packages")
+                            .border_style(unfocused_border_style())
+                            .padding(ratatui::widgets::Padding::new(1, 1, 1, 1)),
+                    )
+                    .wrap(Wrap { trim: true })
+                    .alignment(Alignment::Center);
             frame.render_widget(paragraph, area);
         } else {
-            let items: Vec<ListItem> = state.packages
+            let items: Vec<ListItem> = state
+                .packages
                 .iter()
                 .enumerate()
                 .map(|(idx, package)| {
@@ -112,11 +125,13 @@ impl PackageManagerComponent {
                         Some(PackageStatus::Installed) => "✅",
                         Some(PackageStatus::NotInstalled) => "❌",
                         Some(PackageStatus::Error(_)) => "⚠️",
-                        _ => if state.is_checking && state.checking_index == Some(idx) {
-                            "🔄"
-                        } else {
-                            "  "
-                        },
+                        _ => {
+                            if state.is_checking && state.checking_index == Some(idx) {
+                                "🔄"
+                            } else {
+                                "  "
+                            }
+                        }
                     };
 
                     let text = format!("{} {}", status_icon, package.name);
@@ -135,9 +150,13 @@ impl PackageManagerComponent {
                     Block::default()
                         .borders(Borders::ALL)
                         .title("Packages")
-                        .border_style(focused_border_style())
+                        .border_style(focused_border_style()),
                 )
-                .highlight_style(Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD));
+                .highlight_style(
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD),
+                );
 
             frame.render_stateful_widget(list, area, &mut state.list_state);
         }
@@ -145,7 +164,12 @@ impl PackageManagerComponent {
         Ok(())
     }
 
-    fn render_package_details(&self, frame: &mut Frame, area: Rect, state: &mut PackageManagerState) -> Result<()> {
+    fn render_package_details(
+        &self,
+        frame: &mut Frame,
+        area: Rect,
+        state: &mut PackageManagerState,
+    ) -> Result<()> {
         let selected = state.list_state.selected();
         let details = if let Some(idx) = selected {
             if let Some(package) = state.packages.get(idx) {
@@ -158,7 +182,11 @@ impl PackageManagerComponent {
         };
 
         let paragraph = Paragraph::new(details)
-            .block(Block::default().borders(Borders::ALL).title("Package Details"))
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title("Package Details"),
+            )
             .wrap(Wrap { trim: true });
 
         frame.render_widget(paragraph, area);
@@ -166,7 +194,12 @@ impl PackageManagerComponent {
         Ok(())
     }
 
-    fn format_package_details(&self, package: &Package, state: &PackageManagerState, idx: usize) -> String {
+    fn format_package_details(
+        &self,
+        package: &Package,
+        state: &PackageManagerState,
+        idx: usize,
+    ) -> String {
         let mut details = format!("Name: {}\n", package.name);
 
         if let Some(desc) = &package.description {
@@ -189,12 +222,19 @@ impl PackageManagerComponent {
                 details.push_str("\n\nStatus: ❌ Not Installed");
                 // Check if manager is installed for installation purposes
                 if !PackageManagerImpl::is_manager_installed(&package.manager) {
-                    details.push_str(&format!("\n⚠️ Package manager '{:?}' is not installed", package.manager));
-                    details.push_str(&format!("\n\nInstallation instructions:\n{}",
-                        PackageManagerImpl::installation_instructions(&package.manager)));
+                    details.push_str(&format!(
+                        "\n⚠️ Package manager '{:?}' is not installed",
+                        package.manager
+                    ));
+                    details.push_str(&format!(
+                        "\n\nInstallation instructions:\n{}",
+                        PackageManagerImpl::installation_instructions(&package.manager)
+                    ));
                 }
             }
-            Some(PackageStatus::Error(msg)) => details.push_str(&format!("\n\nStatus: ⚠️ Error: {}", msg)),
+            Some(PackageStatus::Error(msg)) => {
+                details.push_str(&format!("\n\nStatus: ⚠️ Error: {}", msg))
+            }
             _ => details.push_str("\n\nStatus: ⏳ Unknown (press 'C' to check)"),
         }
 
@@ -244,25 +284,25 @@ impl PackageManagerComponent {
 
         // Build constraints dynamically based on package type
         let mut constraints = vec![
-            Constraint::Length(1),  // Title
-            Constraint::Length(3),  // Name
-            Constraint::Length(3),  // Description
-            Constraint::Length(4),  // Manager selection
+            Constraint::Length(1), // Title
+            Constraint::Length(3), // Name
+            Constraint::Length(3), // Description
+            Constraint::Length(4), // Manager selection
         ];
 
         if !state.add_is_custom {
             // Managed packages: Package Name, Binary Name
-            constraints.push(Constraint::Length(3));  // Package name
-            constraints.push(Constraint::Length(3));  // Binary name
+            constraints.push(Constraint::Length(3)); // Package name
+            constraints.push(Constraint::Length(3)); // Binary name
         } else {
             // Custom packages: Binary Name, Install Command, Existence Check
-            constraints.push(Constraint::Length(3));  // Binary name
-            constraints.push(Constraint::Length(3));  // Install command
-            constraints.push(Constraint::Length(3));  // Existence check
+            constraints.push(Constraint::Length(3)); // Binary name
+            constraints.push(Constraint::Length(3)); // Install command
+            constraints.push(Constraint::Length(3)); // Existence check
         }
 
-        constraints.push(Constraint::Min(0));     // Spacer
-        constraints.push(Constraint::Length(2));  // Footer
+        constraints.push(Constraint::Min(0)); // Spacer
+        constraints.push(Constraint::Length(2)); // Footer
 
         let chunks = Layout::default()
             .direction(Direction::Vertical)
@@ -270,9 +310,11 @@ impl PackageManagerComponent {
             .split(popup_area);
 
         // Title (no border, just text)
-        let title_para = Paragraph::new(title)
-            .alignment(Alignment::Center)
-            .style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD));
+        let title_para = Paragraph::new(title).alignment(Alignment::Center).style(
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        );
         frame.render_widget(title_para, chunks[0]);
 
         // Name field
@@ -409,7 +451,8 @@ impl PackageManagerComponent {
         }
 
         // Create manager labels with selection state
-        let manager_labels: Vec<(String, bool)> = state.available_managers
+        let manager_labels: Vec<(String, bool)> = state
+            .available_managers
             .iter()
             .enumerate()
             .map(|(idx, manager)| {
@@ -463,17 +506,19 @@ impl PackageManagerComponent {
             );
 
             // Create styled text for checkbox
-            let is_focused = state.add_focused_field == AddPackageField::Manager && state.add_manager_selected == idx;
+            let is_focused = state.add_focused_field == AddPackageField::Manager
+                && state.add_manager_selected == idx;
             let checkbox_style = if is_focused {
-                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD)
             } else if *is_selected {
                 Style::default().fg(Color::Green)
             } else {
                 Style::default().fg(Color::White)
             };
 
-            let checkbox_text = Paragraph::new(full_text)
-                .style(checkbox_style);
+            let checkbox_text = Paragraph::new(full_text).style(checkbox_style);
             frame.render_widget(checkbox_text, checkbox_area);
 
             // Update selected manager if this checkbox is selected
@@ -481,7 +526,8 @@ impl PackageManagerComponent {
                 state.add_manager = Some(state.available_managers[idx].clone());
                 state.add_manager_selected = idx;
                 // Auto-detect if custom
-                state.add_is_custom = matches!(state.available_managers[idx], PackageManager::Custom);
+                state.add_is_custom =
+                    matches!(state.available_managers[idx], PackageManager::Custom);
             }
 
             current_x += checkbox_width;
@@ -500,7 +546,9 @@ impl PackageManagerComponent {
         frame.render_widget(Clear, popup_area);
 
         let package_name = if let Some(idx) = state.delete_index {
-            state.packages.get(idx)
+            state
+                .packages
+                .get(idx)
                 .map(|p| p.name.as_str())
                 .unwrap_or("Unknown")
         } else {
@@ -510,10 +558,10 @@ impl PackageManagerComponent {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Length(5),  // Warning text
-                Constraint::Length(3),  // Confirmation input
-                Constraint::Min(0),     // Spacer
-                Constraint::Length(2),  // Footer
+                Constraint::Length(5), // Warning text
+                Constraint::Length(3), // Confirmation input
+                Constraint::Min(0),    // Spacer
+                Constraint::Length(2), // Footer
             ])
             .split(popup_area);
 
@@ -526,7 +574,11 @@ impl PackageManagerComponent {
         );
 
         let paragraph = Paragraph::new(warning_text)
-            .block(Block::default().borders(Borders::ALL).title("Delete Package"))
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title("Delete Package"),
+            )
             .wrap(Wrap { trim: true })
             .alignment(Alignment::Center);
 
@@ -559,11 +611,10 @@ impl PackageManagerComponent {
         area: Rect,
         state: &mut PackageManagerState,
     ) -> Result<()> {
-        use ratatui::style::{Style, Color, Modifier};
+        use ratatui::style::{Color, Modifier, Style};
 
         // Render dark background
-        let background = Block::default()
-            .style(Style::default().bg(Color::Black));
+        let background = Block::default().style(Style::default().bg(Color::Black));
         frame.render_widget(background, area);
 
         match &state.installation_step {
@@ -585,17 +636,21 @@ impl PackageManagerComponent {
                 let chunks = Layout::default()
                     .direction(Direction::Vertical)
                     .constraints([
-                        Constraint::Length(1),  // Title
-                        Constraint::Length(3),  // Progress info
-                        Constraint::Min(10),    // Output area
-                        Constraint::Length(2),  // Footer
+                        Constraint::Length(1), // Title
+                        Constraint::Length(3), // Progress info
+                        Constraint::Min(10),   // Output area
+                        Constraint::Length(2), // Footer
                     ])
                     .split(popup_area);
 
                 // Title
                 let title = Paragraph::new("Installing Packages")
                     .alignment(Alignment::Center)
-                    .style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD));
+                    .style(
+                        Style::default()
+                            .fg(Color::Cyan)
+                            .add_modifier(Modifier::BOLD),
+                    );
                 frame.render_widget(title, chunks[0]);
 
                 // Progress info
@@ -638,20 +693,27 @@ impl PackageManagerComponent {
                 let chunks = Layout::default()
                     .direction(Direction::Vertical)
                     .constraints([
-                        Constraint::Length(1),  // Title
-                        Constraint::Min(15),    // Summary
-                        Constraint::Length(2),  // Footer
+                        Constraint::Length(1), // Title
+                        Constraint::Min(15),   // Summary
+                        Constraint::Length(2), // Footer
                     ])
                     .split(popup_area);
 
                 // Title
                 let title = Paragraph::new("Installation Complete")
                     .alignment(Alignment::Center)
-                    .style(Style::default().fg(Color::Green).add_modifier(Modifier::BOLD));
+                    .style(
+                        Style::default()
+                            .fg(Color::Green)
+                            .add_modifier(Modifier::BOLD),
+                    );
                 frame.render_widget(title, chunks[0]);
 
                 // Summary
-                let mut summary = format!("✅ Successfully installed: {} package(s)\n", installed.len());
+                let mut summary = format!(
+                    "✅ Successfully installed: {} package(s)\n",
+                    installed.len()
+                );
                 if !failed.is_empty() {
                     summary.push_str(&format!("❌ Failed: {} package(s)\n\n", failed.len()));
                     summary.push_str("Failed packages:\n");
@@ -687,14 +749,21 @@ impl PackageManagerComponent {
         frame.render_widget(Clear, popup_area);
 
         // Count missing packages
-        let missing_count = state.package_statuses.iter()
+        let missing_count = state
+            .package_statuses
+            .iter()
             .filter(|s| matches!(s, PackageStatus::NotInstalled))
             .count();
 
-        let missing_packages: Vec<String> = state.packages.iter()
+        let missing_packages: Vec<String> = state
+            .packages
+            .iter()
             .enumerate()
             .filter_map(|(idx, pkg)| {
-                if matches!(state.package_statuses.get(idx), Some(PackageStatus::NotInstalled)) {
+                if matches!(
+                    state.package_statuses.get(idx),
+                    Some(PackageStatus::NotInstalled)
+                ) {
                     Some(pkg.name.clone())
                 } else {
                     None
@@ -716,20 +785,29 @@ impl PackageManagerComponent {
 
         // Title
         let title = Paragraph::new("Install Missing Packages")
-            .block(Block::default()
-                .borders(Borders::ALL)
-                .title("Package Manager")
-                .title_alignment(Alignment::Center)
-                .style(Style::default().bg(Color::Black)))
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title("Package Manager")
+                    .title_alignment(Alignment::Center)
+                    .style(Style::default().bg(Color::Black)),
+            )
             .alignment(Alignment::Center)
-            .style(Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD));
+            .style(
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            );
         frame.render_widget(title, chunks[0]);
 
         // Message
         let message = if missing_count == 1 {
-            format!("1 package is missing. Do you want to install it?")
+            "1 package is missing. Do you want to install it?".to_string()
         } else {
-            format!("{} packages are missing. Do you want to install them?", missing_count)
+            format!(
+                "{} packages are missing. Do you want to install them?",
+                missing_count
+            )
         };
         let message_para = Paragraph::new(message)
             .wrap(Wrap { trim: true })
@@ -738,17 +816,18 @@ impl PackageManagerComponent {
 
         // Package list
         if !missing_packages.is_empty() {
-            let package_list: Vec<ListItem> = missing_packages.iter()
+            let package_list: Vec<ListItem> = missing_packages
+                .iter()
                 .map(|name| {
-                    ListItem::new(format!("  • {}", name))
-                        .style(Style::default().fg(Color::Cyan))
+                    ListItem::new(format!("  • {}", name)).style(Style::default().fg(Color::Cyan))
                 })
                 .collect();
-            let list = List::new(package_list)
-                .block(Block::default()
+            let list = List::new(package_list).block(
+                Block::default()
                     .borders(Borders::ALL)
                     .title("Packages to Install")
-                    .border_style(Style::default().fg(Color::DarkGray)));
+                    .border_style(Style::default().fg(Color::DarkGray)),
+            );
             frame.render_widget(list, chunks[3]);
         }
 
@@ -761,4 +840,3 @@ impl PackageManagerComponent {
         Ok(())
     }
 }
-

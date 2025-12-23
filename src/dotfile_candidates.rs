@@ -270,4 +270,3 @@ pub fn get_default_dotfile_paths() -> Vec<String> {
 pub fn find_candidate(path: &str) -> Option<&DotfileCandidate> {
     DEFAULT_DOTFILES.iter().find(|c| c.path == path)
 }
-

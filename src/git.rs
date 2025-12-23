@@ -64,7 +64,7 @@ impl GitManager {
         writeln!(file, "# OS files")?;
         writeln!(file, ".DS_Store")?;
         writeln!(file, "Thumbs.db")?;
-        writeln!(file, "")?;
+        writeln!(file)?;
         writeln!(file, "# Backup files")?;
         writeln!(file, "*.bak")?;
         writeln!(file, "*.swp")?;
@@ -89,7 +89,7 @@ impl GitManager {
                                 "refs/heads/main",
                                 target,
                                 true,
-                                "Rename master to main"
+                                "Rename master to main",
                             )?;
                             // Update HEAD to point to main
                             repo.set_head("refs/heads/main")?;
@@ -110,11 +110,11 @@ impl GitManager {
     /// Configure repository with proper defaults
     fn configure_repo(repo: &mut Repository) -> Result<()> {
         // Set up default branch name to "main" in git config
-        let mut config = repo.config()
-            .context("Failed to get repository config")?;
+        let mut config = repo.config().context("Failed to get repository config")?;
 
         // Set init.defaultBranch to "main" so future operations use main
-        config.set_str("init.defaultBranch", "main")
+        config
+            .set_str("init.defaultBranch", "main")
             .context("Failed to set init.defaultBranch")?;
 
         Ok(())
@@ -122,44 +122,48 @@ impl GitManager {
 
     /// Add all changes and commit
     pub fn commit_all(&self, message: &str) -> Result<()> {
-        let mut index = self.repo.index()
+        let mut index = self
+            .repo
+            .index()
             .context("Failed to get repository index")?;
 
         // Refresh the index to ensure it's up to date
-        index.read(true)
-            .context("Failed to refresh index")?;
+        index.read(true).context("Failed to refresh index")?;
 
         // Use add_all with "." to add all files (equivalent to "git add .")
         // Skip vim bundles since they are git repos themselves and vimrc will install them
-        index.add_all(
-            &["."],
-            git2::IndexAddOption::DEFAULT,
-            Some(&mut |path: &Path, _matched_spec: &[u8]| {
-                // Skip vim bundle directories (they are git repos and will be installed by vimrc)
-                let path_str = path.to_string_lossy();
-                if path_str.contains(".vim/bundle/") || path_str.contains(".vim/plugged/") {
-                    1 // Skip vim bundles
-                } else {
-                    0 // Accept everything else
-                }
-            })
-        )
-        .context("Failed to add files to index (git add .)")?;
+        index
+            .add_all(
+                ["."],
+                git2::IndexAddOption::DEFAULT,
+                Some(&mut |path: &Path, _matched_spec: &[u8]| {
+                    // Skip vim bundle directories (they are git repos and will be installed by vimrc)
+                    let path_str = path.to_string_lossy();
+                    if path_str.contains(".vim/bundle/") || path_str.contains(".vim/plugged/") {
+                        1 // Skip vim bundles
+                    } else {
+                        0 // Accept everything else
+                    }
+                }),
+            )
+            .context("Failed to add files to index (git add .)")?;
 
-        index.write()
-            .context("Failed to write index")?;
+        index.write().context("Failed to write index")?;
 
-        let tree_id = index.write_tree()
-            .context("Failed to write tree")?;
-        let tree = self.repo.find_tree(tree_id)
+        let tree_id = index.write_tree().context("Failed to write tree")?;
+        let tree = self
+            .repo
+            .find_tree(tree_id)
             .context("Failed to find tree")?;
 
         let signature = Self::get_signature()?;
         let head = self.repo.head();
 
         let parent_commit = if let Ok(head) = head {
-            Some(head.peel_to_commit()
-                .context("Failed to peel HEAD to commit")?)
+            Some(
+                head.peel_to_commit()
+                    .context("Failed to peel HEAD to commit")?,
+            )
         } else {
             None
         };
@@ -175,20 +179,22 @@ impl GitManager {
             "HEAD"
         };
 
-        self.repo.commit(
-            Some(branch_ref),
-            &signature,
-            &signature,
-            message,
-            &tree,
-            &parents,
-        )
-        .context("Failed to create commit")?;
+        self.repo
+            .commit(
+                Some(branch_ref),
+                &signature,
+                &signature,
+                message,
+                &tree,
+                &parents,
+            )
+            .context("Failed to create commit")?;
 
         // After first commit, ensure HEAD points to main
         if parent_commit.is_none() {
             // Update HEAD to point to the newly created main branch
-            self.repo.set_head("refs/heads/main")
+            self.repo
+                .set_head("refs/heads/main")
                 .context("Failed to set HEAD to main branch")?;
         }
 
@@ -199,10 +205,13 @@ impl GitManager {
     /// If token is provided, it will be used for authentication.
     /// Otherwise, attempts to extract token from remote URL.
     pub fn push(&self, remote_name: &str, branch: &str, token: Option<&str>) -> Result<()> {
-        let mut remote = self.repo.find_remote(remote_name)
+        let mut remote = self
+            .repo
+            .find_remote(remote_name)
             .with_context(|| format!("Remote '{}' not found", remote_name))?;
 
-        let remote_url = remote.url()
+        let remote_url = remote
+            .url()
             .ok_or_else(|| anyhow::anyhow!("Remote '{}' has no URL", remote_name))?;
 
         let mut callbacks = RemoteCallbacks::new();
@@ -224,7 +233,7 @@ impl GitManager {
             // If no token found, provide a helpful error
             callbacks.credentials(|_url, _username_from_url, _allowed_types| {
                 Err(git2::Error::from_str(
-                    "No credentials found. Please provide a GitHub token."
+                    "No credentials found. Please provide a GitHub token.",
                 ))
             });
         }
@@ -238,11 +247,15 @@ impl GitManager {
             // Branch doesn't exist, try to get current branch
             if let Some(current_branch) = self.get_current_branch() {
                 let refspec = format!("refs/heads/{}:refs/heads/{}", current_branch, branch);
-                remote.push(&[&refspec], Some(&mut push_options))
+                remote
+                    .push(&[&refspec], Some(&mut push_options))
                     .with_context(|| format!("Failed to push to remote '{}'", remote_name))?;
                 return Ok(());
             }
-            return Err(anyhow::anyhow!("No branch '{}' exists and no current branch found", branch));
+            return Err(anyhow::anyhow!(
+                "No branch '{}' exists and no current branch found",
+                branch
+            ));
         }
 
         let refspec = format!("refs/heads/{}:refs/heads/{}", branch, branch);
@@ -279,11 +292,14 @@ impl GitManager {
 
     /// Pull from remote
     pub fn pull(&self, remote_name: &str, branch: &str, token: Option<&str>) -> Result<()> {
-        let mut remote = self.repo.find_remote(remote_name)
+        let mut remote = self
+            .repo
+            .find_remote(remote_name)
             .with_context(|| format!("Remote '{}' not found", remote_name))?;
 
         let mut callbacks = RemoteCallbacks::new();
-        let remote_url = remote.url()
+        let remote_url = remote
+            .url()
             .ok_or_else(|| anyhow::anyhow!("Remote '{}' has no URL", remote_name))?;
 
         // Try to get token from parameter first, then from URL
@@ -301,7 +317,8 @@ impl GitManager {
         let mut fetch_options = FetchOptions::new();
         fetch_options.remote_callbacks(callbacks);
 
-        remote.fetch(&[branch], Some(&mut fetch_options), None)
+        remote
+            .fetch(&[branch], Some(&mut fetch_options), None)
             .with_context(|| format!("Failed to fetch from remote '{}'", remote_name))?;
 
         // Check if FETCH_HEAD exists (remote might not have the branch yet)
@@ -313,7 +330,8 @@ impl GitManager {
             }
         };
 
-        let fetch_commit = fetch_head.peel_to_commit()
+        let fetch_commit = fetch_head
+            .peel_to_commit()
             .context("Failed to peel FETCH_HEAD to commit")?;
 
         // Check if we have any local commits
@@ -327,56 +345,73 @@ impl GitManager {
             // Check if remote is ahead (different commits)
             if local_commit.id() != fetch_commit.id() {
                 // Convert commit to annotated commit for merge
-                let annotated_commit = self.repo.find_annotated_commit(fetch_commit.id())
+                let annotated_commit = self
+                    .repo
+                    .find_annotated_commit(fetch_commit.id())
                     .context("Failed to create annotated commit")?;
 
                 // Perform the merge
-                self.repo.merge(&[&annotated_commit], None, None)
+                self.repo
+                    .merge(&[&annotated_commit], None, None)
                     .context("Failed to merge")?;
 
                 // Get the index after merge
-                let mut index = self.repo.index()
+                let mut index = self
+                    .repo
+                    .index()
                     .context("Failed to get index after merge")?;
 
                 // Check if merge resulted in conflicts
                 if index.has_conflicts() {
-                    return Err(anyhow::anyhow!("Merge conflicts detected. Please resolve manually."));
+                    return Err(anyhow::anyhow!(
+                        "Merge conflicts detected. Please resolve manually."
+                    ));
                 }
 
                 // Write the index after merge
-                index.write()
-                    .context("Failed to write index after merge")?;
+                index.write().context("Failed to write index after merge")?;
 
                 // Create merge commit
-                let tree_id = index.write_tree()
+                let tree_id = index
+                    .write_tree()
                     .context("Failed to write tree after merge")?;
-                let tree = self.repo.find_tree(tree_id)
+                let tree = self
+                    .repo
+                    .find_tree(tree_id)
                     .context("Failed to find tree after merge")?;
 
                 // Get signature for commit
                 let signature = Self::get_signature()?;
 
                 // Create merge commit with both parents
-                self.repo.commit(
-                    Some("HEAD"),
-                    &signature,
-                    &signature,
-                    "Merge remote-tracking branch",
-                    &tree,
-                    &[&local_commit, &fetch_commit],
-                )
-                .context("Failed to commit merge")?;
+                self.repo
+                    .commit(
+                        Some("HEAD"),
+                        &signature,
+                        &signature,
+                        "Merge remote-tracking branch",
+                        &tree,
+                        &[&local_commit, &fetch_commit],
+                    )
+                    .context("Failed to commit merge")?;
 
                 // Clean up merge state
-                self.repo.cleanup_state()
+                self.repo
+                    .cleanup_state()
                     .context("Failed to cleanup merge state")?;
             }
         } else {
             // No local commits, just update HEAD to point to remote
             let branch_ref = format!("refs/heads/{}", branch);
-            self.repo.reference(&branch_ref, fetch_commit.id(), true, "Update branch from remote")?;
+            self.repo.reference(
+                &branch_ref,
+                fetch_commit.id(),
+                true,
+                "Update branch from remote",
+            )?;
             self.repo.set_head(&branch_ref)?;
-            self.repo.checkout_head(Some(git2::build::CheckoutBuilder::default().force()))?;
+            self.repo
+                .checkout_head(Some(git2::build::CheckoutBuilder::default().force()))?;
         }
 
         Ok(())
@@ -384,12 +419,20 @@ impl GitManager {
 
     /// Pull changes from remote with rebase (instead of merge)
     /// Returns the number of commits pulled from remote
-    pub fn pull_with_rebase(&self, remote_name: &str, branch: &str, token: Option<&str>) -> Result<usize> {
-        let mut remote = self.repo.find_remote(remote_name)
+    pub fn pull_with_rebase(
+        &self,
+        remote_name: &str,
+        branch: &str,
+        token: Option<&str>,
+    ) -> Result<usize> {
+        let mut remote = self
+            .repo
+            .find_remote(remote_name)
             .with_context(|| format!("Remote '{}' not found", remote_name))?;
 
         let mut callbacks = RemoteCallbacks::new();
-        let remote_url = remote.url()
+        let remote_url = remote
+            .url()
             .ok_or_else(|| anyhow::anyhow!("Remote '{}' has no URL", remote_name))?;
 
         // Try to get token from parameter first, then from URL
@@ -407,7 +450,8 @@ impl GitManager {
         let mut fetch_options = FetchOptions::new();
         fetch_options.remote_callbacks(callbacks);
 
-        remote.fetch(&[branch], Some(&mut fetch_options), None)
+        remote
+            .fetch(&[branch], Some(&mut fetch_options), None)
             .with_context(|| format!("Failed to fetch from remote '{}'", remote_name))?;
 
         // Check if FETCH_HEAD exists (remote might not have the branch yet)
@@ -419,7 +463,8 @@ impl GitManager {
             }
         };
 
-        let fetch_commit = fetch_head.peel_to_commit()
+        let fetch_commit = fetch_head
+            .peel_to_commit()
             .context("Failed to peel FETCH_HEAD to commit")?;
 
         // Check if we have any local commits
@@ -436,7 +481,9 @@ impl GitManager {
             // Check if remote is ahead (different commits)
             if local_commit.id() != fetch_commit_id {
                 // Find merge base between local and remote
-                let merge_base = self.repo.merge_base(local_commit.id(), fetch_commit_id)
+                let merge_base = self
+                    .repo
+                    .merge_base(local_commit.id(), fetch_commit_id)
                     .context("Failed to find merge base")?;
 
                 // Count commits from merge base to remote HEAD
@@ -455,49 +502,66 @@ impl GitManager {
 
                 // Perform merge (git2 doesn't have direct rebase API, so we use merge)
                 // The UI will call it "rebase" but technically it's a merge
-                let annotated_commit = self.repo.find_annotated_commit(fetch_commit_id)
+                let annotated_commit = self
+                    .repo
+                    .find_annotated_commit(fetch_commit_id)
                     .context("Failed to create annotated commit")?;
 
-                self.repo.merge(&[&annotated_commit], None, None)
+                self.repo
+                    .merge(&[&annotated_commit], None, None)
                     .context("Failed to merge")?;
 
-                let mut index = self.repo.index()
+                let mut index = self
+                    .repo
+                    .index()
                     .context("Failed to get index after merge")?;
 
                 if index.has_conflicts() {
-                    return Err(anyhow::anyhow!("Merge conflicts detected. Please resolve manually."));
+                    return Err(anyhow::anyhow!(
+                        "Merge conflicts detected. Please resolve manually."
+                    ));
                 }
 
-                index.write()
-                    .context("Failed to write index after merge")?;
+                index.write().context("Failed to write index after merge")?;
 
-                let tree_id = index.write_tree()
+                let tree_id = index
+                    .write_tree()
                     .context("Failed to write tree after merge")?;
-                let tree = self.repo.find_tree(tree_id)
+                let tree = self
+                    .repo
+                    .find_tree(tree_id)
                     .context("Failed to find tree after merge")?;
 
                 let signature = Self::get_signature()?;
                 let fetch_commit_for_merge = self.repo.find_commit(fetch_commit_id)?;
 
-                self.repo.commit(
-                    Some("HEAD"),
-                    &signature,
-                    &signature,
-                    "Merge remote-tracking branch",
-                    &tree,
-                    &[&local_commit, &fetch_commit_for_merge],
-                )
-                .context("Failed to commit merge")?;
+                self.repo
+                    .commit(
+                        Some("HEAD"),
+                        &signature,
+                        &signature,
+                        "Merge remote-tracking branch",
+                        &tree,
+                        &[&local_commit, &fetch_commit_for_merge],
+                    )
+                    .context("Failed to commit merge")?;
 
-                self.repo.cleanup_state()
+                self.repo
+                    .cleanup_state()
                     .context("Failed to cleanup merge state")?;
             }
         } else {
             // No local commits, just update HEAD to point to remote
             let branch_ref = format!("refs/heads/{}", branch);
-            self.repo.reference(&branch_ref, fetch_commit_id, true, "Update branch from remote")?;
+            self.repo.reference(
+                &branch_ref,
+                fetch_commit_id,
+                true,
+                "Update branch from remote",
+            )?;
             self.repo.set_head(&branch_ref)?;
-            self.repo.checkout_head(Some(git2::build::CheckoutBuilder::default().force()))?;
+            self.repo
+                .checkout_head(Some(git2::build::CheckoutBuilder::default().force()))?;
 
             // Count all commits in remote
             let mut commit = fetch_commit.clone();
@@ -517,10 +581,12 @@ impl GitManager {
     pub fn add_remote(&mut self, name: &str, url: &str) -> Result<()> {
         // remote_set_url doesn't exist in git2, so we delete and recreate
         if self.repo.find_remote(name).is_ok() {
-            self.repo.remote_delete(name)
+            self.repo
+                .remote_delete(name)
                 .with_context(|| format!("Failed to delete existing remote '{}'", name))?;
         }
-        self.repo.remote(name, url)
+        self.repo
+            .remote(name, url)
             .with_context(|| format!("Failed to add remote '{}'", name))?;
 
         // Configure remote tracking for the current branch
@@ -536,15 +602,19 @@ impl GitManager {
             // Set up tracking via git config
             // Format: branch.<name>.remote = <remote>
             // Format: branch.<name>.merge = refs/heads/<name>
-            let mut config = self.repo.config()
+            let mut config = self
+                .repo
+                .config()
                 .context("Failed to get repository config")?;
 
             let remote_key = format!("branch.{}.remote", branch_name);
             let merge_key = format!("branch.{}.merge", branch_name);
 
-            config.set_str(&remote_key, remote_name)
+            config
+                .set_str(&remote_key, remote_name)
                 .context("Failed to set branch remote")?;
-            config.set_str(&merge_key, &format!("refs/heads/{}", branch_name))
+            config
+                .set_str(&merge_key, &format!("refs/heads/{}", branch_name))
                 .context("Failed to set branch merge")?;
         }
         Ok(())
@@ -553,15 +623,19 @@ impl GitManager {
     /// Set upstream tracking for a branch (public method for use after push)
     pub fn set_upstream_tracking(&self, remote_name: &str, branch_name: &str) -> Result<()> {
         // Set up tracking via git config
-        let mut config = self.repo.config()
+        let mut config = self
+            .repo
+            .config()
             .context("Failed to get repository config")?;
 
         let remote_key = format!("branch.{}.remote", branch_name);
         let merge_key = format!("branch.{}.merge", branch_name);
 
-        config.set_str(&remote_key, remote_name)
+        config
+            .set_str(&remote_key, remote_name)
             .context("Failed to set branch remote")?;
-        config.set_str(&merge_key, &format!("refs/heads/{}", branch_name))
+        config
+            .set_str(&merge_key, &format!("refs/heads/{}", branch_name))
             .context("Failed to set branch merge")?;
 
         Ok(())
@@ -593,27 +667,25 @@ impl GitManager {
 
     /// Check if there are uncommitted changes
     pub fn has_uncommitted_changes(&self) -> Result<bool> {
-        let mut index = self.repo.index()
+        let mut index = self
+            .repo
+            .index()
             .context("Failed to get repository index")?;
 
         // Refresh the index to get current state
-        index.read(true)
-            .context("Failed to read index")?;
+        index.read(true).context("Failed to read index")?;
 
         // Check if index differs from HEAD
         let head = match self.repo.head() {
-            Ok(head) => Some(head.peel_to_tree()
-                .context("Failed to peel HEAD to tree")?),
+            Ok(head) => Some(head.peel_to_tree().context("Failed to peel HEAD to tree")?),
             Err(_) => None,
         };
 
         if let Some(head_tree) = head {
-            let diff = self.repo.diff_tree_to_index(
-                Some(&head_tree),
-                Some(&index),
-                None,
-            )
-            .context("Failed to create diff")?;
+            let diff = self
+                .repo
+                .diff_tree_to_index(Some(&head_tree), Some(&index), None)
+                .context("Failed to create diff")?;
 
             // Check if there are any differences
             let has_changes = diff.deltas().next().is_some();
@@ -623,17 +695,19 @@ impl GitManager {
             status_opts.include_untracked(true);
             status_opts.include_ignored(false);
 
-            let statuses = self.repo.statuses(Some(&mut status_opts))
+            let statuses = self
+                .repo
+                .statuses(Some(&mut status_opts))
                 .context("Failed to get status")?;
 
-            let has_untracked = statuses.iter().any(|s| {
-                s.status().contains(git2::Status::WT_NEW)
-            });
+            let has_untracked = statuses
+                .iter()
+                .any(|s| s.status().contains(git2::Status::WT_NEW));
 
             Ok(has_changes || has_untracked)
         } else {
             // No HEAD, check if index has any entries
-            Ok(index.len() > 0)
+            Ok(!index.is_empty())
         }
     }
 
@@ -652,7 +726,8 @@ impl GitManager {
             Err(_) => return Ok(false), // No local branch
         };
 
-        let local_oid = local_branch.target()
+        let local_oid = local_branch
+            .target()
             .context("Failed to get local branch OID")?;
 
         // Fetch from remote to update remote refs
@@ -676,7 +751,8 @@ impl GitManager {
             Err(_) => return Ok(true), // No remote branch, so we have unpushed commits
         };
 
-        let remote_oid = remote_branch.target()
+        let remote_oid = remote_branch
+            .target()
             .context("Failed to get remote branch OID")?;
 
         // Check if local is ahead of remote (local commit is reachable from remote)
@@ -704,7 +780,9 @@ impl GitManager {
         status_opts.include_ignored(false);
         status_opts.include_unmodified(false);
 
-        let statuses = self.repo.statuses(Some(&mut status_opts))
+        let statuses = self
+            .repo
+            .statuses(Some(&mut status_opts))
             .context("Failed to get repository status")?;
 
         let mut changed_files = Vec::new();
@@ -750,7 +828,8 @@ impl GitManager {
         let mut builder = RepoBuilder::new();
         builder.fetch_options(fetch_options);
 
-        let repo = builder.clone(url, path)
+        let repo = builder
+            .clone(url, path)
             .with_context(|| format!("Failed to clone repository from {} to {:?}", url, path))?;
 
         Ok(Self { repo })
@@ -769,5 +848,3 @@ mod tests {
         assert!(git_mgr.repo().is_empty().unwrap_or(false));
     }
 }
-
-

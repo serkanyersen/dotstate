@@ -1,6 +1,6 @@
+use crate::utils::profile_manifest::{Package, PackageManager};
 use std::path::PathBuf;
 use std::process::Command;
-use crate::utils::profile_manifest::{Package, PackageManager};
 
 /// Package manager implementation utilities
 pub struct PackageManagerImpl;
@@ -45,7 +45,10 @@ impl PackageManagerImpl {
         {
             // On Windows, .exe/.bat/.cmd files are considered executable
             if let Some(ext) = path.extension() {
-                return matches!(ext.to_str(), Some("exe") | Some("bat") | Some("cmd") | Some("com"));
+                return matches!(
+                    ext.to_str(),
+                    Some("exe") | Some("bat") | Some("cmd") | Some("com")
+                );
             }
         }
 
@@ -84,7 +87,10 @@ impl PackageManagerImpl {
             }
             PackageManager::Apt => {
                 let mut cmd = Command::new("sudo");
-                cmd.arg("apt-get").arg("install").arg("-y").arg(package_name);
+                cmd.arg("apt-get")
+                    .arg("install")
+                    .arg("-y")
+                    .arg(package_name);
                 cmd
             }
             PackageManager::Yum => {
@@ -99,7 +105,10 @@ impl PackageManagerImpl {
             }
             PackageManager::Pacman => {
                 let mut cmd = Command::new("sudo");
-                cmd.arg("pacman").arg("-S").arg("--noconfirm").arg(package_name);
+                cmd.arg("pacman")
+                    .arg("-S")
+                    .arg("--noconfirm")
+                    .arg(package_name);
                 cmd
             }
             PackageManager::Snap => {
@@ -146,8 +155,11 @@ impl PackageManagerImpl {
     /// Check if sudo password is required (for sudo-based installs)
     pub fn check_sudo_required(manager: &PackageManager) -> bool {
         match manager {
-            PackageManager::Apt | PackageManager::Yum | PackageManager::Dnf
-            | PackageManager::Pacman | PackageManager::Snap => {
+            PackageManager::Apt
+            | PackageManager::Yum
+            | PackageManager::Dnf
+            | PackageManager::Pacman
+            | PackageManager::Snap => {
                 // Check if sudo -n (non-interactive) succeeds
                 Command::new("sudo")
                     .arg("-n")
@@ -162,7 +174,10 @@ impl PackageManagerImpl {
 
     /// Build manager-native existence check command (fallback)
     /// Used when binary_name check fails or binary_name is missing
-    pub fn build_manager_check_command(manager: &PackageManager, package_name: &str) -> Option<Command> {
+    pub fn build_manager_check_command(
+        manager: &PackageManager,
+        package_name: &str,
+    ) -> Option<Command> {
         match manager {
             PackageManager::Brew => {
                 // Use `brew list <name>` which works for both formulas and casks
@@ -224,14 +239,18 @@ impl PackageManagerImpl {
     pub fn get_install_command_builder(package: &Package) -> Command {
         match &package.manager {
             PackageManager::Custom => {
-                let command_str = package.install_command.as_ref()
+                let command_str = package
+                    .install_command
+                    .as_ref()
                     .expect("Custom packages must have install_command");
                 let mut cmd = Command::new("sh");
                 cmd.arg("-c").arg(command_str);
                 cmd
             }
             _ => {
-                let package_name = package.package_name.as_ref()
+                let package_name = package
+                    .package_name
+                    .as_ref()
                     .expect("Managed packages must have package_name");
                 Self::build_install_command(&package.manager, package_name)
             }
@@ -325,4 +344,3 @@ impl PackageManagerImpl {
         }
     }
 }
-

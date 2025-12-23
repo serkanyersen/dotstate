@@ -1,6 +1,6 @@
-use ratatui::widgets::{ListState, ScrollbarState};
-use crate::file_manager::Dotfile;
 use crate::components::profile_manager::ProfileManagerState;
+use crate::file_manager::Dotfile;
+use ratatui::widgets::{ListState, ScrollbarState};
 use std::path::PathBuf;
 
 /// Application screens
@@ -28,11 +28,11 @@ pub struct GitHubAuthState {
     pub error_message: Option<String>,
     pub status_message: Option<String>,
     pub help_scroll: usize,
-    pub cursor_position: usize, // For current input
-    pub input_focused: bool, // Whether input is currently focused
+    pub cursor_position: usize,         // For current input
+    pub input_focused: bool,            // Whether input is currently focused
     pub focused_field: GitHubAuthField, // Which field is currently focused
-    pub is_editing_token: bool, // Whether we're in "edit token" mode
-    pub repo_already_configured: bool, // Whether repo was already set up
+    pub is_editing_token: bool,         // Whether we're in "edit token" mode
+    pub repo_already_configured: bool,  // Whether repo was already set up
     /// Intermediate data stored during GitHub setup process
     pub setup_data: Option<GitHubSetupData>,
 }
@@ -108,13 +108,13 @@ impl Default for GitHubAuthState {
 /// Focus area in dotfile selection screen
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DotfileSelectionFocus {
-    FilesList,           // Files list pane is focused
-    Preview,             // Preview pane is focused
-    FileBrowserList,     // File browser list pane is focused
-    FileBrowserPreview,  // File browser preview pane is focused
-    FileBrowserInput,    // File browser path input is focused
+    FilesList,          // Files list pane is focused
+    Preview,            // Preview pane is focused
+    FileBrowserList,    // File browser list pane is focused
+    FileBrowserPreview, // File browser preview pane is focused
+    FileBrowserInput,   // File browser path input is focused
     #[allow(dead_code)]
-    CustomInput,         // Custom file input is focused (reserved for future use)
+    CustomInput, // Custom file input is focused (reserved for future use)
 }
 
 /// Dotfile selection state
@@ -126,27 +126,27 @@ pub struct DotfileSelectionState {
     pub scroll_offset: usize, // Deprecated, using dotfile_list_state now
     pub preview_scroll: usize,
     pub selected_for_sync: std::collections::HashSet<usize>, // Indices of selected files
-    pub dotfile_list_scrollbar: ScrollbarState, // Scrollbar state for dotfile list
+    pub dotfile_list_scrollbar: ScrollbarState,              // Scrollbar state for dotfile list
     pub dotfile_list_state: ListState, // ListState for main dotfile list (handles selection and scrolling)
     pub status_message: Option<String>, // For sync summary
-    pub adding_custom_file: bool, // Whether we're in "add custom file" mode
-    pub custom_file_input: String, // Input for custom file path
-    pub custom_file_cursor: usize, // Cursor position for custom file input
-    pub custom_file_focused: bool, // Whether custom file input is focused
-    pub file_browser_mode: bool, // Whether we're in file browser mode
-    pub file_browser_path: PathBuf, // Current directory in file browser
-    pub file_browser_selected: usize, // Selected file index in browser
+    pub adding_custom_file: bool,      // Whether we're in "add custom file" mode
+    pub custom_file_input: String,     // Input for custom file path
+    pub custom_file_cursor: usize,     // Cursor position for custom file input
+    pub custom_file_focused: bool,     // Whether custom file input is focused
+    pub file_browser_mode: bool,       // Whether we're in file browser mode
+    pub file_browser_path: PathBuf,    // Current directory in file browser
+    pub file_browser_selected: usize,  // Selected file index in browser
     pub file_browser_entries: Vec<PathBuf>, // Files/dirs in current directory
     #[allow(dead_code)]
     pub file_browser_scroll: usize, // Scroll offset for file browser list (deprecated, using ListState now)
     pub file_browser_scrollbar: ScrollbarState, // Scrollbar state for file browser
     pub file_browser_list_state: ListState, // ListState for file browser (handles selection and scrolling)
     pub file_browser_preview_scroll: usize, // Scroll offset for file browser preview
-    pub file_browser_path_input: String, // Path input for file browser
-    pub file_browser_path_cursor: usize, // Cursor position for path input
-    pub file_browser_path_focused: bool, // Whether path input is focused
-    pub focus: DotfileSelectionFocus, // Which pane currently has focus
-    pub backup_enabled: bool, // Whether backups are enabled (tracks config value)
+    pub file_browser_path_input: String,    // Path input for file browser
+    pub file_browser_path_cursor: usize,    // Cursor position for path input
+    pub file_browser_path_focused: bool,    // Whether path input is focused
+    pub focus: DotfileSelectionFocus,       // Which pane currently has focus
+    pub backup_enabled: bool,               // Whether backups are enabled (tracks config value)
     // Custom file confirmation modal
     pub show_custom_file_confirm: bool, // Whether to show confirmation modal
     pub custom_file_confirm_path: Option<PathBuf>, // Full path to confirm
@@ -181,7 +181,7 @@ impl Default for DotfileSelectionState {
             file_browser_path_cursor: 0,
             file_browser_path_focused: false,
             focus: DotfileSelectionFocus::FilesList, // Start with files list focused
-            backup_enabled: true, // Default to enabled
+            backup_enabled: true,                    // Default to enabled
             show_custom_file_confirm: false,
             custom_file_confirm_path: None,
             custom_file_confirm_relative: None,
@@ -195,8 +195,8 @@ pub struct SyncWithRemoteState {
     pub changed_files: Vec<String>,
     pub is_syncing: bool,
     pub sync_progress: Option<String>, // Current progress message (e.g., "Committing...", "Pulling...", "Pushing...")
-    pub sync_result: Option<String>, // Final result message
-    pub show_result_popup: bool, // Whether to show result popup
+    pub sync_result: Option<String>,   // Final result message
+    pub show_result_popup: bool,       // Whether to show result popup
     pub pulled_changes_count: Option<usize>, // Number of changes pulled from remote
     pub list_state: ListState,
     pub scrollbar_state: ScrollbarState,
@@ -218,24 +218,13 @@ impl Default for SyncWithRemoteState {
 }
 
 /// State for profile selection screen (after GitHub setup)
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct ProfileSelectionState {
     pub profiles: Vec<String>, // List of profile names
     pub list_state: ListState,
     #[allow(dead_code)] // Reserved for future use
     pub selected_profile: Option<String>, // Selected profile to activate
     pub show_exit_warning: bool, // Show warning when user tries to exit without selecting
-}
-
-impl Default for ProfileSelectionState {
-    fn default() -> Self {
-        Self {
-            profiles: Vec::new(),
-            list_state: ListState::default(),
-            selected_profile: None,
-            show_exit_warning: false,
-        }
-    }
 }
 
 /// Package manager state
@@ -266,15 +255,15 @@ pub struct PackageManagerState {
     pub add_binary_name_cursor: usize,
     pub add_install_command_input: String, // For custom only
     pub add_install_command_cursor: usize,
-    pub add_existence_check_input: String,  // For custom only
+    pub add_existence_check_input: String, // For custom only
     pub add_existence_check_cursor: usize,
-    pub add_manager_check_input: String,   // Optional fallback
+    pub add_manager_check_input: String, // Optional fallback
     pub add_manager_check_cursor: usize,
     pub add_is_custom: bool, // Whether in custom mode
     pub add_focused_field: AddPackageField,
     pub add_editing_index: Option<usize>, // None for add, Some(index) for edit
     pub available_managers: Vec<crate::utils::profile_manifest::PackageManager>, // OS-filtered list
-    pub manager_list_state: ListState, // For manager selection
+    pub manager_list_state: ListState,    // For manager selection
     // Delete popup state
     pub delete_confirm_input: String,
     pub delete_confirm_cursor: usize,
@@ -307,11 +296,11 @@ pub enum AddPackageField {
     Name,
     Description,
     Manager,
-    PackageName,      // For managed packages
+    PackageName, // For managed packages
     BinaryName,
-    InstallCommand,   // Custom only
-    ExistenceCheck,   // Custom only
-    ManagerCheck,     // Optional fallback
+    InstallCommand, // Custom only
+    ExistenceCheck, // Custom only
+    ManagerCheck,   // Optional fallback
 }
 
 impl Default for PackageManagerState {
@@ -364,8 +353,8 @@ pub enum InstallationStep {
         package_name: String,
         total_packages: usize,
         packages_to_install: Vec<usize>, // Indices of packages that need installation
-        installed: Vec<usize>, // Successfully installed package indices
-        failed: Vec<(usize, String)>, // Failed package indices with error messages
+        installed: Vec<usize>,           // Successfully installed package indices
+        failed: Vec<(usize, String)>,    // Failed package indices with error messages
         status_rx: Option<std::sync::mpsc::Receiver<InstallationStatus>>, // Channel receiver for status updates
     },
     Complete {
@@ -378,7 +367,10 @@ pub enum InstallationStep {
 #[derive(Debug, Clone)]
 pub enum InstallationStatus {
     Output(String), // Output line
-    Complete { success: bool, error: Option<String> }, // Installation complete
+    Complete {
+        success: bool,
+        error: Option<String>,
+    }, // Installation complete
 }
 
 /// Application UI state

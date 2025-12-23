@@ -1,7 +1,9 @@
 use anyhow::Result;
 use ratatui::prelude::*;
-use ratatui::widgets::{Block, Borders, Paragraph, Wrap, Scrollbar, ScrollbarOrientation, ScrollbarState};
 use ratatui::text::{Line, Text};
+use ratatui::widgets::{
+    Block, Borders, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Wrap,
+};
 use std::path::PathBuf;
 
 /// Common file preview component
@@ -69,20 +71,23 @@ impl FilePreview {
                         preview_text.extend([
                             Line::from(""),
                             Line::from(""),
-                            Line::from(format!("... ({} total lines, showing lines {}-{})",
+                            Line::from(format!(
+                                "... ({} total lines, showing lines {}-{})",
                                 total_lines,
                                 start_line + 1,
                                 end_line
-                            ))
+                            )),
                         ]);
                     }
 
                     let preview = Paragraph::new(preview_text)
-                        .block(Block::default()
-                            .borders(Borders::ALL)
-                            .title(preview_title)
-                            .title_alignment(Alignment::Center)
-                            .border_style(border_style))
+                        .block(
+                            Block::default()
+                                .borders(Borders::ALL)
+                                .title(preview_title)
+                                .title_alignment(Alignment::Center)
+                                .border_style(border_style),
+                        )
                         .wrap(Wrap { trim: false }); // Don't trim whitespace
 
                     frame.render_widget(preview, area);
@@ -96,64 +101,66 @@ impl FilePreview {
                         // `new(total_lines)` sets the total content size
                         // In our case, it's the total number of lines in the file
                         .position(scroll_offset);
-                        // `.position(scroll_offset)` sets where we're currently viewing
-                        // This is the line number at the top of the visible area
+                    // `.position(scroll_offset)` sets where we're currently viewing
+                    // This is the line number at the top of the visible area
 
                     // Step 2: Create the Scrollbar widget
                     // The scrollbar is a visual indicator on the right edge
                     let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
                         // VerticalRight means the scrollbar appears on the right edge
                         // (There's also VerticalLeft, HorizontalTop, HorizontalBottom)
-                        .begin_symbol(Some("↑"))  // Arrow at the top
-                        .end_symbol(Some("↓"))    // Arrow at the bottom
-                        .track_symbol(Some("│"))  // The track/rail the thumb moves on
-                        .thumb_symbol("█");       // The draggable part (shows current position)
-                        // Note: The thumb size is automatically calculated based on
-                        // visible_area / total_content ratio
+                        .begin_symbol(Some("↑")) // Arrow at the top
+                        .end_symbol(Some("↓")) // Arrow at the bottom
+                        .track_symbol(Some("│")) // The track/rail the thumb moves on
+                        .thumb_symbol("█"); // The draggable part (shows current position)
+                                            // Note: The thumb size is automatically calculated based on
+                                            // visible_area / total_content ratio
 
                     // Step 3: Render the scrollbar
                     // We render it in the same `area` as the paragraph
                     // The scrollbar automatically positions itself on the right edge
                     frame.render_stateful_widget(
-                        scrollbar,      // The widget to render
-                        area,           // Where to render it (same as the preview)
-                        &mut scrollbar_state  // The state that controls its position
+                        scrollbar,            // The widget to render
+                        area,                 // Where to render it (same as the preview)
+                        &mut scrollbar_state, // The state that controls its position
                     );
                     // Note: `render_stateful_widget` is used instead of `render_widget`
                     // because the scrollbar needs to know about the state (position, size)
                 }
                 Err(_) => {
                     let error_text = format!("Unable to read file: {:?}", file_path);
-                    let preview = Paragraph::new(error_text)
-                        .block(Block::default()
+                    let preview = Paragraph::new(error_text).block(
+                        Block::default()
                             .borders(Borders::ALL)
                             .title(preview_title)
                             .title_alignment(Alignment::Center)
-                            .border_style(border_style));
+                            .border_style(border_style),
+                    );
                     frame.render_widget(preview, area);
                 }
             }
         } else if file_path.is_dir() {
             let dir_text = format!("Directory: {:?}\n\nPress Enter to open", file_path);
-            let preview = Paragraph::new(dir_text)
-                .block(Block::default()
+            let preview = Paragraph::new(dir_text).block(
+                Block::default()
                     .borders(Borders::ALL)
                     .title(preview_title)
                     .title_alignment(Alignment::Center)
-                    .border_style(border_style));
+                    .border_style(border_style),
+            );
             frame.render_widget(preview, area);
         } else {
             let path_text = format!("Path: {:?}", file_path);
-            let preview = Paragraph::new(path_text)
-                .block(Block::default()
+            let preview = Paragraph::new(path_text).block(
+                Block::default()
                     .borders(Borders::ALL)
                     .title(preview_title)
                     .title_alignment(Alignment::Center)
-                    .border_style(border_style));
+                    .border_style(border_style),
+            );
             frame.render_widget(preview, area);
         }
 
         Ok(()) // Return Ok since we're rendering directly
     }
 }
-

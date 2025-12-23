@@ -64,4 +64,3 @@ pub fn center_popup(area: Rect, width_percent: u16, height_percent: u16) -> Rect
 
     Rect::new(popup_x, popup_y, popup_width, popup_height)
 }
-
