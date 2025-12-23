@@ -28,7 +28,7 @@ serde_json = "1.0"
 # GitHub OAuth
 reqwest = { version = "0.12", features = ["json"] }
 tokio = { version = "1", features = ["full"] }
-oauth2 = "4.4"
+oauth2 = "5.0"
 
 # File operations
 walkdir = "2"
