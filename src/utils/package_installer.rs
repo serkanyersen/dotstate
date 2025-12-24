@@ -5,6 +5,7 @@ use std::io::{BufRead, BufReader};
 use std::process::{Child, Stdio};
 use std::sync::mpsc;
 use std::thread;
+use tracing::debug;
 
 /// Package installer and checker utilities
 pub struct PackageInstaller;
@@ -100,35 +101,59 @@ impl PackageInstaller {
     pub fn check_exists(package: &Package) -> Result<(bool, bool)> {
         // First, try binary check (no manager required)
         // This works even if package was installed manually
+        debug!(
+            "Checking if binary '{}' exists in PATH for package {}",
+            package.binary_name, package.name
+        );
         if PackageManagerImpl::check_binary_in_path(&package.binary_name) {
+            debug!("Package {} found via binary check", package.name);
             return Ok((true, false));
         }
+        debug!("Binary '{}' not found in PATH", package.binary_name);
 
         // Binary check failed, try manager-native check if available
         // This requires the manager to be installed
         if let Some(manager_check) = &package.manager_check {
+            debug!("Trying custom manager check for package {}", package.name);
             // Use custom manager check command (via shell, user-provided)
             let output = std::process::Command::new("sh")
                 .arg("-c")
                 .arg(manager_check)
                 .output()?;
-            return Ok((output.status.success(), true));
+            let found = output.status.success();
+            debug!("Custom manager check for {}: {}", package.name, found);
+            return Ok((found, true));
         }
 
         // Try auto-generated manager check (requires manager installed)
         if let Some(package_name) = &package.package_name {
             // Only try manager check if manager is installed
             if PackageManagerImpl::is_manager_installed(&package.manager) {
+                debug!(
+                    "Trying auto-generated manager check for package {} (manager: {:?})",
+                    package.name, package.manager
+                );
                 if let Some(mut manager_cmd) =
                     PackageManagerImpl::build_manager_check_command(&package.manager, package_name)
                 {
                     let output = manager_cmd.output()?;
-                    return Ok((output.status.success(), true));
+                    let found = output.status.success();
+                    debug!(
+                        "Auto-generated manager check for {}: {}",
+                        package.name, found
+                    );
+                    return Ok((found, true));
                 }
+            } else {
+                debug!(
+                    "Manager {:?} not installed, skipping manager check for {}",
+                    package.manager, package.name
+                );
             }
         }
 
         // All checks failed
+        debug!("All checks failed for package {}", package.name);
         Ok((false, false))
     }
 }

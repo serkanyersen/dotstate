@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use git2::{build::RepoBuilder, Cred, FetchOptions, RemoteCallbacks, Repository, Signature};
 use std::path::Path;
+use tracing::{debug, info};
 
 /// Git operations for managing the dotfiles repository
 pub struct GitManager {
@@ -122,6 +123,9 @@ impl GitManager {
 
     /// Add all changes and commit
     pub fn commit_all(&self, message: &str) -> Result<()> {
+        use tracing::info;
+        info!("Starting commit: {}", message);
+
         let mut index = self
             .repo
             .index()
@@ -179,7 +183,8 @@ impl GitManager {
             "HEAD"
         };
 
-        self.repo
+        let commit_oid = self
+            .repo
             .commit(
                 Some(branch_ref),
                 &signature,
@@ -196,6 +201,9 @@ impl GitManager {
             self.repo
                 .set_head("refs/heads/main")
                 .context("Failed to set HEAD to main branch")?;
+            info!("Created initial commit on main branch: {}", commit_oid);
+        } else {
+            info!("Created commit: {} ({})", commit_oid, message);
         }
 
         Ok(())
@@ -205,6 +213,9 @@ impl GitManager {
     /// If token is provided, it will be used for authentication.
     /// Otherwise, attempts to extract token from remote URL.
     pub fn push(&self, remote_name: &str, branch: &str, token: Option<&str>) -> Result<()> {
+        use tracing::info;
+        info!("Pushing to remote: {} (branch: {})", remote_name, branch);
+
         let mut remote = self
             .repo
             .find_remote(remote_name)
@@ -270,6 +281,7 @@ impl GitManager {
                 )
             })?;
 
+        info!("Successfully pushed to {}:{}", remote_name, branch);
         Ok(())
     }
 
@@ -292,6 +304,9 @@ impl GitManager {
 
     /// Pull from remote
     pub fn pull(&self, remote_name: &str, branch: &str, token: Option<&str>) -> Result<()> {
+        use tracing::info;
+        info!("Pulling from remote: {} (branch: {})", remote_name, branch);
+
         let mut remote = self
             .repo
             .find_remote(remote_name)
@@ -425,6 +440,11 @@ impl GitManager {
         branch: &str,
         token: Option<&str>,
     ) -> Result<usize> {
+        info!(
+            "Pulling with rebase from remote: {} (branch: {})",
+            remote_name, branch
+        );
+
         let mut remote = self
             .repo
             .find_remote(remote_name)
@@ -459,6 +479,7 @@ impl GitManager {
             Ok(ref_) => ref_,
             Err(_) => {
                 // No remote commits yet, nothing to rebase
+                debug!("No remote commits found, nothing to pull");
                 return Ok(0);
             }
         };

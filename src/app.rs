@@ -87,8 +87,15 @@ pub struct App {
 impl App {
     pub fn new() -> Result<Self> {
         let config_path = crate::utils::get_config_path();
+        info!("Loading configuration from: {:?}", config_path);
 
-        let config = Config::load_or_create(&config_path)?;
+        let config =
+            Config::load_or_create(&config_path).context("Failed to load or create config")?;
+        info!(
+            "Configuration loaded: active_profile={}, repo_path={:?}",
+            config.active_profile, config.repo_path
+        );
+
         let file_manager = FileManager::new()?;
         let tui = Tui::new()?;
         let ui_state = UiState::new();
@@ -141,10 +148,12 @@ impl App {
     }
 
     pub fn run(&mut self) -> Result<()> {
+        info!("Entering TUI mode");
         self.tui.enter()?;
 
         // Check if profile is deactivated and show warning
         if !self.config.profile_activated && self.config.github.is_some() {
+            warn!("Profile '{}' is deactivated", self.config.active_profile);
             // Profile is deactivated - show warning message
             self.message_component = Some(MessageComponent::new(
                 "Profile Deactivated".to_string(),
@@ -165,6 +174,7 @@ impl App {
         self.ui_state.current_screen = Screen::MainMenu;
         // Set last_screen to None so first draw will detect the transition
         self.last_screen = None;
+        info!("Starting main event loop");
 
         // Main event loop
         loop {
@@ -216,10 +226,15 @@ impl App {
 
             // Poll for events with 250ms timeout
             if let Some(event) = self.tui.poll_event(Duration::from_millis(250))? {
-                self.handle_event(event)?;
+                trace!("Event received: {:?}", event);
+                if let Err(e) = self.handle_event(event) {
+                    error!("Error handling event: {}", e);
+                    return Err(e);
+                }
             }
         }
 
+        info!("Exiting TUI");
         self.tui.exit()?;
         Ok(())
     }
@@ -228,6 +243,11 @@ impl App {
         // Check for screen transitions and update state accordingly
         let current_screen = self.ui_state.current_screen;
         if self.last_screen != Some(current_screen) {
+            // Screen changed - log the transition
+            debug!(
+                "Screen transition: {:?} -> {:?}",
+                self.last_screen, current_screen
+            );
             // Screen changed - check for changes when entering MainMenu
             if current_screen == Screen::MainMenu {
                 self.check_changes_to_push();
@@ -1124,6 +1144,10 @@ impl App {
                                     && !state.is_checking
                                     && !state.packages.is_empty()
                                 {
+                                    info!(
+                                        "Starting check all packages ({} packages)",
+                                        state.packages.len()
+                                    );
                                     // Initialize statuses if needed
                                     if state.package_statuses.len() != state.packages.len() {
                                         state.package_statuses =
@@ -1145,6 +1169,12 @@ impl App {
                                 {
                                     if let Some(selected_idx) = state.list_state.selected() {
                                         if selected_idx < state.packages.len() {
+                                            let package_name =
+                                                state.packages[selected_idx].name.clone();
+                                            info!(
+                                                "Starting check selected package: {} (index: {})",
+                                                package_name, selected_idx
+                                            );
                                             // Initialize statuses if needed
                                             if state.package_statuses.len() != state.packages.len()
                                             {
@@ -1185,6 +1215,10 @@ impl App {
                                     }
 
                                     if !packages_to_install.is_empty() {
+                                        info!(
+                                            "Starting installation of {} missing package(s)",
+                                            packages_to_install.len()
+                                        );
                                         // Start installation
                                         if let Some(&first_idx) = packages_to_install.first() {
                                             let package_name =
@@ -1192,6 +1226,12 @@ impl App {
                                             let total = packages_to_install.len();
                                             let mut install_list = packages_to_install.clone();
                                             install_list.remove(0);
+
+                                            debug!(
+                                                "First package to install: {} (index: {})",
+                                                package_name, first_idx
+                                            );
+                                            debug!("Remaining packages: {:?}", install_list);
 
                                             state.installation_step =
                                                 InstallationStep::Installing {
@@ -2105,6 +2145,7 @@ impl App {
 
         // Get the selected menu item from the component
         let selected_item = self.main_menu_component.selected_item();
+        info!("Menu selection: {:?}", selected_item);
 
         match selected_item {
             MenuItem::SetupGitHub => {
@@ -3975,6 +4016,11 @@ impl App {
 
         let state = &mut self.ui_state.dotfile_selection;
         if file_index >= state.dotfiles.len() {
+            warn!(
+                "File index {} out of bounds ({} files)",
+                file_index,
+                state.dotfiles.len()
+            );
             return Ok(());
         }
 
@@ -3982,10 +4028,16 @@ impl App {
         let relative_str = dotfile.relative_path.to_string_lossy().to_string();
 
         if previously_synced.contains(&relative_str) {
+            debug!("File already synced: {}", relative_str);
             // Already synced, just mark as selected
             state.selected_for_sync.insert(file_index);
             return Ok(());
         }
+
+        info!(
+            "Adding file to sync: {} (profile: {})",
+            relative_str, profile_name
+        );
 
         // Copy file to repo
         let file_manager = crate::file_manager::FileManager::new()?;
@@ -4017,6 +4069,7 @@ impl App {
             .context("Failed to create symlink")?;
 
         // Update manifest
+        let relative_str_clone = relative_str.clone();
         let mut manifest = crate::utils::ProfileManifest::load_or_backfill(&repo_path)?;
         let current_files = manifest
             .profiles
@@ -4035,6 +4088,7 @@ impl App {
         state.selected_for_sync.insert(file_index);
         state.dotfiles[file_index].synced = true;
 
+        info!("Successfully added file to sync: {}", relative_str_clone);
         Ok(())
     }
 
@@ -4053,9 +4107,17 @@ impl App {
             .unwrap_or_default();
 
         if previously_synced.contains(relative_path) {
+            debug!("Custom file already synced: {}", relative_path);
             // Already synced, nothing to do
             return Ok(());
         }
+
+        info!(
+            "Adding custom file to sync: {} -> {} (profile: {})",
+            full_path.display(),
+            relative_path,
+            profile_name
+        );
 
         // Copy file to repo
         let file_manager = crate::file_manager::FileManager::new()?;
@@ -4121,6 +4183,7 @@ impl App {
 
         // Don't add to dotfiles list here - it will be added after scan_dotfiles() is called
         // This function only handles the actual syncing (copy, symlink, manifest update)
+        info!("Successfully added custom file to sync: {}", relative_path);
         Ok(())
     }
 
@@ -4141,6 +4204,11 @@ impl App {
 
         let state = &mut self.ui_state.dotfile_selection;
         if file_index >= state.dotfiles.len() {
+            warn!(
+                "File index {} out of bounds ({} files)",
+                file_index,
+                state.dotfiles.len()
+            );
             return Ok(());
         }
 
@@ -4148,10 +4216,16 @@ impl App {
         let relative_str = dotfile.relative_path.to_string_lossy().to_string();
 
         if !previously_synced.contains(&relative_str) {
+            debug!("File not synced, skipping removal: {}", relative_str);
             // Not synced, just unmark as selected
             state.selected_for_sync.remove(&file_index);
             return Ok(());
         }
+
+        info!(
+            "Removing file from sync: {} (profile: {})",
+            relative_str, profile_name
+        );
 
         let target_path = home_dir.join(&dotfile.relative_path);
         let repo_file_path = repo_path.join(&profile_name).join(&dotfile.relative_path);
@@ -4222,6 +4296,7 @@ impl App {
         state.selected_for_sync.remove(&file_index);
         state.dotfiles[file_index].synced = false;
 
+        info!("Successfully removed file from sync: {}", relative_str);
         Ok(())
     }
 
@@ -4683,8 +4758,11 @@ impl App {
 
     /// Start pushing changes (async operation with progress updates)
     fn start_sync(&mut self) -> Result<()> {
+        info!("Starting sync operation");
+
         // Check if GitHub is configured
         if self.config.github.is_none() {
+            warn!("Sync attempted but GitHub not configured");
             self.ui_state.sync_with_remote.sync_result = Some(
                 "Error: GitHub repository not configured.\n\nPlease set up your GitHub repository first from the main menu.".to_string()
             );
@@ -4696,6 +4774,7 @@ impl App {
 
         // Check if repo exists
         if !repo_path.exists() {
+            warn!("Sync attempted but repository not found: {:?}", repo_path);
             self.ui_state.sync_with_remote.sync_result = Some(format!(
                 "Error: Repository not found at {:?}\n\nPlease sync some files first.",
                 repo_path
@@ -5639,6 +5718,7 @@ impl App {
 
     /// Start adding a new package
     fn start_add_package(&mut self) -> Result<()> {
+        info!("Starting add package dialog");
         let state = &mut self.ui_state.package_manager;
         use crate::utils::package_manager::PackageManagerImpl;
 
@@ -5663,11 +5743,18 @@ impl App {
 
         // Initialize available managers
         state.available_managers = PackageManagerImpl::get_available_managers();
+        info!("Available package managers: {:?}", state.available_managers);
         if !state.available_managers.is_empty() {
             state.add_manager = Some(state.available_managers[0].clone());
             state.add_manager_selected = 0;
             state.manager_list_state.select(Some(0));
             state.add_is_custom = matches!(state.available_managers[0], PackageManager::Custom);
+            debug!(
+                "Default manager selected: {:?}",
+                state.available_managers[0]
+            );
+        } else {
+            warn!("No package managers available");
         }
 
         Ok(())
@@ -5675,10 +5762,15 @@ impl App {
 
     /// Start editing an existing package
     fn start_edit_package(&mut self, index: usize) -> Result<()> {
+        info!("Starting edit package dialog for index: {}", index);
         let state = &mut self.ui_state.package_manager;
         use crate::utils::package_manager::PackageManagerImpl;
 
         if let Some(package) = state.packages.get(index) {
+            debug!(
+                "Editing package: {} (manager: {:?})",
+                package.name, package.manager
+            );
             state.popup_type = PackagePopupType::Edit;
             state.add_editing_index = Some(index);
             state.add_name_input = package.name.clone();
@@ -5723,6 +5815,7 @@ impl App {
         let state = &mut self.ui_state.package_manager;
 
         if state.packages.is_empty() {
+            debug!("Package check: No packages to check");
             state.is_checking = false;
             return Ok(());
         }
@@ -5736,27 +5829,46 @@ impl App {
         if let Some(index) = state.checking_index {
             if index < state.packages.len() {
                 let package = &state.packages[index];
+                info!(
+                    "Checking selected package: {} (index: {})",
+                    package.name, index
+                );
 
                 // Check if package exists (binary check + fallback)
                 use crate::utils::package_installer::PackageInstaller;
                 use crate::utils::package_manager::PackageManagerImpl;
 
                 match PackageInstaller::check_exists(package) {
-                    Ok((true, _)) => {
+                    Ok((true, used_fallback)) => {
+                        debug!(
+                            "Package {} found (used_fallback: {})",
+                            package.name, used_fallback
+                        );
                         state.package_statuses[index] = PackageStatus::Installed;
+                        info!("Package {} is installed", package.name);
                     }
                     Ok((false, _)) => {
                         // Package not found - check if manager is installed for installation purposes
                         if !PackageManagerImpl::is_manager_installed(&package.manager) {
+                            warn!(
+                                "Package {} not found and manager {:?} is not installed",
+                                package.name, package.manager
+                            );
                             state.package_statuses[index] = PackageStatus::Error(format!(
                                 "Package not found and package manager '{:?}' is not installed",
                                 package.manager
                             ));
                         } else {
+                            debug!(
+                                "Package {} not found (manager {:?} is available)",
+                                package.name, package.manager
+                            );
                             state.package_statuses[index] = PackageStatus::NotInstalled;
+                            info!("Package {} is not installed", package.name);
                         }
                     }
                     Err(e) => {
+                        error!("Error checking package {}: {}", package.name, e);
                         state.package_statuses[index] = PackageStatus::Error(e.to_string());
                     }
                 }
@@ -5766,6 +5878,12 @@ impl App {
                 state.is_checking = false;
                 state.checking_delay_until = None;
                 return Ok(());
+            } else {
+                warn!(
+                    "Package check: Index {} out of bounds ({} packages)",
+                    index,
+                    state.packages.len()
+                );
             }
         }
 
@@ -5778,6 +5896,10 @@ impl App {
         if let Some(index) = next_index {
             state.checking_index = Some(index);
             let package = &state.packages[index];
+            debug!(
+                "Checking package {} (index: {}) - Check All mode",
+                package.name, index
+            );
 
             // Check if package exists (binary check + fallback)
             // This is a blocking call, but we'll add a delay after it
@@ -5785,21 +5907,34 @@ impl App {
             use crate::utils::package_manager::PackageManagerImpl;
 
             match PackageInstaller::check_exists(package) {
-                Ok((true, _)) => {
+                Ok((true, used_fallback)) => {
+                    debug!(
+                        "Package {} found (used_fallback: {})",
+                        package.name, used_fallback
+                    );
                     state.package_statuses[index] = PackageStatus::Installed;
                 }
                 Ok((false, _)) => {
                     // Package not found - check if manager is installed for installation purposes
                     if !PackageManagerImpl::is_manager_installed(&package.manager) {
+                        warn!(
+                            "Package {} not found and manager {:?} is not installed",
+                            package.name, package.manager
+                        );
                         state.package_statuses[index] = PackageStatus::Error(format!(
                             "Package not found and package manager '{:?}' is not installed",
                             package.manager
                         ));
                     } else {
+                        debug!(
+                            "Package {} not found (manager {:?} is available)",
+                            package.name, package.manager
+                        );
                         state.package_statuses[index] = PackageStatus::NotInstalled;
                     }
                 }
                 Err(e) => {
+                    error!("Error checking package {}: {}", package.name, e);
                     state.package_statuses[index] = PackageStatus::Error(e.to_string());
                 }
             }
@@ -5811,17 +5946,36 @@ impl App {
                 Some(std::time::Instant::now() + Duration::from_millis(100));
         } else {
             // All packages checked
-            state.is_checking = false;
-            state.checking_delay_until = None;
-
-            // Check if any packages are missing and show prompt
+            let installed_count = state
+                .package_statuses
+                .iter()
+                .filter(|s| matches!(s, PackageStatus::Installed))
+                .count();
             let missing_count = state
                 .package_statuses
                 .iter()
                 .filter(|s| matches!(s, PackageStatus::NotInstalled))
                 .count();
+            let error_count = state
+                .package_statuses
+                .iter()
+                .filter(|s| matches!(s, PackageStatus::Error(_)))
+                .count();
 
+            info!(
+                "Package check complete: {} installed, {} missing, {} errors",
+                installed_count, missing_count, error_count
+            );
+
+            state.is_checking = false;
+            state.checking_delay_until = None;
+
+            // Check if any packages are missing and show prompt
             if missing_count > 0 {
+                info!(
+                    "{} package(s) need installation, showing install prompt",
+                    missing_count
+                );
                 state.popup_type = PackagePopupType::InstallMissing;
             }
         }
@@ -6153,12 +6307,26 @@ impl App {
             )
         };
 
+        if let Some(idx) = edit_idx {
+            info!(
+                "Validating and saving edited package: {} (index: {})",
+                name, idx
+            );
+        } else {
+            info!(
+                "Validating and saving new package: {} (manager: {:?}, custom: {})",
+                name, manager, is_custom
+            );
+        }
+
         // Validate required fields
         if name.trim().is_empty() {
+            warn!("Package validation failed: name is empty");
             return Ok(false); // Name is required
         }
 
         if binary_name.trim().is_empty() {
+            warn!("Package validation failed: binary_name is empty");
             return Ok(false); // Binary name is required
         }
 
@@ -6166,14 +6334,17 @@ impl App {
         if is_custom {
             // Custom packages require install_command and existence_check
             if install_command.trim().is_empty() {
+                warn!("Package validation failed: install_command is empty for custom package");
                 return Ok(false);
             }
             if existence_check.trim().is_empty() {
+                warn!("Package validation failed: existence_check is empty for custom package");
                 return Ok(false);
             }
         } else {
             // Managed packages require package_name
             if package_name.trim().is_empty() {
+                warn!("Package validation failed: package_name is empty for managed package");
                 return Ok(false);
             }
         }
@@ -6226,10 +6397,25 @@ impl App {
             if let Some(edit_idx) = edit_idx {
                 // Edit existing package
                 if edit_idx < packages.len() {
+                    let old_name = packages[edit_idx].name.clone();
+                    info!(
+                        "Updating package: {} -> {} (profile: {})",
+                        old_name, package.name, active_profile_name
+                    );
                     packages[edit_idx] = package;
+                } else {
+                    warn!(
+                        "Edit index {} out of bounds ({} packages)",
+                        edit_idx,
+                        packages.len()
+                    );
                 }
             } else {
                 // Add new package
+                info!(
+                    "Adding new package: {} (profile: {})",
+                    package.name, active_profile_name
+                );
                 packages.push(package);
             }
 
@@ -6282,7 +6468,18 @@ impl App {
             let mut packages = profile.packages.clone();
 
             if index < packages.len() {
+                let package_name = packages[index].name.clone();
+                info!(
+                    "Deleting package: {} (index: {}, profile: {})",
+                    package_name, index, active_profile_name
+                );
                 packages.remove(index);
+            } else {
+                warn!(
+                    "Delete package: Index {} out of bounds ({} packages)",
+                    index,
+                    packages.len()
+                );
             }
 
             // Update manifest

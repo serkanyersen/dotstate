@@ -4,6 +4,7 @@ use crate::utils::SymlinkManager;
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
+use tracing::{info, warn};
 
 /// A friendly TUI tool for managing dotfiles with GitHub sync
 #[derive(Parser, Debug)]
@@ -70,12 +71,14 @@ impl Cli {
     }
 
     fn cmd_sync() -> Result<()> {
+        info!("CLI: sync command executed");
         let config_path = crate::utils::get_config_path();
 
         let config =
             Config::load_or_create(&config_path).context("Failed to load configuration")?;
 
         if config.github.is_none() {
+            warn!("CLI sync: GitHub not configured");
             eprintln!("❌ GitHub not configured. Please run 'dotstate' to set up GitHub sync.");
             std::process::exit(1);
         }
@@ -104,11 +107,13 @@ impl Cli {
             .context("Failed to push to remote")?;
 
         if pulled_count > 0 {
+            info!("CLI sync completed: pulled {} commit(s)", pulled_count);
             println!(
                 "✅ Successfully synced with remote! Pulled {} change(s) from remote.",
                 pulled_count
             );
         } else {
+            info!("CLI sync completed: no changes pulled");
             println!("✅ Successfully synced with remote! No changes pulled from remote.");
         }
         Ok(())

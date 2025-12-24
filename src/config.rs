@@ -60,6 +60,7 @@ impl Config {
     /// If config doesn't exist, attempts to discover profiles from the repo manifest
     pub fn load_or_create(config_path: &Path) -> Result<Self> {
         if config_path.exists() {
+            tracing::debug!("Loading config from: {:?}", config_path);
             let content = std::fs::read_to_string(config_path)
                 .with_context(|| format!("Failed to read config file: {:?}", config_path))?;
             let mut config: Config =
@@ -87,9 +88,14 @@ impl Config {
                 }
             }
 
+            tracing::info!("Config loaded successfully");
             Ok(config)
         } else {
             // Config doesn't exist - create default
+            tracing::info!(
+                "Config not found, creating default config at: {:?}",
+                config_path
+            );
             let mut config = Self::default();
 
             // Try to discover active profile from the repo manifest if repo_path exists

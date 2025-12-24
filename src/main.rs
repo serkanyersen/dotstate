@@ -43,7 +43,30 @@ fn main() -> Result<()> {
 
     // If a command was provided, execute it and exit (non-TUI mode)
     if cli.command.is_some() {
-        return cli.execute();
+        // Set up logging for CLI mode
+        let log_dir = dirs::cache_dir()
+            .unwrap_or_else(|| dirs::home_dir().unwrap_or_default())
+            .join("dotstate");
+        std::fs::create_dir_all(&log_dir)?;
+
+        let filter = tracing_subscriber::EnvFilter::try_from_default_env()
+            .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"));
+
+        let file_appender = tracing_appender::rolling::never(&log_dir, "dotstate.log");
+        let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
+
+        tracing_subscriber::fmt()
+            .with_env_filter(filter)
+            .with_target(false)
+            .with_writer(non_blocking)
+            .with_ansi(false)
+            .init();
+
+        use tracing::info;
+        info!("Starting dotstate CLI mode");
+        let result = cli.execute();
+        drop(guard);
+        return result;
     }
 
     // Otherwise, launch TUI
@@ -68,8 +91,14 @@ fn main() -> Result<()> {
         .with_ansi(false) // Disable ANSI colors in file
         .init();
 
+    use tracing::info;
+    info!("Starting dotstate TUI mode");
+    info!("Log directory: {:?}", log_dir);
+
     let mut app = App::new()?;
     let result = app.run();
+
+    info!("Shutting down dotstate");
 
     // Restore terminal state on normal exit
     // (panic hook handles panics)
