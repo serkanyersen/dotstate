@@ -108,9 +108,10 @@ download_binary() {
 
     # Determine download URL
     if [ "$VERSION" = "latest" ]; then
-        # Get latest release
+        # Get latest release - match exact asset name (not .sha256 file)
         DOWNLOAD_URL=$(curl -s "https://api.github.com/repos/${REPO}/releases/latest" | \
-            grep "browser_download_url.*${ASSET_NAME}" | \
+            grep -o "\"browser_download_url\": \"[^\"]*${ASSET_NAME}\"" | \
+            grep -v "\.sha256" | \
             cut -d '"' -f 4 | head -1)
     else
         # Get specific version

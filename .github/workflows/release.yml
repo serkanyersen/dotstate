@@ -73,7 +73,6 @@ jobs:
       - name: Upload to release
         uses: softprops/action-gh-release@v1
         with:
-          release_id: ${{ github.event.release.id }}
           files: |
             ${{ github.workspace }}/${{ matrix.asset_name }}.tar.gz
             ${{ github.workspace }}/${{ matrix.asset_name }}.tar.gz.sha256
