@@ -2,7 +2,7 @@ name: Release
 
 on:
   release:
-    types: [created]  # Only trigger on draft releases, not published (immutable releases can't be modified)
+    types: [published]
 
 permissions:
   contents: write
@@ -53,6 +53,7 @@ jobs:
           tar czf ${{ github.workspace }}/${{ matrix.asset_name }}.tar.gz ${{ matrix.binary_name }}
           cd ${{ github.workspace }}
           shasum -a 256 ${{ matrix.asset_name }}.tar.gz | awk '{print $1}' > ${{ matrix.asset_name }}.tar.gz.sha256
+          ls -lh ${{ matrix.asset_name }}.tar.gz ${{ matrix.asset_name }}.tar.gz.sha256
 
       - name: Create archive (Windows)
         if: matrix.os == 'windows-latest'
@@ -61,12 +62,20 @@ jobs:
           tar czf ${{ github.workspace }}/${{ matrix.asset_name }}.tar.gz ${{ matrix.binary_name }}
           cd ${{ github.workspace }}
           for /f "tokens=*" %i in ('certutil -hashfile ${{ matrix.asset_name }}.tar.gz SHA256 ^| findstr /v "SHA256" ^| findstr /v "certutil"') do @echo %i > ${{ matrix.asset_name }}.tar.gz.sha256
+          dir ${{ matrix.asset_name }}.tar.gz ${{ matrix.asset_name }}.tar.gz.sha256
+
+      - name: Verify files exist
+        run: |
+          echo "Checking for files in ${{ github.workspace }}:"
+          ls -la ${{ github.workspace }}/${{ matrix.asset_name }}.tar.gz || echo "❌ Archive not found"
+          ls -la ${{ github.workspace }}/${{ matrix.asset_name }}.tar.gz.sha256 || echo "❌ Checksum not found"
 
       - name: Upload to release
         uses: softprops/action-gh-release@v1
         with:
+          release_id: ${{ github.event.release.id }}
           files: |
-            ${{ matrix.asset_name }}.tar.gz
-            ${{ matrix.asset_name }}.tar.gz.sha256
+            ${{ github.workspace }}/${{ matrix.asset_name }}.tar.gz
+            ${{ github.workspace }}/${{ matrix.asset_name }}.tar.gz.sha256
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
