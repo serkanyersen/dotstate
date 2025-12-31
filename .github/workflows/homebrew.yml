@@ -68,32 +68,36 @@ jobs:
           with open(formula_path, 'r') as f:
               content = f.read()
 
-          # Update Intel URL (match the line after "if Hardware::CPU.intel?")
+          # Update Intel URL - match url line within the if block
           content = re.sub(
               r'(if Hardware::CPU\.intel\?\s*\n\s+url ")[^"]+(")',
               r'\1' + url_intel + r'\2',
-              content
+              content,
+              flags=re.MULTILINE
           )
 
-          # Update Intel SHA256 (match the line after the Intel URL)
+          # Update Intel SHA256 - match sha256 line after Intel URL
           content = re.sub(
               r'(if Hardware::CPU\.intel\?\s*\n\s+url "[^"]+"\s*\n\s+sha256 ")[^"]+(")',
               r'\1' + sha_intel + r'\2',
-              content
+              content,
+              flags=re.MULTILINE
           )
 
-          # Update ARM URL (match the line after "else")
+          # Update ARM URL - match url line within the else block
           content = re.sub(
               r'(else\s*\n\s+url ")[^"]+(")',
               r'\1' + url_arm + r'\2',
-              content
+              content,
+              flags=re.MULTILINE
           )
 
-          # Update ARM SHA256 (match the line after the ARM URL)
+          # Update ARM SHA256 - match sha256 line after ARM URL
           content = re.sub(
               r'(else\s*\n\s+url "[^"]+"\s*\n\s+sha256 ")[^"]+(")',
               r'\1' + sha_arm + r'\2',
-              content
+              content,
+              flags=re.MULTILINE
           )
 
           with open(formula_path, 'w') as f:
