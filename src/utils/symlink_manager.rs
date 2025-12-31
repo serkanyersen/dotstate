@@ -816,7 +816,8 @@ mod tests {
         let repo_path = temp_dir.path().join("dotstate");
         fs::create_dir_all(&repo_path).unwrap();
 
-        let manager = SymlinkManager::new(repo_path).unwrap();
+        // Disable backups to avoid issues with home directory in CI
+        let manager = SymlinkManager::new_with_backup(repo_path, false).unwrap();
         (temp_dir, manager)
     }
 
@@ -826,7 +827,8 @@ mod tests {
         let repo_path = temp_dir.path().join("dotstate");
         fs::create_dir_all(&repo_path).unwrap();
 
-        let manager = SymlinkManager::new(repo_path.clone());
+        // Disable backups to avoid issues with home directory in CI
+        let manager = SymlinkManager::new_with_backup(repo_path.clone(), false);
         assert!(manager.is_ok());
     }
 
