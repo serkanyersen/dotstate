@@ -182,6 +182,10 @@ Built with:
 - [git2](https://github.com/rust-lang/git2-rs) - Git operations
 - [clap](https://github.com/clap-rs/clap) - CLI parsing
 
+Badges:
+
+<a title="This tool is Tool of The Week on Terminal Trove, The $HOME of all things in the terminal" href="https://terminaltrove.com/dotstate/"><img width="180" src="https://cdn.terminaltrove.com/media/badges/tool_of_the_week/svg/terminal_trove_tool_of_the_week_green_on_dark_grey_bg.svg" alt="Terminal Trove Tool of The Week" /></a>
+
 ## Support
 
 - **Issues**: [GitHub Issues](https://github.com/serkanyersen/dotstate/issues)
