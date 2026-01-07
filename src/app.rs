@@ -2936,8 +2936,7 @@ impl App {
                         // Move to discovering profiles
                         auth_state.step =
                             GitHubAuthStep::SetupStep(GitHubSetupStep::DiscoveringProfiles);
-                        auth_state.status_message =
-                            Some("🔎 Discovering profiles...".to_string());
+                        auth_state.status_message = Some("🔎 Discovering profiles...".to_string());
                         setup_data.delay_until =
                             Some(std::time::Instant::now() + Duration::from_millis(600));
                         auth_state.setup_data = Some(setup_data);
