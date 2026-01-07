@@ -17,7 +17,11 @@ pub struct Cli {
 #[derive(Subcommand, Debug)]
 pub enum Commands {
     /// Sync with remote: commit, pull (with rebase), and push
-    Sync,
+    Sync {
+        /// Custom commit message
+        #[arg(short, long)]
+        message: Option<String>,
+    },
     /// List all synced files
     List {
         /// Show detailed information
@@ -54,7 +58,7 @@ impl Cli {
     /// Execute the CLI command
     pub fn execute(self) -> Result<()> {
         match self.command {
-            Some(Commands::Sync) => Self::cmd_sync(),
+            Some(Commands::Sync { message }) => Self::cmd_sync(message),
             Some(Commands::List { verbose }) => Self::cmd_list(verbose),
             Some(Commands::Add { path }) => Self::cmd_add(path),
             Some(Commands::Activate) => Self::cmd_activate(),
@@ -70,7 +74,7 @@ impl Cli {
         }
     }
 
-    fn cmd_sync() -> Result<()> {
+    fn cmd_sync(message: Option<String>) -> Result<()> {
         info!("CLI: sync command executed");
         let config_path = crate::utils::get_config_path();
 
@@ -106,8 +110,13 @@ impl Cli {
         }
 
         println!("📝 Committing changes...");
+        let commit_msg = message.unwrap_or_else(|| {
+            git_mgr
+                .generate_commit_message()
+                .unwrap_or_else(|_| "Update dotfiles".to_string())
+        });
         git_mgr
-            .commit_all("Update dotfiles")
+            .commit_all(&commit_msg)
             .context("Failed to commit changes")?;
 
         println!("📥 Pulling changes from remote (with rebase)...");

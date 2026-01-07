@@ -121,6 +121,101 @@ impl GitManager {
         Ok(())
     }
 
+    /// Generate a commit message based on changed files
+    pub fn generate_commit_message(&self) -> Result<String> {
+        let changed_files = self.get_changed_files()?;
+
+        if changed_files.is_empty() {
+            return Ok("Update dotfiles".to_string());
+        }
+
+        const MANIFEST_FILE: &str = ".dotstate-profiles.toml";
+
+        // Check if manifest file is in the changes and if it's the only change
+        // The manifest file is permanent - it's added on repo creation and never deleted
+        // We ignore it unless it's the ONLY file that changed (meaning profile config was updated)
+        let (manifest_changes, other_files): (Vec<&str>, Vec<&str>) = changed_files
+            .iter()
+            .map(|s| s.as_str())
+            .partition(|s| s.contains(MANIFEST_FILE));
+
+        // If only manifest changed (modified), it means profile configuration was updated
+        if !manifest_changes.is_empty() && other_files.is_empty() {
+            // Check if it's a modification (not add/delete since manifest is permanent)
+            if manifest_changes.iter().any(|s| s.starts_with("M ")) {
+                return Ok("Update profile configuration".to_string());
+            }
+        }
+
+        // Count changes by type (excluding manifest file)
+        let mut added = 0;
+        let mut modified = 0;
+        let mut deleted = 0;
+        let mut file_names = Vec::new();
+
+        for file in &other_files {
+            if file.starts_with("A ") {
+                added += 1;
+                file_names.push(file.trim_start_matches("A ").to_string());
+            } else if file.starts_with("M ") {
+                modified += 1;
+                file_names.push(file.trim_start_matches("M ").to_string());
+            } else if file.starts_with("D ") {
+                deleted += 1;
+                file_names.push(file.trim_start_matches("D ").to_string());
+            }
+        }
+
+        // Build commit message
+        let mut parts = Vec::new();
+
+        if added > 0 {
+            parts.push(format!(
+                "Add {} file{}",
+                added,
+                if added > 1 { "s" } else { "" }
+            ));
+        }
+        if modified > 0 {
+            parts.push(format!(
+                "Update {} file{}",
+                modified,
+                if modified > 1 { "s" } else { "" }
+            ));
+        }
+        if deleted > 0 {
+            parts.push(format!(
+                "Remove {} file{}",
+                deleted,
+                if deleted > 1 { "s" } else { "" }
+            ));
+        }
+
+        let mut message = parts.join(", ");
+
+        // Add file list if reasonable number of files (max 5 files in summary)
+        if file_names.len() <= 5 && !file_names.is_empty() {
+            // Show profile name if present, otherwise just filenames
+            let display_files: Vec<String> = file_names
+                .iter()
+                .take(5)
+                .map(|f| {
+                    // Extract just the filename (after profile name) for cleaner display
+                    f.split('/').next_back().unwrap_or(f).to_string()
+                })
+                .collect();
+
+            if !display_files.is_empty() {
+                message.push_str(&format!(": {}", display_files.join(", ")));
+            }
+        } else if file_names.len() > 5 {
+            // Show count if too many files
+            message.push_str(&format!(" ({}+ files changed)", file_names.len()));
+        }
+
+        Ok(message)
+    }
+
     /// Add all changes and commit
     pub fn commit_all(&self, message: &str) -> Result<()> {
         use tracing::info;
@@ -949,5 +1044,116 @@ mod tests {
         // Check that the repo was successfully initialized instead
         assert!(!git_mgr.repo().is_bare());
         assert!(repo_path.join(".git").exists());
+    }
+
+    #[test]
+    fn test_generate_commit_message_empty() {
+        let temp_dir = TempDir::new().unwrap();
+        let repo_path = temp_dir.path();
+        let git_mgr = GitManager::open_or_init(repo_path).unwrap();
+
+        // Commit the initial .gitignore file
+        git_mgr.commit_all("Initial commit").unwrap();
+
+        // With no changes, should return default message
+        let msg = git_mgr.generate_commit_message().unwrap();
+        assert_eq!(msg, "Update dotfiles");
+    }
+
+    #[test]
+    fn test_generate_commit_message_added_files() {
+        let temp_dir = TempDir::new().unwrap();
+        let repo_path = temp_dir.path();
+        let git_mgr = GitManager::open_or_init(repo_path).unwrap();
+
+        // Commit the initial .gitignore file
+        git_mgr.commit_all("Initial commit").unwrap();
+
+        // Add a new file
+        std::fs::write(repo_path.join("test.txt"), "test").unwrap();
+
+        let msg = git_mgr.generate_commit_message().unwrap();
+        assert!(msg.contains("Add"));
+        assert!(msg.contains("test.txt") || msg.contains("file"));
+    }
+
+    #[test]
+    fn test_generate_commit_message_modified_files() {
+        let temp_dir = TempDir::new().unwrap();
+        let repo_path = temp_dir.path();
+        let git_mgr = GitManager::open_or_init(repo_path).unwrap();
+
+        // Create and commit a file
+        std::fs::write(repo_path.join("test.txt"), "original").unwrap();
+        git_mgr.commit_all("Initial commit").unwrap();
+
+        // Modify the file
+        std::fs::write(repo_path.join("test.txt"), "modified").unwrap();
+
+        let msg = git_mgr.generate_commit_message().unwrap();
+        assert!(msg.contains("Update") || msg.contains("file"));
+    }
+
+    #[test]
+    fn test_generate_commit_message_multiple_files() {
+        let temp_dir = TempDir::new().unwrap();
+        let repo_path = temp_dir.path();
+        let git_mgr = GitManager::open_or_init(repo_path).unwrap();
+
+        // Commit the initial .gitignore file
+        git_mgr.commit_all("Initial commit").unwrap();
+
+        // Add multiple files
+        std::fs::write(repo_path.join("file1.txt"), "test1").unwrap();
+        std::fs::write(repo_path.join("file2.txt"), "test2").unwrap();
+        std::fs::write(repo_path.join("file3.txt"), "test3").unwrap();
+
+        let msg = git_mgr.generate_commit_message().unwrap();
+        assert!(msg.contains("Add"));
+        assert!(msg.contains("3") || msg.contains("file"));
+    }
+
+    #[test]
+    fn test_generate_commit_message_manifest_only() {
+        let temp_dir = TempDir::new().unwrap();
+        let repo_path = temp_dir.path();
+        let git_mgr = GitManager::open_or_init(repo_path).unwrap();
+
+        // Commit the initial .gitignore file
+        git_mgr.commit_all("Initial commit").unwrap();
+
+        // Create and commit the manifest file (as it would be in real usage)
+        std::fs::write(repo_path.join(".dotstate-profiles.toml"), "[profiles]\n").unwrap();
+        git_mgr.commit_all("Add manifest").unwrap();
+
+        // Now modify it (this simulates adding a dependency or creating a new profile)
+        std::fs::write(
+            repo_path.join(".dotstate-profiles.toml"),
+            "[profiles]\nname = \"test\"\n",
+        )
+        .unwrap();
+
+        let msg = git_mgr.generate_commit_message().unwrap();
+        // Should return "Update profile configuration" since only manifest was modified
+        assert_eq!(msg, "Update profile configuration");
+    }
+
+    #[test]
+    fn test_generate_commit_message_manifest_with_other_files() {
+        let temp_dir = TempDir::new().unwrap();
+        let repo_path = temp_dir.path();
+        let git_mgr = GitManager::open_or_init(repo_path).unwrap();
+
+        // Commit the initial .gitignore file
+        git_mgr.commit_all("Initial commit").unwrap();
+
+        // Modify both manifest and another file
+        std::fs::write(repo_path.join(".dotstate-profiles.toml"), "[profiles]\n").unwrap();
+        std::fs::write(repo_path.join("test.txt"), "test").unwrap();
+
+        let msg = git_mgr.generate_commit_message().unwrap();
+        // Should ignore manifest and only mention test.txt
+        assert!(msg.contains("Add") || msg.contains("Update"));
+        assert!(!msg.contains("profile configuration"));
     }
 }

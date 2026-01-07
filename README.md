@@ -133,6 +133,9 @@ dotstate add ~/.myconfig
 # Sync with remote (commit, pull, push)
 dotstate sync
 
+# Sync with custom commit message
+dotstate sync -m "My custom commit message"
+
 # Activate symlinks (useful after cloning on a new machine)
 dotstate activate
 

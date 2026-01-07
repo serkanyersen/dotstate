@@ -14,11 +14,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Real-time installation output streaming
 - Check selected package feature
 - Horizontal wrapping checkbox list for package manager selection
+- Custom commit message support for `dotstate sync -m "message"`
+- Automatic commit message generation from changed files (when no `-m` flag is provided)
+- Unified commit logic for both CLI and TUI
 
 ### Changed
 - Improved popup sizing for custom packages
 - Enhanced package checking UX (removed auto-check on page load)
 - Better error messages and user feedback
+- Commit messages are now automatically generated from changed files instead of generic "Update dotfiles"
 
 ## [0.1.0] - 2025-01-XX
 

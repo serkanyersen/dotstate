@@ -4999,7 +4999,10 @@ impl App {
         }
 
         // Step 1: Commit all changes
-        let result = match git_mgr.commit_all("Update dotfiles") {
+        let commit_msg = git_mgr
+            .generate_commit_message()
+            .unwrap_or_else(|_| "Update dotfiles".to_string());
+        let result = match git_mgr.commit_all(&commit_msg) {
             Ok(_) => {
                 // Step 2: Pull with rebase
                 self.ui_state.sync_with_remote.sync_progress =

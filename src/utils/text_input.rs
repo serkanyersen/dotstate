@@ -104,7 +104,7 @@ mod tests {
         let text = "hello";
         let mut cursor = 3;
 
-        handle_cursor_movement(&text, &mut cursor, KeyCode::Left);
+        handle_cursor_movement(text, &mut cursor, KeyCode::Left);
         assert_eq!(cursor, 2);
     }
 
@@ -113,7 +113,7 @@ mod tests {
         let text = "hello";
         let mut cursor = 2;
 
-        handle_cursor_movement(&text, &mut cursor, KeyCode::Right);
+        handle_cursor_movement(text, &mut cursor, KeyCode::Right);
         assert_eq!(cursor, 3);
     }
 
@@ -122,7 +122,7 @@ mod tests {
         let text = "hello";
         let mut cursor = 3;
 
-        handle_cursor_movement(&text, &mut cursor, KeyCode::Home);
+        handle_cursor_movement(text, &mut cursor, KeyCode::Home);
         assert_eq!(cursor, 0);
     }
 
@@ -131,7 +131,7 @@ mod tests {
         let text = "hello";
         let mut cursor = 2;
 
-        handle_cursor_movement(&text, &mut cursor, KeyCode::End);
+        handle_cursor_movement(text, &mut cursor, KeyCode::End);
         assert_eq!(cursor, 5);
     }
 

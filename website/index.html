@@ -533,7 +533,7 @@ brew install dotstate" aria-label="Copy command">📋</button>
                                 <code class="command-name">dotstate sync</code>
                                 <button class="copy-btn" data-copy="dotstate sync" aria-label="Copy command">📋</button>
                             </div>
-                            <p class="command-desc">Sync with remote: commit, pull (with rebase), and push. This is the main sync command for keeping your dotfiles up to date.</p>
+                            <p class="command-desc">Sync with remote: commit, pull (with rebase), and push. This is the main sync command for keeping your dotfiles up to date. Use <code>-m "message"</code> to provide a custom commit message, otherwise an automatic message is generated from changed files.</p>
                         </div>
 
                         <div class="command-card">
@@ -652,7 +652,7 @@ brew install dotstate" aria-label="Copy command">📋</button>
                             <h4>Syncing changes across machines</h4>
                             <p>Keep your dotfiles synchronized across all your machines:</p>
                             <div class="code-block">
-                                <code># Using CLI<br>dotstate sync<br><br># Or using TUI<br>dotstate<br># Navigate to "Sync with Remote"</code>
+                                <code># Using CLI<br>dotstate sync<br>dotstate sync -m "Custom commit message"<br><br># Or using TUI<br>dotstate<br># Navigate to "Sync with Remote"</code>
                             </div>
                             <p>The sync command commits, pulls, and pushes automatically.</p>
                         </div>
