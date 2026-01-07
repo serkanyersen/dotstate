@@ -151,6 +151,22 @@ impl App {
         info!("Entering TUI mode");
         self.tui.enter()?;
 
+        // Check for updates if enabled in config
+        if self.config.updates.check_enabled {
+            info!("Checking for updates...");
+            if let Some(update_info) =
+                crate::version_check::check_for_updates(self.config.updates.check_interval_hours)
+            {
+                info!(
+                    "New version available: {} -> {}",
+                    update_info.current_version, update_info.latest_version
+                );
+                self.main_menu_component.set_update_info(Some(update_info));
+            } else {
+                info!("No updates available or check skipped (cached)");
+            }
+        }
+
         // Check if profile is deactivated and show warning
         if !self.config.profile_activated && self.config.is_repo_configured() {
             warn!("Profile '{}' is deactivated", self.config.active_profile);
@@ -597,6 +613,12 @@ impl App {
                     }
                     ComponentAction::Quit => {
                         self.should_quit = true;
+                    }
+                    ComponentAction::Custom(ref action_name)
+                        if action_name == "show_update_info" =>
+                    {
+                        // Show update info popup
+                        self.show_update_info_popup();
                     }
                     _ => {}
                 }
@@ -2307,6 +2329,37 @@ impl App {
             _ => {}
         }
         Ok(())
+    }
+
+    /// Show the update info popup when user selects the update notification
+    fn show_update_info_popup(&mut self) {
+        if let Some(ref update_info) = self.main_menu_component.get_update_info().cloned() {
+            let message = format!(
+                "🎉 New version available: {} → {}\n\n\
+                Update options:\n\n\
+                1. Using install script:\n\
+                   curl -fsSL {} | bash\n\n\
+                2. Using Cargo:\n\
+                   cargo install dotstate --force\n\n\
+                3. Using Homebrew:\n\
+                   brew upgrade dotstate\n\n\
+                4. Using CLI (interactive):\n\
+                   dotstate upgrade\n\n\
+                Release notes:\n\
+                {}\n\n\
+                Press any key to close this popup.",
+                update_info.current_version,
+                update_info.latest_version,
+                crate::version_check::UpdateInfo::install_script_url(),
+                update_info.release_url
+            );
+
+            self.message_component = Some(MessageComponent::new(
+                "Update Available".to_string(),
+                message,
+                Screen::MainMenu,
+            ));
+        }
     }
 
     fn handle_menu_selection(&mut self) -> Result<()> {

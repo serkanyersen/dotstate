@@ -148,6 +148,9 @@ dotstate activate
 # Deactivate symlinks (restore original files)
 dotstate deactivate
 
+# Check for updates and upgrade
+dotstate upgrade
+
 # Show help
 dotstate help
 ```
@@ -190,6 +193,26 @@ Use any existing git repository from any host (GitHub, GitLab, Bitbucket, self-h
 - Works with any git host
 - Uses your existing SSH keys or git credentials
 - No GitHub token required
+
+### Update Notifications
+
+DotState automatically checks for updates and shows a notification in the main menu when a new version is available. You can also check manually:
+
+```bash
+# Check for updates interactively
+dotstate upgrade
+
+# Just check without prompting
+dotstate upgrade --check
+```
+
+**Configuration:**
+Update checks can be configured in `~/.config/dotstate/config.toml`:
+```toml
+[updates]
+check_enabled = true       # Set to false to disable update checks
+check_interval_hours = 24  # How often to check (default: 24 hours)
+```
 
 ## Security Considerations
 

@@ -3,6 +3,7 @@ use crate::components::footer::Footer;
 use crate::components::header::Header;
 use crate::config::Config;
 use crate::utils::create_standard_layout;
+use crate::version_check::UpdateInfo;
 use anyhow::Result;
 use crossterm::event::{Event, KeyCode, KeyEventKind, MouseButton, MouseEventKind};
 use ratatui::prelude::*;
@@ -331,10 +332,16 @@ pub struct MainMenuComponent {
     list_state: ListState,
     /// Clickable areas: (rect, MenuItem)
     clickable_areas: Vec<(Rect, MenuItem)>,
+    /// Clickable area for update notification
+    update_clickable_area: Option<Rect>,
     /// Config for displaying stats
     config: Option<Config>,
     /// Changed files pending sync
     changed_files: Vec<String>,
+    /// Update information if a new version is available
+    update_info: Option<UpdateInfo>,
+    /// Whether the update notification is selected (for navigation)
+    update_selected: bool,
 }
 
 impl MainMenuComponent {
@@ -349,9 +356,22 @@ impl MainMenuComponent {
             has_changes_to_push,
             list_state,
             clickable_areas: Vec::new(),
+            update_clickable_area: None,
             config: None,
             changed_files: Vec::new(),
+            update_info: None,
+            update_selected: false,
         }
+    }
+
+    /// Set update information when a new version is available
+    pub fn set_update_info(&mut self, info: Option<UpdateInfo>) {
+        self.update_info = info;
+    }
+
+    /// Get the update info
+    pub fn get_update_info(&self) -> Option<&UpdateInfo> {
+        self.update_info.as_ref()
     }
 
     /// Check if the app is set up (GitHub or Local mode configured)
@@ -486,6 +506,57 @@ impl Component for MainMenuComponent {
             "Manage your dotfiles with ease. Sync to GitHub, organize by profiles, and keep your configuration files safe."
         )?;
 
+        // If there's an update available, split content to include update notification
+        let (update_chunk, main_content_chunk) = if self.update_info.is_some() {
+            let split = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([
+                    Constraint::Length(3), // Update notification bar
+                    Constraint::Min(0),    // Main content
+                ])
+                .split(content_chunk);
+            (Some(split[0]), split[1])
+        } else {
+            (None, content_chunk)
+        };
+
+        // Render update notification if available
+        if let (Some(chunk), Some(ref update_info)) = (update_chunk, &self.update_info) {
+            let update_style = if self.update_selected {
+                Style::default()
+                    .fg(Color::Black)
+                    .bg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default()
+                    .fg(Color::Yellow)
+                    .bg(Color::DarkGray)
+                    .add_modifier(Modifier::BOLD)
+            };
+
+            let update_text = format!(
+                " 🎉 New version available: {} → {}  |  Press Enter or run: dotstate upgrade ",
+                update_info.current_version, update_info.latest_version
+            );
+
+            let update_block = Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::Yellow))
+                .border_type(ratatui::widgets::BorderType::Rounded);
+
+            let update_para = Paragraph::new(update_text)
+                .style(update_style)
+                .alignment(Alignment::Center)
+                .block(update_block);
+
+            frame.render_widget(update_para, chunk);
+
+            // Store clickable area for update notification
+            self.update_clickable_area = Some(chunk);
+        } else {
+            self.update_clickable_area = None;
+        }
+
         // Split content into left and right panels
         let content_split = Layout::default()
             .direction(Direction::Horizontal)
@@ -493,7 +564,7 @@ impl Component for MainMenuComponent {
                 Constraint::Percentage(50), // Left panel
                 Constraint::Percentage(50), // Right panel
             ])
-            .split(content_chunk);
+            .split(main_content_chunk);
 
         // Menu items - now using MenuItem enum
         let menu_items = MenuItem::all();
@@ -732,24 +803,39 @@ impl Component for MainMenuComponent {
         let max_index = menu_items.len().saturating_sub(1);
         let current_index = self.selected_item.to_index();
         let is_setup = self.is_setup();
+        let has_update = self.update_info.is_some();
 
         match event {
             Event::Key(key) if key.kind == KeyEventKind::Press => {
                 match key.code {
                     KeyCode::Up => {
-                        if current_index > 0 {
+                        if self.update_selected {
+                            // Can't go up from update notification
+                            Ok(ComponentAction::None)
+                        } else if current_index > 0 {
                             let new_index = current_index - 1;
                             if let Some(item) = MenuItem::from_index(new_index) {
                                 self.selected_item = item;
                                 self.list_state.select_previous();
                             }
                             Ok(ComponentAction::Update)
+                        } else if has_update {
+                            // At top of menu, move to update notification
+                            self.update_selected = true;
+                            self.list_state.select(None);
+                            Ok(ComponentAction::Update)
                         } else {
                             Ok(ComponentAction::None)
                         }
                     }
                     KeyCode::Down => {
-                        if current_index < max_index {
+                        if self.update_selected {
+                            // Move from update notification to first menu item
+                            self.update_selected = false;
+                            self.selected_item = menu_items[0];
+                            self.list_state.select(Some(0));
+                            Ok(ComponentAction::Update)
+                        } else if current_index < max_index {
                             let new_index = current_index + 1;
                             if let Some(item) = MenuItem::from_index(new_index) {
                                 self.selected_item = item;
@@ -761,8 +847,10 @@ impl Component for MainMenuComponent {
                         }
                     }
                     KeyCode::Enter => {
-                        // Only allow Enter if the selected item is enabled
-                        if self.selected_item.is_enabled(is_setup) {
+                        if self.update_selected {
+                            // Trigger update action
+                            Ok(ComponentAction::Custom("show_update_info".to_string()))
+                        } else if self.selected_item.is_enabled(is_setup) {
                             Ok(ComponentAction::Update) // App will handle selection
                         } else {
                             Ok(ComponentAction::None) // Ignore Enter on disabled items
@@ -775,13 +863,27 @@ impl Component for MainMenuComponent {
             Event::Mouse(mouse) => {
                 match mouse.kind {
                     MouseEventKind::Down(MouseButton::Left) => {
-                        // Check if click is in any clickable area
+                        // Check if click is on update notification
+                        if let Some(ref update_rect) = self.update_clickable_area {
+                            if mouse.column >= update_rect.x
+                                && mouse.column < update_rect.x + update_rect.width
+                                && mouse.row >= update_rect.y
+                                && mouse.row < update_rect.y + update_rect.height
+                            {
+                                self.update_selected = true;
+                                self.list_state.select(None);
+                                return Ok(ComponentAction::Custom("show_update_info".to_string()));
+                            }
+                        }
+
+                        // Check if click is in any menu clickable area
                         for (rect, menu_item) in &self.clickable_areas {
                             if mouse.column >= rect.x
                                 && mouse.column < rect.x + rect.width
                                 && mouse.row >= rect.y
                                 && mouse.row < rect.y + rect.height
                             {
+                                self.update_selected = false;
                                 self.selected_item = *menu_item;
                                 let index = menu_item.to_index();
                                 self.list_state.select(Some(index));
@@ -796,17 +898,29 @@ impl Component for MainMenuComponent {
                         }
                     }
                     MouseEventKind::ScrollUp => {
-                        if current_index > 0 {
+                        if self.update_selected {
+                            // Can't scroll up from update
+                            return Ok(ComponentAction::None);
+                        } else if current_index > 0 {
                             let new_index = current_index - 1;
                             if let Some(item) = MenuItem::from_index(new_index) {
                                 self.selected_item = item;
                                 self.list_state.select_previous();
                             }
                             return Ok(ComponentAction::Update);
+                        } else if has_update {
+                            self.update_selected = true;
+                            self.list_state.select(None);
+                            return Ok(ComponentAction::Update);
                         }
                     }
                     MouseEventKind::ScrollDown => {
-                        if current_index < max_index {
+                        if self.update_selected {
+                            self.update_selected = false;
+                            self.selected_item = menu_items[0];
+                            self.list_state.select(Some(0));
+                            return Ok(ComponentAction::Update);
+                        } else if current_index < max_index {
                             let new_index = current_index + 1;
                             if let Some(item) = MenuItem::from_index(new_index) {
                                 self.selected_item = item;

@@ -11,6 +11,7 @@ mod github;
 mod tui;
 mod ui;
 mod utils;
+mod version_check;
 mod widgets;
 
 use app::App;

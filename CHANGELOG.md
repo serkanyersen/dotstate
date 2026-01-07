@@ -13,6 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Uses system git credentials (SSH keys, git credential manager) - no token required
   - New setup mode selection screen on initial setup
   - Validation for local repos (checks for .git directory and origin remote)
+- **Update Notifications**: DotState now checks for updates and notifies you when a new version is available
+  - Update notification banner in main menu
+  - New `dotstate upgrade` CLI command with interactive options
+  - Configurable check interval and ability to disable update checks
+  - Multiple update methods: install script, cargo, or homebrew
 - Package manager feature with support for multiple package managers
 - Profile-based package management
 - Custom package support with user-defined install commands

@@ -4,7 +4,7 @@ use crossterm::event::Event;
 use ratatui::prelude::*;
 
 /// Action that a component can return after handling an event
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ComponentAction {
     /// No action needed
     None,
@@ -14,6 +14,8 @@ pub enum ComponentAction {
     Quit,
     /// Component state was updated, needs re-render
     Update,
+    /// Custom action with a string identifier
+    Custom(String),
 }
 
 /// Trait for all UI components

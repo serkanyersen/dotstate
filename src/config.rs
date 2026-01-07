@@ -13,6 +13,34 @@ pub enum RepoMode {
     Local,
 }
 
+/// Update check configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateConfig {
+    /// Whether to check for updates on startup (default: true)
+    #[serde(default = "default_update_check_enabled")]
+    pub check_enabled: bool,
+    /// Check interval in hours (default: 24)
+    #[serde(default = "default_update_check_interval")]
+    pub check_interval_hours: u64,
+}
+
+impl Default for UpdateConfig {
+    fn default() -> Self {
+        Self {
+            check_enabled: default_update_check_enabled(),
+            check_interval_hours: default_update_check_interval(),
+        }
+    }
+}
+
+fn default_update_check_enabled() -> bool {
+    true
+}
+
+fn default_update_check_interval() -> u64 {
+    24
+}
+
 /// Main configuration structure
 /// Note: Profiles are stored in the repository manifest (.dotstate-profiles.toml), not in this config file.
 /// This config only stores local settings like backup preferences and active profile name.
@@ -42,6 +70,9 @@ pub struct Config {
     /// Custom file paths that the user has added (persists even if removed from sync)
     #[serde(default)]
     pub custom_files: Vec<String>,
+    /// Update check configuration
+    #[serde(default)]
+    pub updates: UpdateConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -172,6 +203,7 @@ impl Config {
             repo_name: default_repo_name(),
             default_branch: "main".to_string(),
             custom_files: Vec::new(),
+            updates: UpdateConfig::default(),
         }
     }
 
