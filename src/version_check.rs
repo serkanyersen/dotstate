@@ -45,32 +45,10 @@ impl UpdateInfo {
 /// # Returns
 /// * `Some(UpdateInfo)` if a newer version is available
 /// * `None` if already up to date or check failed/skipped
-pub fn check_for_updates(interval_hours: u64) -> Option<UpdateInfo> {
-    let current_version = env!("CARGO_PKG_VERSION");
-    let repo = format!("{}/{}", REPO_OWNER, REPO_NAME);
-
-    let informer = update_informer::new(GitHub, &repo, current_version)
-        .interval(Duration::from_secs(interval_hours * 60 * 60));
-
-    match informer.check_version() {
-        Ok(Some(new_version)) => {
-            let version_str = new_version.to_string();
-            Some(UpdateInfo {
-                current_version: current_version.to_string(),
-                latest_version: version_str.clone(),
-                release_url: format!(
-                    "https://github.com/{}/{}/releases/tag/v{}",
-                    REPO_OWNER, REPO_NAME, version_str
-                ),
-            })
-        }
-        Ok(None) => None, // Already up to date
-        Err(e) => {
-            // Log error but don't fail - update checks should be non-blocking
-            tracing::debug!("Failed to check for updates: {}", e);
-            None
-        }
-    }
+pub fn check_for_updates(_interval_hours: u64) -> Option<UpdateInfo> {
+    // Always do a fresh check - the TUI only calls this once at startup anyway
+    // Using Duration::ZERO bypasses the "first run" caching behavior
+    check_for_updates_now()
 }
 
 /// Force check for updates, ignoring the cache
@@ -85,17 +63,19 @@ pub fn check_for_updates_now() -> Option<UpdateInfo> {
     let current_version = env!("CARGO_PKG_VERSION");
     let repo = format!("{}/{}", REPO_OWNER, REPO_NAME);
 
-    // Use Duration::ZERO to disable caching and force a fresh check
-    let informer = update_informer::new(GitHub, &repo, current_version).interval(Duration::ZERO);
+    // Use Duration::ZERO to skip cache and force a fresh check every time
+    let informer =
+        update_informer::new(GitHub, &repo, current_version).interval(Duration::ZERO);
 
     match informer.check_version() {
         Ok(Some(new_version)) => {
             let version_str = new_version.to_string();
+            // version_str already includes 'v' prefix from GitHub tags
             Some(UpdateInfo {
                 current_version: current_version.to_string(),
                 latest_version: version_str.clone(),
                 release_url: format!(
-                    "https://github.com/{}/{}/releases/tag/v{}",
+                    "https://github.com/{}/{}/releases/tag/{}",
                     REPO_OWNER, REPO_NAME, version_str
                 ),
             })
