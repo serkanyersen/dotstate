@@ -84,8 +84,7 @@ impl PushChangesComponent {
                 .as_deref()
                 .unwrap_or("Unknown result")
                 .to_string();
-            // Note: pulled changes count is already included in sync_result message
-            // from app.rs, so we don't need to add it here again
+
             let is_error = result_text.to_lowercase().contains("error")
                 || result_text.to_lowercase().contains("failed");
 

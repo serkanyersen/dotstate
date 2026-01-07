@@ -167,7 +167,9 @@ impl Config {
         // First, check environment variable
         if let Ok(token) = std::env::var("DOTSTATE_GITHUB_TOKEN") {
             if !token.is_empty() {
-                tracing::debug!("Using GitHub token from DOTSTATE_GITHUB_TOKEN environment variable");
+                tracing::debug!(
+                    "Using GitHub token from DOTSTATE_GITHUB_TOKEN environment variable"
+                );
                 return Some(token);
             }
         }
