@@ -104,6 +104,7 @@ brew install serkanyersen/dotstate/dotstate
 
 2. **First-time Setup**:
    - Enter your GitHub token (create one at [github.com/settings/tokens](https://github.com/settings/tokens))
+     - **Tip**: You can also set the `DOTSTATE_GITHUB_TOKEN` environment variable instead of entering it in the TUI
    - Choose repository name and location
    - Select repository visibility (private/public)
 
@@ -149,13 +150,32 @@ dotstate help
 3. **Profiles**: Different profiles can have different sets of files
 4. **Sync**: Changes are committed and synced with GitHub automatically
 
+## Configuration
+
+### GitHub Token
+
+DotState supports two ways to provide your GitHub token:
+
+1. **Environment Variable** (Recommended for automation):
+   ```bash
+   export DOTSTATE_GITHUB_TOKEN=ghp_your_token_here
+   ```
+   The environment variable takes precedence over the config file token.
+
+2. **Config File**: The token can be stored in the config file (set during first-time setup).
+
+**Note**: If `DOTSTATE_GITHUB_TOKEN` is set, it will be used automatically, and the token in the config file becomes optional. This is useful for:
+- CI/CD pipelines
+- Shared machines where you don't want to store tokens in config files
+- Using different tokens for different environments
+
 ## Security Considerations
 
 - **No Shell Injection**: All commands use direct execution, not shell interpretation
 - **Path Validation**: Dangerous paths (like home directory root) are blocked
 - **Git Repository Detection**: Prevents nested Git repositories
 - **Backup System**: Automatic backups before any file operation
-- **Token Security**: GitHub tokens are stored securely in config files
+- **Token Security**: GitHub tokens can be provided via `DOTSTATE_GITHUB_TOKEN` environment variable (recommended) or stored in config files with secure permissions
 
 ## Requirements
 

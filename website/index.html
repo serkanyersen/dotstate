@@ -169,6 +169,11 @@
                             <span class="menu-icon" aria-hidden="true">💡</span>
                             <span class="menu-text">Examples</span>
                         </li>
+                        <li class="menu-item" data-section="configuration">
+                            <span class="menu-arrow" aria-hidden="true"> </span>
+                            <span class="menu-icon" aria-hidden="true">⚙️</span>
+                            <span class="menu-text">Configuration</span>
+                        </li>
                         <li class="menu-item" data-section="security">
                             <span class="menu-arrow" aria-hidden="true"> </span>
                             <span class="menu-icon" aria-hidden="true">🔒</span>
@@ -469,7 +474,11 @@ brew install dotstate" aria-label="Copy command">📋</button>
                                 <h3>First-time Setup</h3>
                                 <p>Configure DotState for the first time:</p>
                                 <ul>
-                                    <li>Enter your GitHub token (create one at <a href="https://github.com/settings/tokens" target="_blank" rel="noopener noreferrer">github.com/settings/tokens</a>)</li>
+                                    <li>Enter your GitHub token (create one at <a href="https://github.com/settings/tokens" target="_blank" rel="noopener noreferrer">github.com/settings/tokens</a>)
+                                        <ul>
+                                            <li><strong>Tip:</strong> You can also set the <code>DOTSTATE_GITHUB_TOKEN</code> environment variable instead of entering it in the TUI</li>
+                                        </ul>
+                                    </li>
                                     <li>Choose repository name and location</li>
                                     <li>Select repository visibility (private/public)</li>
                                 </ul>
@@ -674,6 +683,54 @@ brew install dotstate" aria-label="Copy command">📋</button>
                     </div>
                 </article>
 
+                <!-- Configuration Section -->
+                <article class="content-section" id="configuration">
+                    <div class="section-header">
+                        <span class="section-icon" aria-hidden="true">⚙️</span>
+                        <h2>DotState Configuration - Environment Variables and Settings</h2>
+                    </div>
+                    <div class="section-content">
+                        <p>DotState supports flexible configuration options for GitHub authentication and other settings.</p>
+
+                        <h3>GitHub Token Configuration</h3>
+                        <p>DotState supports two ways to provide your GitHub token:</p>
+
+                        <div class="example-card">
+                            <h4>1. Environment Variable (Recommended for Automation)</h4>
+                            <p>Set the <code>DOTSTATE_GITHUB_TOKEN</code> environment variable:</p>
+                            <div class="code-block">
+                                <code>export DOTSTATE_GITHUB_TOKEN=ghp_your_token_here</code>
+                                <button class="copy-btn" data-copy="export DOTSTATE_GITHUB_TOKEN=ghp_your_token_here" aria-label="Copy command">📋</button>
+                            </div>
+                            <p><strong>Priority:</strong> The environment variable takes precedence over the config file token.</p>
+                            <p><strong>Use cases:</strong></p>
+                            <ul>
+                                <li>CI/CD pipelines</li>
+                                <li>Shared machines where you don't want to store tokens in config files</li>
+                                <li>Using different tokens for different environments</li>
+                                <li>Automated scripts and workflows</li>
+                            </ul>
+                        </div>
+
+                        <div class="example-card">
+                            <h4>2. Config File</h4>
+                            <p>The token can be stored in the config file (set during first-time setup). The config file is located at:</p>
+                            <div class="code-block">
+                                <code>~/.config/dotstate/config.toml</code>
+                                <button class="copy-btn" data-copy="~/.config/dotstate/config.toml" aria-label="Copy path">📋</button>
+                            </div>
+                            <p><strong>Note:</strong> If <code>DOTSTATE_GITHUB_TOKEN</code> is set, it will be used automatically, and the token in the config file becomes optional.</p>
+                        </div>
+
+                        <div class="tip">
+                            <span class="tip-icon" aria-hidden="true">💡</span>
+                            <div>
+                                <strong>Best Practice:</strong> For production environments and automation, use the <code>DOTSTATE_GITHUB_TOKEN</code> environment variable. For personal use, either method works fine.
+                            </div>
+                        </div>
+                    </div>
+                </article>
+
                 <!-- Security Section -->
                 <article class="content-section" id="security">
                     <div class="section-header">
@@ -707,7 +764,7 @@ brew install dotstate" aria-label="Copy command">📋</button>
 
                         <div class="security-card">
                             <h4>🔐 Token Security</h4>
-                            <p>GitHub tokens are stored securely in config files. Use tokens with minimal required permissions (only <code>repo</code> scope).</p>
+                            <p>GitHub tokens can be provided via the <code>DOTSTATE_GITHUB_TOKEN</code> environment variable (recommended for automation) or stored in config files with secure permissions. Use tokens with minimal required permissions (only <code>repo</code> scope).</p>
                         </div>
 
                         <h3>Security Best Practices</h3>

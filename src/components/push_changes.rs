@@ -79,24 +79,13 @@ impl PushChangesComponent {
             let popup_area = center_popup(area, 80, 50);
             frame.render_widget(Clear, popup_area);
 
-            let mut result_text = state
+            let result_text = state
                 .sync_result
                 .as_deref()
                 .unwrap_or("Unknown result")
                 .to_string();
-            // Add pulled changes count if available
-            if let Some(pulled_count) = state.pulled_changes_count {
-                if !result_text.contains("Pulled") {
-                    if pulled_count > 0 {
-                        result_text.push_str(&format!(
-                            "\n\nPulled {} change(s) from remote.",
-                            pulled_count
-                        ));
-                    } else {
-                        result_text.push_str("\n\nNo changes pulled from remote.");
-                    }
-                }
-            }
+            // Note: pulled changes count is already included in sync_result message
+            // from app.rs, so we don't need to add it here again
             let is_error = result_text.to_lowercase().contains("error")
                 || result_text.to_lowercase().contains("failed");
 

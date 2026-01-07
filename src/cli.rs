@@ -89,7 +89,21 @@ impl Cli {
         let branch = git_mgr
             .get_current_branch()
             .unwrap_or_else(|| config.default_branch.clone());
-        let token = config.github.as_ref().and_then(|gh| gh.token.as_deref());
+        let token_string = config.get_github_token();
+        let token = token_string.as_deref();
+
+        if token.is_none() {
+            eprintln!("❌ GitHub token not found.");
+            eprintln!();
+            eprintln!("Please provide a GitHub token using one of these methods:");
+            eprintln!("  1. Set the DOTSTATE_GITHUB_TOKEN environment variable:");
+            eprintln!("     export DOTSTATE_GITHUB_TOKEN=ghp_your_token_here");
+            eprintln!("  2. Configure it in the TUI by running 'dotstate'");
+            eprintln!();
+            eprintln!("Create a token at: https://github.com/settings/tokens");
+            eprintln!("Required scope: repo (full control of private repositories)");
+            std::process::exit(1);
+        }
 
         println!("📝 Committing changes...");
         git_mgr
@@ -130,14 +144,14 @@ impl Cli {
 
     fn cmd_config() -> Result<()> {
         let config_path = crate::utils::get_config_path();
-        println!("Configuration file is located at: {:?}", config_path);
+        println!("{}", config_path.display());
         Ok(())
     }
 
     fn cmd_repository() -> Result<()> {
         let repo_path =
             crate::utils::get_repository_path().context("Failed to get repository path")?;
-        println!("Repository is located at: {:?}", repo_path);
+        println!("{}", repo_path.display());
         Ok(())
     }
 

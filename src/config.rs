@@ -160,6 +160,25 @@ impl Config {
         }
     }
 
+    /// Get GitHub token from environment variable or config
+    /// Priority: DOTSTATE_GITHUB_TOKEN env var > config token
+    /// Returns None if neither is set
+    pub fn get_github_token(&self) -> Option<String> {
+        // First, check environment variable
+        if let Ok(token) = std::env::var("DOTSTATE_GITHUB_TOKEN") {
+            if !token.is_empty() {
+                tracing::debug!("Using GitHub token from DOTSTATE_GITHUB_TOKEN environment variable");
+                return Some(token);
+            }
+        }
+
+        // Fall back to config token
+        self.github
+            .as_ref()
+            .and_then(|gh| gh.token.as_ref())
+            .map(|t| t.clone())
+    }
+
     // Profile-related methods removed - use ProfileManifest directly
     // Helper method removed as it's not used - profiles are accessed via App::get_profiles() instead
 }

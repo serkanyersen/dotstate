@@ -4978,11 +4978,25 @@ impl App {
         let branch = git_mgr
             .get_current_branch()
             .unwrap_or_else(|| self.config.default_branch.clone());
-        let token = self
-            .config
-            .github
-            .as_ref()
-            .and_then(|gh| gh.token.as_deref());
+        let token_string = self.config.get_github_token();
+        let token = token_string.as_deref();
+
+        if token.is_none() {
+            self.ui_state.sync_with_remote.is_syncing = false;
+            self.ui_state.sync_with_remote.sync_progress = None;
+            self.ui_state.sync_with_remote.sync_result = Some(
+                "Error: GitHub token not found.\n\n\
+                Please provide a GitHub token using one of these methods:\n\n\
+                1. Set the DOTSTATE_GITHUB_TOKEN environment variable:\n\
+                   export DOTSTATE_GITHUB_TOKEN=ghp_your_token_here\n\n\
+                2. Configure it in the TUI by going to the main menu\n\n\
+                Create a token at: https://github.com/settings/tokens\n\
+                Required scope: repo (full control of private repositories)"
+                    .to_string(),
+            );
+            self.ui_state.sync_with_remote.show_result_popup = true;
+            return Ok(());
+        }
 
         // Step 1: Commit all changes
         let result = match git_mgr.commit_all("Update dotfiles") {
@@ -5094,12 +5108,24 @@ impl App {
             .unwrap_or_else(|| self.config.default_branch.clone());
 
         // Pull from remote
-        // Get token from config for pull
-        let token = self
-            .config
-            .github
-            .as_ref()
-            .and_then(|gh| gh.token.as_deref());
+        // Get token from environment variable or config
+        let token_string = self.config.get_github_token();
+        let token = token_string.as_deref();
+
+        if token.is_none() {
+            self.ui_state.dotfile_selection.status_message = Some(
+                "Error: GitHub token not found.\n\n\
+                Please provide a GitHub token using one of these methods:\n\n\
+                1. Set the DOTSTATE_GITHUB_TOKEN environment variable:\n\
+                   export DOTSTATE_GITHUB_TOKEN=ghp_your_token_here\n\n\
+                2. Configure it in the TUI by going to the main menu\n\n\
+                Create a token at: https://github.com/settings/tokens\n\
+                Required scope: repo (full control of private repositories)"
+                    .to_string(),
+            );
+            return Ok(());
+        }
+
         match git_mgr.pull("origin", &branch, token) {
             Ok(_) => {
                 self.ui_state.dotfile_selection.status_message = Some(
