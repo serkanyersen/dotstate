@@ -25,6 +25,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Commit messages are now automatically generated from changed files instead of generic "Update dotfiles"
 - Made existence check field optional for custom packages (if empty, uses standard binary name check)
 
+### Fixed
+- Fixed git clone failures caused by `.gitconfig` URL rewrites (e.g., `url."git@github.com:".insteadOf = "https://github.com/"`)
+  - Token is now embedded directly in the URL to bypass gitconfig rewrites
+  - Improved error messages to show underlying git2 errors with troubleshooting tips
+  - Handle existing repositories more gracefully (reuse instead of failing)
+- Fixed `dotstate logs` command showing incomplete path (now includes `dotstate.log` filename)
+
 ## [0.1.0] - 2025-01-XX
 
 ### Added

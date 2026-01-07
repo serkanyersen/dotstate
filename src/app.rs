@@ -2904,25 +2904,22 @@ impl App {
                 }
             }
             GitHubSetupStep::CloningRepo => {
-                // Clone the repository
+                // Clone the repository (or reuse existing if valid)
                 let username = setup_data.username.as_ref().unwrap();
                 let repo_path = self.config.repo_path.clone();
                 let token = setup_data.token.clone();
-
-                // Remove existing directory if it exists
-                if repo_path.exists() {
-                    std::fs::remove_dir_all(&repo_path)
-                        .context("Failed to remove existing directory")?;
-                }
-
                 let remote_url = format!(
                     "https://github.com/{}/{}.git",
                     username, setup_data.repo_name
                 );
-                match GitManager::clone(&remote_url, &repo_path, Some(&token)) {
-                    Ok(_) => {
-                        auth_state.status_message =
-                            Some("✅ Repository cloned successfully!".to_string());
+
+                match GitManager::clone_or_open(&remote_url, &repo_path, Some(&token)) {
+                    Ok((_, was_existing)) => {
+                        auth_state.status_message = Some(if was_existing {
+                            "✅ Using existing repository!".to_string()
+                        } else {
+                            "✅ Repository cloned successfully!".to_string()
+                        });
                         *self.github_auth_component.get_auth_state_mut() = auth_state.clone();
 
                         // Update config
@@ -2939,7 +2936,8 @@ impl App {
                         // Move to discovering profiles
                         auth_state.step =
                             GitHubAuthStep::SetupStep(GitHubSetupStep::DiscoveringProfiles);
-                        auth_state.status_message = Some("🔎 Discovering profiles...".to_string());
+                        auth_state.status_message =
+                            Some("🔎 Discovering profiles...".to_string());
                         setup_data.delay_until =
                             Some(std::time::Instant::now() + Duration::from_millis(600));
                         auth_state.setup_data = Some(setup_data);
@@ -3330,7 +3328,7 @@ impl App {
                 std::thread::sleep(Duration::from_millis(600));
 
                 if exists {
-                    // Step 4: Cloning the repo
+                    // Step 4: Cloning the repo (or reusing existing)
                     auth_state.status_message = Some(format!(
                         "📥 Cloning repository {}/{}...",
                         username, repo_name
@@ -3340,21 +3338,16 @@ impl App {
                     // Small delay before cloning
                     std::thread::sleep(Duration::from_millis(500));
 
-                    // Remove existing directory if it exists
-                    if repo_path.exists() {
-                        std::fs::remove_dir_all(&repo_path)
-                            .context("Failed to remove existing directory")?;
-                    }
-
-                    // Clone existing repository using git2
                     let remote_url = format!("https://github.com/{}/{}.git", username, repo_name);
-                    match GitManager::clone(&remote_url, &repo_path, Some(&token)) {
-                        Ok(_) => {
-                            auth_state.status_message =
-                                Some("✅ Repository cloned successfully!".to_string());
-                            *self.github_auth_component.get_auth_state_mut() = auth_state.clone();
 
-                            // Small delay after cloning
+                    match GitManager::clone_or_open(&remote_url, &repo_path, Some(&token)) {
+                        Ok((_, was_existing)) => {
+                            auth_state.status_message = Some(if was_existing {
+                                "✅ Using existing repository!".to_string()
+                            } else {
+                                "✅ Repository cloned successfully!".to_string()
+                            });
+                            *self.github_auth_component.get_auth_state_mut() = auth_state.clone();
                             std::thread::sleep(Duration::from_millis(500));
                         }
                         Err(e) => {
@@ -3362,6 +3355,8 @@ impl App {
                                 Some(format!("❌ Failed to clone repository: {}", e));
                             auth_state.status_message = None;
                             auth_state.step = GitHubAuthStep::Input;
+                            auth_state.setup_data = None;
+                            *self.github_auth_component.get_auth_state_mut() = auth_state.clone();
                             return Ok(());
                         }
                     }

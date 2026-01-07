@@ -927,26 +927,162 @@ impl GitManager {
         Ok(changed_files)
     }
 
-    /// Clone a repository from a remote URL
-    pub fn clone(url: &str, path: &Path, token: Option<&str>) -> Result<Self> {
-        let mut fetch_options = FetchOptions::new();
+    /// Clone a repository from a remote URL, or reuse existing repository if valid.
+    ///
+    /// This is the preferred method for setting up a repository. It:
+    /// 1. Checks if a valid repository already exists at the path
+    /// 2. Validates the remote URL matches (if `expected_remote_url` is provided)
+    /// 3. Either reuses the existing repo or clones fresh
+    ///
+    /// Returns `Ok((GitManager, was_existing))` where `was_existing` indicates if an
+    /// existing repository was reused.
+    ///
+    /// # Arguments
+    /// * `url` - The remote URL to clone from (without token)
+    /// * `path` - Local path for the repository
+    /// * `token` - Optional GitHub token for authentication
+    pub fn clone_or_open(url: &str, path: &Path, token: Option<&str>) -> Result<(Self, bool)> {
+        // Check if repository already exists
+        if path.join(".git").exists() {
+            debug!(
+                "Repository already exists at {:?}, attempting to open",
+                path
+            );
 
-        // Set up authentication if token is provided
-        if let Some(token) = token {
-            let mut callbacks = RemoteCallbacks::new();
-            let token_clone = token.to_string();
-            callbacks.credentials(move |_url, username, _allowed_types| {
-                Cred::userpass_plaintext(username.unwrap_or("git"), &token_clone)
-            });
-            fetch_options.remote_callbacks(callbacks);
+            match Self::open_or_init(path) {
+                Ok(git_manager) => {
+                    // Validate remote URL matches
+                    if let Err(e) = git_manager.validate_remote_url("origin", url) {
+                        info!(
+                            "Existing repo remote mismatch: {}. Will remove and clone fresh.",
+                            e
+                        );
+                        // Remove and clone fresh
+                        std::fs::remove_dir_all(path)
+                            .with_context(|| format!("Failed to remove directory {:?}", path))?;
+                        let manager = Self::clone(url, path, token)?;
+                        return Ok((manager, false));
+                    }
+
+                    info!("Using existing repository at {:?}", path);
+                    return Ok((git_manager, true));
+                }
+                Err(e) => {
+                    info!(
+                        "Failed to open existing repo at {:?}: {}. Will remove and clone fresh.",
+                        path, e
+                    );
+                    // Not a valid repo, remove it
+                    std::fs::remove_dir_all(path)
+                        .with_context(|| format!("Failed to remove directory {:?}", path))?;
+                }
+            }
+        } else if path.exists() {
+            // Directory exists but not a git repo, remove it
+            info!(
+                "Directory exists at {:?} but is not a git repo. Removing.",
+                path
+            );
+            std::fs::remove_dir_all(path)
+                .with_context(|| format!("Failed to remove directory {:?}", path))?;
         }
 
-        let mut builder = RepoBuilder::new();
-        builder.fetch_options(fetch_options);
+        // Clone fresh
+        let manager = Self::clone(url, path, token)?;
+        Ok((manager, false))
+    }
 
-        let repo = builder
-            .clone(url, path)
-            .with_context(|| format!("Failed to clone repository from {} to {:?}", url, path))?;
+    /// Validate that the repository's remote URL matches the expected URL.
+    ///
+    /// This compares the normalized URLs (without tokens and trailing .git).
+    pub fn validate_remote_url(&self, remote_name: &str, expected_url: &str) -> Result<()> {
+        let remote = self
+            .repo
+            .find_remote(remote_name)
+            .with_context(|| format!("Remote '{}' not found", remote_name))?;
+
+        let actual_url = remote
+            .url()
+            .ok_or_else(|| anyhow::anyhow!("Remote '{}' has no URL", remote_name))?;
+
+        // Normalize URLs for comparison (remove token, trailing .git)
+        let normalize = |url: &str| -> String {
+            let mut normalized = url.to_lowercase();
+
+            // Remove token from URL (https://token@github.com -> https://github.com)
+            if let Some(at_pos) = normalized.find('@') {
+                if normalized.starts_with("https://") {
+                    normalized = format!("https://{}", &normalized[at_pos + 1..]);
+                }
+            }
+
+            // Remove trailing .git
+            if normalized.ends_with(".git") {
+                normalized = normalized[..normalized.len() - 4].to_string();
+            }
+
+            // Remove trailing slash
+            normalized = normalized.trim_end_matches('/').to_string();
+
+            normalized
+        };
+
+        let actual_normalized = normalize(actual_url);
+        let expected_normalized = normalize(expected_url);
+
+        if actual_normalized != expected_normalized {
+            return Err(anyhow::anyhow!(
+                "Remote URL mismatch: expected '{}' but found '{}'",
+                expected_url,
+                actual_url
+            ));
+        }
+
+        Ok(())
+    }
+
+    /// Clone a repository from a remote URL
+    ///
+    /// This function handles authentication by embedding the token directly in the URL
+    /// (format: https://token@github.com/...) to bypass gitconfig URL rewrites
+    /// (e.g., `url."git@github.com:".insteadOf = "https://github.com/"`).
+    ///
+    /// Note: Consider using `clone_or_open` instead, which handles existing repositories gracefully.
+    pub fn clone(url: &str, path: &Path, token: Option<&str>) -> Result<Self> {
+        // Embed token directly in URL to bypass gitconfig URL rewrites
+        // This prevents issues when users have .gitconfig settings like:
+        // [url "git@github.com:"]
+        //     insteadOf = "https://github.com/"
+        let url_with_token = if let Some(token) = token {
+            // If token is not already in URL, embed it
+            if !url.contains('@') && url.starts_with("https://") {
+                // Insert token after "https://"
+                url.replacen("https://", &format!("https://{}@", token), 1)
+            } else {
+                // Token already in URL or not HTTPS, use as-is
+                url.to_string()
+            }
+        } else {
+            url.to_string()
+        };
+
+        let mut builder = RepoBuilder::new();
+
+        // Clone with improved error handling
+        let repo = builder.clone(&url_with_token, path).map_err(|e| {
+            // Provide more detailed error message
+            let error_msg = e.message();
+            anyhow::anyhow!(
+                "Failed to clone repository from {} to {:?}\n\n\
+                Underlying error: {}\n\n\
+                Common causes:\n\
+                - Repository URL rewrite in .gitconfig (try: git config --global --unset url.git@github.com:.insteadOf)\n\
+                - Invalid or expired GitHub token\n\
+                - Network connectivity issues\n\
+                - Repository does not exist or is private and token lacks access",
+                url, path, error_msg
+            )
+        })?;
 
         Ok(Self { repo })
     }
