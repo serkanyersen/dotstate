@@ -4,12 +4,13 @@ use ratatui::widgets::{ListState, ScrollbarState};
 use std::path::PathBuf;
 
 /// Application screens
+/// Application screens
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Screen {
     Welcome,
     MainMenu,
     DotfileSelection,
-    GitHubAuth,
+    ProviderSetup, // Replaces GitHubAuth
     ViewSyncedFiles,
     SyncWithRemote,
     ManageProfiles,
@@ -17,57 +18,89 @@ pub enum Screen {
     ManagePackages,
 }
 
-/// GitHub auth state
+/// Provider setup state (formerly GitHubAuthState)
 #[derive(Debug, Clone)]
-pub struct GitHubAuthState {
+pub struct ProviderSetupState {
+    // Provider selection
+    pub provider_list_state: ListState,
+    pub available_providers: Vec<ProviderType>,
+    pub selected_provider_index: usize,
+
+    // Input fields (generic)
     pub token_input: String,
     pub repo_name_input: String,
-    pub repo_location_input: String,
+    pub repo_location_input: String, // For all providers
+    pub local_path_input: String, // Specific for Local provider
     pub is_private: bool,
-    pub step: GitHubAuthStep,
+
+    pub step: ProviderSetupStep,
     pub error_message: Option<String>,
     pub status_message: Option<String>,
     pub help_scroll: usize,
     pub cursor_position: usize,         // For current input
     pub input_focused: bool,            // Whether input is currently focused
-    pub focused_field: GitHubAuthField, // Which field is currently focused
+    pub focused_field: ProviderSetupField, // Which field is currently focused
     pub is_editing_token: bool,         // Whether we're in "edit token" mode
     pub repo_already_configured: bool,  // Whether repo was already set up
-    /// Intermediate data stored during GitHub setup process
-    pub setup_data: Option<GitHubSetupData>,
+
+    /// Intermediate data stored during setup process
+    pub setup_data: Option<ProviderSetupData>,
 }
 
-/// Intermediate data stored during GitHub setup process
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProviderType {
+    GitHub,
+    // GitLab,
+    Local,
+}
+
+impl std::fmt::Display for ProviderType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ProviderType::GitHub => write!(f, "GitHub"),
+            ProviderType::Local => write!(f, "Local / Custom Remote"),
+        }
+    }
+}
+
+/// Intermediate data stored during setup process
 #[derive(Debug, Clone)]
-pub struct GitHubSetupData {
-    pub token: String,
+pub struct ProviderSetupData {
+    pub provider_type: ProviderType,
+    pub token: Option<String>,
     pub repo_name: String,
+    pub remote_url: Option<String>, // For Local mode custom remote
     pub username: Option<String>,
     pub repo_exists: Option<bool>,
-    pub is_private: bool, // Repository visibility (true = private, false = public)
-    pub delay_until: Option<std::time::Instant>, // For delays between steps
-    pub is_new_repo: bool, // Whether we're creating a new repo (vs cloning existing)
+    pub is_private: bool,
+    pub delay_until: Option<std::time::Instant>,
+    pub is_new_repo: bool,
+    pub push_enabled: bool, // For Local mode
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum GitHubAuthField {
+pub enum ProviderSetupField {
+    ProviderSelection, // Focus on the provider list
     Token,
     RepoName,
     RepoLocation,
+    LocalPath, // Path to local repo/remote
     IsPrivate,
+    PushEnabled, // "Push changes?" checkbox
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum GitHubAuthStep {
-    Input,
+pub enum ProviderSetupStep {
+    Selection, // Selecting provider
+    Input,     // Entering details
     Processing,
     /// State machine for processing setup steps
-    SetupStep(GitHubSetupStep),
+    SetupPhase(ProviderSetupPhase),
 }
 
-/// State machine for GitHub setup process
+/// State machine for setup process
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum GitHubSetupStep {
+pub enum ProviderSetupPhase {
     Connecting,
     ValidatingToken,
     CheckingRepo,
@@ -78,7 +111,7 @@ pub enum GitHubSetupStep {
     Complete,
 }
 
-impl Default for GitHubAuthState {
+impl Default for ProviderSetupState {
     fn default() -> Self {
         let default_repo_path = dirs::home_dir()
             .unwrap_or_else(|| std::path::PathBuf::from("."))
@@ -86,18 +119,26 @@ impl Default for GitHubAuthState {
             .join("dotstate")
             .join("storage");
 
+        let mut list_state = ListState::default();
+        list_state.select(Some(0));
+
         Self {
+            provider_list_state: list_state,
+            available_providers: vec![ProviderType::GitHub, ProviderType::Local],
+            selected_provider_index: 0,
+
             token_input: String::new(),
             repo_name_input: crate::config::default_repo_name(),
             repo_location_input: default_repo_path.to_string_lossy().to_string(),
-            is_private: true, // Private by default
-            step: GitHubAuthStep::Input,
+            local_path_input: String::new(),
+            is_private: true,
+            step: ProviderSetupStep::Selection, // Start at selection
             error_message: None,
             status_message: None,
             help_scroll: 0,
             cursor_position: 0,
-            input_focused: true, // Input starts focused
-            focused_field: GitHubAuthField::Token,
+            input_focused: true,
+            focused_field: ProviderSetupField::ProviderSelection,
             is_editing_token: false,
             repo_already_configured: false,
             setup_data: None,
@@ -385,7 +426,7 @@ pub enum InstallationStatus {
 pub struct UiState {
     pub current_screen: Screen,
     pub selected_index: usize,
-    pub github_auth: GitHubAuthState,
+    pub provider_setup: ProviderSetupState,
     pub dotfile_selection: DotfileSelectionState,
     pub sync_with_remote: SyncWithRemoteState,
     pub profile_manager: ProfileManagerState,
@@ -401,7 +442,7 @@ impl UiState {
         Self {
             current_screen: Screen::Welcome,
             selected_index: 0,
-            github_auth: GitHubAuthState::default(),
+            provider_setup: ProviderSetupState::default(),
             dotfile_selection: DotfileSelectionState::default(),
             sync_with_remote: SyncWithRemoteState::default(),
             profile_manager: ProfileManagerState::default(),

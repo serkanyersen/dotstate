@@ -1,18 +1,20 @@
 use crate::components::package_manager::PackageManagerComponent;
 use crate::components::profile_manager::ProfilePopupType;
 use crate::components::{
-    Component, ComponentAction, DotfileSelectionComponent, GitHubAuthComponent, MainMenuComponent,
-    MenuItem, MessageComponent, ProfileManagerComponent, PushChangesComponent,
+    Component, ComponentAction, DotfileSelectionComponent, MainMenuComponent, MenuItem,
+    MessageComponent, ProfileManagerComponent, ProviderSetupComponent, PushChangesComponent,
     SyncedFilesComponent,
 };
-use crate::config::{Config, GitHubConfig};
+use crate::config::{Config, GitHubConfig, ProviderConfig};
 use crate::file_manager::FileManager;
 use crate::git::GitManager;
-use crate::github::GitHubClient;
+use crate::providers::{GitProvider, RepoInfo};
+use crate::providers::github::GitHubClient;
+use crate::providers::local::LocalProvider;
 use crate::tui::Tui;
 use crate::ui::{
-    AddPackageField, GitHubAuthField, GitHubAuthStep, GitHubSetupStep, InstallationStep,
-    PackagePopupType, PackageStatus, Screen, UiState,
+    AddPackageField, InstallationStep, PackagePopupType, PackageStatus, ProviderSetupField,
+    ProviderSetupPhase, ProviderSetupStep, ProviderType, Screen, UiState,
 };
 use crate::utils::profile_manifest::{Package, PackageManager};
 use anyhow::{Context, Result};
@@ -72,7 +74,7 @@ pub struct App {
     last_screen: Option<Screen>,
     /// Component instances for screens with mouse support
     main_menu_component: MainMenuComponent,
-    github_auth_component: GitHubAuthComponent,
+    provider_setup_component: ProviderSetupComponent,
     dotfile_selection_component: DotfileSelectionComponent,
     synced_files_component: SyncedFilesComponent,
     push_changes_component: PushChangesComponent,
@@ -101,6 +103,7 @@ impl App {
         let ui_state = UiState::new();
 
         let runtime = Runtime::new().context("Failed to create tokio runtime")?;
+
 
         // Initialize syntax highlighting
         let syntax_set = SyntaxSet::load_defaults_newlines();
@@ -134,7 +137,7 @@ impl App {
             runtime,
             last_screen: None,
             main_menu_component: MainMenuComponent::new(has_changes),
-            github_auth_component: GitHubAuthComponent::new(),
+            provider_setup_component: ProviderSetupComponent::new(),
             dotfile_selection_component: DotfileSelectionComponent::new(),
             synced_files_component: SyncedFilesComponent::new(config_clone),
             push_changes_component: PushChangesComponent::new(),
@@ -152,7 +155,7 @@ impl App {
         self.tui.enter()?;
 
         // Check if profile is deactivated and show warning
-        if !self.config.profile_activated && self.config.github.is_some() {
+        if !self.config.profile_activated && (self.config.provider.is_some() || self.config.github.is_some()) {
             warn!("Profile '{}' is deactivated", self.config.active_profile);
             // Profile is deactivated - show warning message
             self.message_component = Some(MessageComponent::new(
@@ -184,9 +187,9 @@ impl App {
                 break;
             }
 
-            // Process GitHub setup state machine if active (before polling events)
-            if let GitHubAuthStep::SetupStep(_) = self.ui_state.github_auth.step {
-                self.process_github_setup_step()?;
+            // Process Provider setup state machine if active (before polling events)
+            if let ProviderSetupStep::SetupPhase(_) = self.ui_state.provider_setup.step {
+                self.process_provider_setup_step()?;
             }
 
             // Process package checking if active (before polling events)
@@ -291,9 +294,9 @@ impl App {
                 .update_changed_files(self.ui_state.sync_with_remote.changed_files.clone());
         }
 
-        // Update GitHub auth component state
-        if self.ui_state.current_screen == Screen::GitHubAuth {
-            *self.github_auth_component.get_auth_state_mut() = self.ui_state.github_auth.clone();
+        // Update Provider setup component state
+        if self.ui_state.current_screen == Screen::ProviderSetup {
+            *self.provider_setup_component.get_setup_state_mut() = self.ui_state.provider_setup.clone();
         }
 
         // DotfileSelectionComponent just handles Clear widget, state stays in ui_state
@@ -351,15 +354,26 @@ impl App {
                     if let Some(ref mut msg_component) = self.message_component {
                         let _ = msg_component.render(frame, area);
                     } else {
-                        // Pass config to main menu for stats
+                        // Pass config and sync status to main menu
                         self.main_menu_component.update_config(config_clone.clone());
+                        self.main_menu_component.set_has_changes_to_push(self.ui_state.has_changes_to_push);
+                        self.main_menu_component.update_changed_files(self.ui_state.sync_with_remote.changed_files.clone());
                         let _ = self.main_menu_component.render(frame, area);
                     }
                 }
-                Screen::GitHubAuth => {
-                    // Sync state back after render (component may update it)
-                    let _ = self.github_auth_component.render(frame, area);
-                    self.ui_state.github_auth = self.github_auth_component.get_auth_state().clone();
+                Screen::ProviderSetup => {
+                    // Sync state to component before render
+                    // DEBUG LOGGING
+                    {
+                        use std::io::Write;
+                        if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open("debug_verbose.log") {
+                             writeln!(file, "App::draw(ProviderSetup) - Providers count in UI state: {}", self.ui_state.provider_setup.available_providers.len()).ok();
+                        }
+                    }
+                    *self.provider_setup_component.get_setup_state_mut() = self.ui_state.provider_setup.clone();
+                    let _ = self.provider_setup_component.render(frame, area);
+                    // Sync state back from component (if needed for mouse interactions affecting state)
+                    self.ui_state.provider_setup = self.provider_setup_component.get_setup_state().clone();
                 }
                 Screen::DotfileSelection => {
                     // Component handles all rendering including Clear
@@ -602,24 +616,24 @@ impl App {
                 }
                 return Ok(());
             }
-            Screen::GitHubAuth => {
+            Screen::ProviderSetup => {
                 // Let component handle mouse events, but keyboard events go to app
                 if matches!(event, Event::Mouse(_)) {
-                    let action = self.github_auth_component.handle_event(event)?;
+                    let action = self.provider_setup_component.handle_event(event)?;
                     if action == ComponentAction::Update {
                         // Sync state back
-                        self.ui_state.github_auth =
-                            self.github_auth_component.get_auth_state().clone();
+                        self.ui_state.provider_setup =
+                            self.provider_setup_component.get_setup_state().clone();
                     }
                     return Ok(());
                 }
                 // Keyboard events handled in app (complex logic)
                 if let Event::Key(key) = event {
                     if key.kind == KeyEventKind::Press {
-                        self.handle_github_auth_input(key)?;
+                        self.handle_provider_setup_input(key)?;
                         // Sync state to component
-                        *self.github_auth_component.get_auth_state_mut() =
-                            self.ui_state.github_auth.clone();
+                        *self.provider_setup_component.get_setup_state_mut() =
+                            self.ui_state.provider_setup.clone();
                     }
                 }
                 return Ok(());
@@ -2301,10 +2315,8 @@ impl App {
                     self.handle_dotfile_selection_input(key.code)?;
                 }
             }
-            Event::Mouse(mouse) => {
-                self.handle_mouse(mouse)?;
-            }
             _ => {}
+
         }
         Ok(())
     }
@@ -2321,26 +2333,29 @@ impl App {
 
         match selected_item {
             MenuItem::SetupGitHub => {
-                // Setup GitHub Repository
-                // Check if repo is already configured
-                let is_configured = self.config.github.is_some();
+                // Setup Provider (GitHub/Local)
+                // Check if provider is already configured
+                let is_configured = self.config.provider.is_some() || self.config.github.is_some();
 
-                // Initialize auth state with current config values
+                // Initialize setup state
+                let setup_state = &mut self.ui_state.provider_setup;
+
                 if is_configured {
-                    self.ui_state.github_auth.repo_already_configured = true;
-                    self.ui_state.github_auth.is_editing_token = false;
-                    self.ui_state.github_auth.token_input = String::new(); // Clear for security
-                                                                           // Load existing values
-                    self.ui_state.github_auth.repo_name_input = self.config.repo_name.clone();
-                    self.ui_state.github_auth.repo_location_input =
-                        self.config.repo_path.to_string_lossy().to_string();
-                    self.ui_state.github_auth.is_private = true; // Default to private
+                    setup_state.repo_already_configured = true;
+                    setup_state.is_editing_token = false;
+                    setup_state.token_input = String::new(); // Clear for security
+                    // Load existing values if possible
+                    setup_state.repo_name_input = self.config.repo_name.clone();
+                    setup_state.repo_location_input = self.config.repo_path.to_string_lossy().to_string();
+                    setup_state.is_private = true;
                 } else {
-                    self.ui_state.github_auth.repo_already_configured = false;
-                    self.ui_state.github_auth.is_editing_token = false;
+                    setup_state.repo_already_configured = false;
+                    setup_state.is_editing_token = false;
                 }
 
-                self.ui_state.current_screen = Screen::GitHubAuth;
+                // Reset step to Selection
+                setup_state.step = ProviderSetupStep::Selection;
+                self.ui_state.current_screen = Screen::ProviderSetup;
             }
             MenuItem::ScanDotfiles => {
                 // Manage Files
@@ -2394,8 +2409,8 @@ impl App {
         self.ui_state.has_changes_to_push = false;
         self.ui_state.sync_with_remote.changed_files.clear();
 
-        // Check if GitHub is configured and repo exists
-        if self.config.github.is_none() {
+        // Check if provider is configured and repo exists
+        if self.config.provider.is_none() && self.config.github.is_none() {
             return;
         }
 
@@ -2411,1361 +2426,451 @@ impl App {
         };
 
         // Get changed files (this includes both uncommitted and unpushed)
-        match git_mgr.get_changed_files() {
+        // Get changed files (this includes separate uncommitted changes)
+        let has_local_changes = match git_mgr.get_changed_files() {
             Ok(files) => {
+                // DEBUG LOGGING
+                {
+                    use std::io::Write;
+                    if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open("debug_verbose.log") {
+                            writeln!(file, "check_changes_to_push - Found {} changed files", files.len()).ok();
+                            for f in &files {
+                                writeln!(file, "  - {}", f).ok();
+                            }
+                    }
+                }
                 self.ui_state.sync_with_remote.changed_files = files;
-                self.ui_state.has_changes_to_push =
-                    !self.ui_state.sync_with_remote.changed_files.is_empty();
+                !self.ui_state.sync_with_remote.changed_files.is_empty()
             }
-            Err(_) => {
-                // Fallback to old method if get_changed_files fails
-                // Check for uncommitted changes
-                let has_uncommitted = git_mgr.has_uncommitted_changes().unwrap_or(false);
+            Err(e) => {
+                // DEBUG LOGGING
+                {
+                    use std::io::Write;
+                    if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open("debug_verbose.log") {
+                            writeln!(file, "check_changes_to_push - Error getting changed files: {}", e).ok();
+                    }
+                }
+                false
+            },
+        };
 
-                // Check for unpushed commits
-                let branch = git_mgr
-                    .get_current_branch()
-                    .unwrap_or_else(|| "main".to_string());
-                let has_unpushed = git_mgr
-                    .has_unpushed_commits("origin", &branch)
-                    .unwrap_or(false);
+        // Check for unpushed commits regardless of local changes
+        let branch = git_mgr
+            .get_current_branch()
+            .unwrap_or_else(|| "main".to_string());
 
-                self.ui_state.has_changes_to_push = has_uncommitted || has_unpushed;
+        let has_unpushed = git_mgr
+            .has_unpushed_commits("origin", &branch)
+            .unwrap_or(false);
+
+        // DEBUG LOGGING
+        {
+            use std::io::Write;
+            if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open("debug_verbose.log") {
+                    writeln!(file, "check_changes_to_push - Unpushed: {}, Local: {}", has_unpushed, has_local_changes).ok();
             }
         }
+
+        self.ui_state.has_changes_to_push = has_local_changes || has_unpushed;
     }
 
-    fn handle_github_auth_input(&mut self, key: KeyEvent) -> Result<()> {
-        let auth_state = &mut self.ui_state.github_auth;
-        auth_state.error_message = None;
+    fn handle_provider_setup_input(&mut self, key: KeyEvent) -> Result<()> {
+        let setup_state = &mut self.ui_state.provider_setup;
 
-        match auth_state.step {
-            GitHubAuthStep::Input => {
-                // Handle "Update Token" action if repo is configured
-                if auth_state.repo_already_configured && !auth_state.is_editing_token {
-                    match key.code {
-                        KeyCode::Char('u') | KeyCode::Char('U') => {
-                            // Enable token editing
-                            auth_state.is_editing_token = true;
-                            auth_state.token_input = String::new(); // Clear token for new input
-                            auth_state.cursor_position = 0;
-                            auth_state.focused_field = GitHubAuthField::Token;
-                            return Ok(());
-                        }
-                        KeyCode::Esc => {
-                            self.ui_state.current_screen = Screen::MainMenu;
-                            *auth_state = Default::default();
-                            return Ok(());
-                        }
-                        _ => {
-                            // Ignore other keys when repo is configured and not editing
-                            return Ok(());
+        match setup_state.step {
+            ProviderSetupStep::Selection => {
+                 match key.code {
+                    KeyCode::Up | KeyCode::Char('k') => {
+                        let current = setup_state.selected_provider_index;
+                        if current > 0 {
+                            setup_state.selected_provider_index -= 1;
+                            setup_state.provider_list_state.select(Some(setup_state.selected_provider_index));
                         }
                     }
-                }
-
-                // Check for Ctrl+S
-                if key.code == KeyCode::Char('s') && key.modifiers.contains(KeyModifiers::CONTROL) {
-                    if auth_state.repo_already_configured && auth_state.is_editing_token {
-                        // Just update the token
-                        self.update_github_token()?;
-                    } else if !auth_state.repo_already_configured {
-                        // Full setup - initialize state machine
-                        let token = auth_state.token_input.trim().to_string();
-                        let repo_name = self.config.repo_name.clone();
-
-                        // Validate token format first
-                        if !token.starts_with("ghp_") {
-                            let actual_start = if token.len() >= 4 {
-                                &token[..4]
-                            } else {
-                                "too short"
-                            };
-                            auth_state.error_message = Some(
-                                format!(
-                                    "❌ Invalid token format: Must start with 'ghp_' but starts with '{}'.\n\
-                                    Token length: {} characters.\n\
-                                    First 10 chars: '{}'\n\
-                                    Please check that you copied the entire token correctly.\n\
-                                    Make sure you're pasting the full token (40+ characters).",
-                                    actual_start,
-                                    token.len(),
-                                    if token.len() >= 10 { &token[..10] } else { &token }
-                                )
-                            );
-                            return Ok(());
+                    KeyCode::Down | KeyCode::Char('j') => {
+                        let current = setup_state.selected_provider_index;
+                        if current < setup_state.available_providers.len().saturating_sub(1) {
+                            setup_state.selected_provider_index += 1;
+                            setup_state.provider_list_state.select(Some(setup_state.selected_provider_index));
                         }
-
-                        if token.len() < 40 {
-                            auth_state.error_message = Some(format!(
-                                "❌ Token appears incomplete: {} characters (expected 40+).\n\
-                                    First 10 chars: '{}'\n\
-                                    Make sure you copied the entire token from GitHub.",
-                                token.len(),
-                                &token[..token.len().min(10)]
-                            ));
-                            return Ok(());
-                        }
-
-                        // Initialize setup state machine
-                        auth_state.step =
-                            GitHubAuthStep::SetupStep(crate::ui::GitHubSetupStep::Connecting);
-                        auth_state.status_message = Some("🔌 Connecting to GitHub...".to_string());
-                        auth_state.setup_data = Some(crate::ui::GitHubSetupData {
-                            token,
-                            repo_name,
-                            username: None,
-                            repo_exists: None,
-                            is_private: auth_state.is_private,
-                            delay_until: Some(
-                                std::time::Instant::now() + Duration::from_millis(500),
-                            ),
-                            is_new_repo: false, // Will be set when we know if repo exists
-                        });
-                        *self.github_auth_component.get_auth_state_mut() = auth_state.clone();
                     }
-                    return Ok(());
+                    KeyCode::Enter => {
+                         setup_state.step = ProviderSetupStep::Input;
+                         let provider = &setup_state.available_providers[setup_state.selected_provider_index];
+                         if matches!(provider, ProviderType::Local) {
+                             setup_state.focused_field = ProviderSetupField::LocalPath;
+                             setup_state.input_focused = true;
+                         } else {
+                             setup_state.focused_field = ProviderSetupField::Token;
+                             setup_state.input_focused = true;
+                         }
+                    }
+                    KeyCode::Esc => {
+                        // Return to main menu
+                        self.ui_state.current_screen = Screen::MainMenu;
+                    }
+                    _ => {}
                 }
+            }
+            ProviderSetupStep::Input => {
+                 let provider = if setup_state.selected_provider_index < setup_state.available_providers.len() {
+                    setup_state.available_providers[setup_state.selected_provider_index].clone()
+                } else {
+                    ProviderType::GitHub
+                };
 
-                // Normal input handling (new setup or token editing mode)
                 match key.code {
-                    // Tab: Navigate to next field (only if not repo configured)
-                    KeyCode::Tab if !auth_state.repo_already_configured => {
-                        auth_state.focused_field = match auth_state.focused_field {
-                            GitHubAuthField::Token => GitHubAuthField::RepoName,
-                            GitHubAuthField::RepoName => GitHubAuthField::RepoLocation,
-                            GitHubAuthField::RepoLocation => GitHubAuthField::IsPrivate,
-                            GitHubAuthField::IsPrivate => GitHubAuthField::Token,
-                        };
-                        // Reset cursor position to end of new field
-                        auth_state.cursor_position = match auth_state.focused_field {
-                            GitHubAuthField::Token => auth_state.token_input.chars().count(),
-                            GitHubAuthField::RepoName => auth_state.repo_name_input.chars().count(),
-                            GitHubAuthField::RepoLocation => {
-                                auth_state.repo_location_input.chars().count()
+                    KeyCode::Tab => {
+                        match provider {
+                            ProviderType::GitHub => {
+                                setup_state.focused_field = match setup_state.focused_field {
+                                    ProviderSetupField::Token => ProviderSetupField::RepoName,
+                                    ProviderSetupField::RepoName => ProviderSetupField::IsPrivate,
+                                    ProviderSetupField::IsPrivate => ProviderSetupField::Token,
+                                    _ => ProviderSetupField::Token,
+                                };
                             }
-                            GitHubAuthField::IsPrivate => 0,
-                        };
+                            ProviderType::Local => {
+                                 setup_state.focused_field = match setup_state.focused_field {
+                                    ProviderSetupField::LocalPath => ProviderSetupField::PushEnabled,
+                                    ProviderSetupField::PushEnabled => ProviderSetupField::LocalPath,
+                                    _ => ProviderSetupField::LocalPath,
+                                };
+                            }
+                        }
                     }
-                    // BackTab: Navigate to previous field (Shift+Tab) (only if not repo configured)
-                    KeyCode::BackTab if !auth_state.repo_already_configured => {
-                        auth_state.focused_field = match auth_state.focused_field {
-                            GitHubAuthField::Token => GitHubAuthField::IsPrivate,
-                            GitHubAuthField::RepoName => GitHubAuthField::Token,
-                            GitHubAuthField::RepoLocation => GitHubAuthField::RepoName,
-                            GitHubAuthField::IsPrivate => GitHubAuthField::RepoLocation,
-                        };
-                        auth_state.cursor_position = match auth_state.focused_field {
-                            GitHubAuthField::Token => auth_state.token_input.chars().count(),
-                            GitHubAuthField::RepoName => auth_state.repo_name_input.chars().count(),
-                            GitHubAuthField::RepoLocation => {
-                                auth_state.repo_location_input.chars().count()
-                            }
-                            GitHubAuthField::IsPrivate => 0,
-                        };
+                    KeyCode::Enter => {
+                         self.initiate_provider_setup()?;
+                    }
+                    KeyCode::Esc => {
+                        setup_state.step = ProviderSetupStep::Selection;
                     }
                     KeyCode::Char(c) => {
-                        // Handle Space for visibility toggle
-                        if c == ' '
-                            && auth_state.focused_field == GitHubAuthField::IsPrivate
-                            && !auth_state.repo_already_configured
-                        {
-                            auth_state.is_private = !auth_state.is_private;
-                        } else {
-                            // Regular character input (only if not disabled)
-                            match auth_state.focused_field {
-                                GitHubAuthField::Token
-                                    if !auth_state.repo_already_configured
-                                        || auth_state.is_editing_token =>
-                                {
-                                    crate::utils::handle_char_insertion(
-                                        &mut auth_state.token_input,
-                                        &mut auth_state.cursor_position,
-                                        c,
-                                    );
-                                }
-                                GitHubAuthField::RepoName
-                                    if !auth_state.repo_already_configured =>
-                                {
-                                    crate::utils::handle_char_insertion(
-                                        &mut auth_state.repo_name_input,
-                                        &mut auth_state.cursor_position,
-                                        c,
-                                    );
-                                }
-                                GitHubAuthField::RepoLocation
-                                    if !auth_state.repo_already_configured =>
-                                {
-                                    crate::utils::handle_char_insertion(
-                                        &mut auth_state.repo_location_input,
-                                        &mut auth_state.cursor_position,
-                                        c,
-                                    );
-                                }
-                                _ => {}
+                        match setup_state.focused_field {
+                            ProviderSetupField::Token => setup_state.token_input.push(c),
+                            ProviderSetupField::RepoName => setup_state.repo_name_input.push(c),
+                            ProviderSetupField::LocalPath => setup_state.local_path_input.push(c),
+                            ProviderSetupField::RepoLocation => setup_state.repo_location_input.push(c),
+                            ProviderSetupField::IsPrivate => {
+                                if c == ' ' { setup_state.is_private = !setup_state.is_private; }
                             }
+                            _ => {}
                         }
                     }
-                    // Navigation within input
-                    KeyCode::Left | KeyCode::Right | KeyCode::Home | KeyCode::End => {
-                        let current_input = match auth_state.focused_field {
-                            GitHubAuthField::Token => &auth_state.token_input,
-                            GitHubAuthField::RepoName => &auth_state.repo_name_input,
-                            GitHubAuthField::RepoLocation => &auth_state.repo_location_input,
-                            GitHubAuthField::IsPrivate => "",
-                        };
-                        crate::utils::handle_cursor_movement(
-                            current_input,
-                            &mut auth_state.cursor_position,
-                            key.code,
-                        );
-                    }
-                    // Backspace
-                    KeyCode::Backspace => match auth_state.focused_field {
-                        GitHubAuthField::Token => {
-                            crate::utils::handle_backspace(
-                                &mut auth_state.token_input,
-                                &mut auth_state.cursor_position,
-                            );
-                        }
-                        GitHubAuthField::RepoName => {
-                            crate::utils::handle_backspace(
-                                &mut auth_state.repo_name_input,
-                                &mut auth_state.cursor_position,
-                            );
-                        }
-                        GitHubAuthField::RepoLocation => {
-                            crate::utils::handle_backspace(
-                                &mut auth_state.repo_location_input,
-                                &mut auth_state.cursor_position,
-                            );
-                        }
-                        GitHubAuthField::IsPrivate => {}
-                    },
-                    // Delete
-                    KeyCode::Delete => match auth_state.focused_field {
-                        GitHubAuthField::Token => {
-                            crate::utils::handle_delete(
-                                &mut auth_state.token_input,
-                                &mut auth_state.cursor_position,
-                            );
-                        }
-                        GitHubAuthField::RepoName => {
-                            crate::utils::handle_delete(
-                                &mut auth_state.repo_name_input,
-                                &mut auth_state.cursor_position,
-                            );
-                        }
-                        GitHubAuthField::RepoLocation => {
-                            crate::utils::handle_delete(
-                                &mut auth_state.repo_location_input,
-                                &mut auth_state.cursor_position,
-                            );
-                        }
-                        GitHubAuthField::IsPrivate => {}
-                    },
-                    KeyCode::Esc => {
-                        self.ui_state.current_screen = Screen::MainMenu;
-                        *auth_state = Default::default();
+                    KeyCode::Backspace => {
+                         match setup_state.focused_field {
+                            ProviderSetupField::Token => { setup_state.token_input.pop(); },
+                            ProviderSetupField::RepoName => { setup_state.repo_name_input.pop(); },
+                            ProviderSetupField::LocalPath => { setup_state.local_path_input.pop(); },
+                             _ => {}
+                         }
                     }
                     _ => {}
                 }
             }
-            GitHubAuthStep::Processing => {
-                // Allow user to continue after processing completes
-                // This state is no longer used - Complete step handles transition automatically
-                match key.code {
-                    KeyCode::Enter | KeyCode::Char(' ') => {
-                        // If we're still in Processing (shouldn't happen with new flow), transition
-                        if !self.ui_state.profile_selection.profiles.is_empty() {
-                            self.ui_state.current_screen = Screen::ProfileSelection;
-                        } else {
-                            self.ui_state.current_screen = Screen::MainMenu;
-                            *auth_state = Default::default();
-                        }
-                    }
-                    KeyCode::Esc => {
-                        // Reset and go back
-                        self.ui_state.current_screen = Screen::MainMenu;
-                        *auth_state = Default::default();
-                    }
-                    _ => {}
-                }
-            }
-            GitHubAuthStep::SetupStep(_) => {
-                // Setup is in progress, ignore input (or allow Esc to cancel)
-                if key.code == KeyCode::Esc {
-                    // Cancel setup
-                    *auth_state = Default::default();
-                    self.ui_state.current_screen = Screen::MainMenu;
-                }
-            }
+             _ => {}
         }
         Ok(())
     }
 
-    fn update_github_token(&mut self) -> Result<()> {
-        let auth_state = &mut self.ui_state.github_auth;
-        let token = auth_state.token_input.trim().to_string();
+    fn initiate_provider_setup(&mut self) -> Result<()> {
+        let setup_state = &mut self.ui_state.provider_setup;
 
-        // Validate token format
-        if token.is_empty() {
-            auth_state.error_message = Some("Token cannot be empty".to_string());
-            return Ok(());
-        }
-
-        if !token.starts_with("ghp_") {
-            auth_state.error_message =
-                Some("Token format error: GitHub tokens must start with 'ghp_'".to_string());
-            return Ok(());
-        }
-
-        if token.len() < 40 {
-            auth_state.error_message = Some(format!(
-                "Token appears incomplete: {} characters (expected 40+)",
-                token.len()
-            ));
-            return Ok(());
-        }
-
-        // Validate token with GitHub API
-        auth_state.status_message = Some("Validating token...".to_string());
-
-        let rt = Runtime::new()?;
-        let result = rt.block_on(async {
-            let client = reqwest::Client::new();
-            client
-                .get("https://api.github.com/user")
-                .header("Authorization", format!("Bearer {}", token))
-                .header("User-Agent", "dotstate")
-                .send()
-                .await
-        });
-
-        match result {
-            Ok(response) if response.status().is_success() => {
-                // Token is valid, update config
-                if let Some(github) = &mut self.config.github {
-                    github.token = Some(token.clone());
-                    self.config.save(&crate::utils::get_config_path())?;
-
-                    auth_state.status_message = Some("Token updated successfully!".to_string());
-                    auth_state.is_editing_token = false;
-                    auth_state.token_input = String::new(); // Clear for security
-
-                    // Sync back to component
-                    *self.github_auth_component.get_auth_state_mut() = auth_state.clone();
-                } else {
-                    auth_state.error_message = Some(
-                        "GitHub configuration not found. Please complete setup first.".to_string(),
-                    );
-                    auth_state.status_message = None;
-                }
-            }
-            Ok(response) => {
-                let status = response.status();
-                auth_state.error_message = Some(format!(
-                    "Token validation failed: HTTP {}\nPlease check your token.",
-                    status
-                ));
-                auth_state.status_message = None;
-            }
-            Err(e) => {
-                auth_state.error_message = Some(format!(
-                    "Network error: {}\nPlease check your internet connection.",
-                    e
-                ));
-                auth_state.status_message = None;
-            }
-        }
-
-        Ok(())
-    }
-
-    /// Process one step of the GitHub setup state machine
-    /// Called from the event loop to allow UI updates between steps
-    fn process_github_setup_step(&mut self) -> Result<()> {
-        let auth_state = &mut self.ui_state.github_auth;
-
-        // Get setup_data, cloning if needed to avoid borrow issues
-        let setup_data_opt = auth_state.setup_data.clone();
-        let mut setup_data = match setup_data_opt {
-            Some(data) => data,
-            None => {
-                // No setup data, reset to input
-                auth_state.step = GitHubAuthStep::Input;
-                return Ok(());
-            }
-        };
-
-        // Check if we need to wait for a delay
-        if let Some(delay_until) = setup_data.delay_until {
-            if std::time::Instant::now() < delay_until {
-                // Still waiting, don't process yet - save state and return
-                auth_state.setup_data = Some(setup_data);
-                return Ok(());
-            }
-            // Delay complete, clear it
-            setup_data.delay_until = None;
-        }
-
-        // Process current step - extract the step from the enum
-        let current_step = if let GitHubAuthStep::SetupStep(step) = auth_state.step {
-            step
-        } else {
-            // Not in setup, clear data
-            auth_state.setup_data = Some(setup_data);
-            return Ok(());
-        };
-
-        match current_step {
-            GitHubSetupStep::Connecting => {
-                // Move to validating token
-                auth_state.step = GitHubAuthStep::SetupStep(GitHubSetupStep::ValidatingToken);
-                auth_state.status_message = Some("🔑 Validating your token...".to_string());
-                setup_data.delay_until =
-                    Some(std::time::Instant::now() + Duration::from_millis(800));
-                auth_state.setup_data = Some(setup_data);
-                *self.github_auth_component.get_auth_state_mut() = auth_state.clone();
-            }
-            GitHubSetupStep::ValidatingToken => {
-                // Perform async validation
-                let token = setup_data.token.clone();
-                let repo_name = setup_data.repo_name.clone();
-
-                let result = self.runtime.block_on(async {
-                    let client = GitHubClient::new(token.clone());
-                    let user = client.get_user().await?;
-                    let repo_exists = client.repo_exists(&user.login, &repo_name).await?;
-                    Ok::<(String, bool), anyhow::Error>((user.login, repo_exists))
-                });
-
-                match result {
-                    Ok((username, exists)) => {
-                        setup_data.username = Some(username.clone());
-                        setup_data.repo_exists = Some(exists);
-                        setup_data.delay_until =
-                            Some(std::time::Instant::now() + Duration::from_millis(600));
-
-                        // Move to checking repo step
-                        auth_state.step = GitHubAuthStep::SetupStep(GitHubSetupStep::CheckingRepo);
-                        auth_state.status_message =
-                            Some("🔍 Checking if repository exists...".to_string());
-                        auth_state.setup_data = Some(setup_data); // Save setup_data with username and repo_exists
-                        *self.github_auth_component.get_auth_state_mut() = auth_state.clone();
-                    }
-                    Err(e) => {
-                        auth_state.error_message = Some(format!("❌ Authentication failed: {}", e));
-                        auth_state.status_message = None;
-                        auth_state.step = GitHubAuthStep::Input;
-                        auth_state.setup_data = None;
-                        *self.github_auth_component.get_auth_state_mut() = auth_state.clone();
-                        return Ok(());
-                    }
-                }
-            }
-            GitHubSetupStep::CheckingRepo => {
-                // Move to next step based on whether repo exists
-                // Ensure we have username and repo_exists set
-                if setup_data.username.is_none() || setup_data.repo_exists.is_none() {
-                    error!("Invalid state: username or repo_exists not set in CheckingRepo step");
-                    auth_state.error_message = Some(
-                        "❌ Internal error: Setup state is invalid. Please try again.".to_string(),
-                    );
-                    auth_state.status_message = None;
-                    auth_state.step = GitHubAuthStep::Input;
-                    auth_state.setup_data = None;
-                    *self.github_auth_component.get_auth_state_mut() = auth_state.clone();
-                    return Ok(());
-                }
-
-                if setup_data.repo_exists == Some(true) {
-                    auth_state.step = GitHubAuthStep::SetupStep(GitHubSetupStep::CloningRepo);
-                    let username = setup_data.username.as_ref().unwrap(); // Safe now after check
-                    auth_state.status_message = Some(format!(
-                        "📥 Cloning repository {}/{}...",
-                        username, setup_data.repo_name
-                    ));
-                    setup_data.delay_until =
-                        Some(std::time::Instant::now() + Duration::from_millis(500));
-                    auth_state.setup_data = Some(setup_data);
-                    *self.github_auth_component.get_auth_state_mut() = auth_state.clone();
-                } else {
-                    auth_state.step = GitHubAuthStep::SetupStep(GitHubSetupStep::CreatingRepo);
-                    let username = setup_data.username.as_ref().unwrap(); // Safe now after check
-                    auth_state.status_message = Some(format!(
-                        "📦 Creating repository {}/{}...",
-                        username, setup_data.repo_name
-                    ));
-                    setup_data.delay_until =
-                        Some(std::time::Instant::now() + Duration::from_millis(600));
-                    auth_state.setup_data = Some(setup_data);
-                    *self.github_auth_component.get_auth_state_mut() = auth_state.clone();
-                }
-            }
-            GitHubSetupStep::CloningRepo => {
-                // Clone the repository
-                let username = setup_data.username.as_ref().unwrap();
-                let repo_path = self.config.repo_path.clone();
-                let token = setup_data.token.clone();
-
-                // Remove existing directory if it exists
-                if repo_path.exists() {
-                    std::fs::remove_dir_all(&repo_path)
-                        .context("Failed to remove existing directory")?;
-                }
-
-                let remote_url = format!(
-                    "https://github.com/{}/{}.git",
-                    username, setup_data.repo_name
-                );
-                match GitManager::clone(&remote_url, &repo_path, Some(&token)) {
-                    Ok(_) => {
-                        auth_state.status_message =
-                            Some("✅ Repository cloned successfully!".to_string());
-                        *self.github_auth_component.get_auth_state_mut() = auth_state.clone();
-
-                        // Update config
-                        self.config.github = Some(GitHubConfig {
-                            owner: username.clone(),
-                            repo: setup_data.repo_name.clone(),
-                            token: Some(token.clone()),
-                        });
-                        self.config.repo_name = setup_data.repo_name.clone();
-                        self.config
-                            .save(&self.config_path)
-                            .context("Failed to save configuration")?;
-
-                        // Move to discovering profiles
-                        auth_state.step =
-                            GitHubAuthStep::SetupStep(GitHubSetupStep::DiscoveringProfiles);
-                        auth_state.status_message = Some("🔎 Discovering profiles...".to_string());
-                        setup_data.delay_until =
-                            Some(std::time::Instant::now() + Duration::from_millis(600));
-                        auth_state.setup_data = Some(setup_data);
-                        *self.github_auth_component.get_auth_state_mut() = auth_state.clone();
-                    }
-                    Err(e) => {
-                        auth_state.error_message =
-                            Some(format!("❌ Failed to clone repository: {}", e));
-                        auth_state.status_message = None;
-                        auth_state.step = GitHubAuthStep::Input;
-                        auth_state.setup_data = None;
-                        *self.github_auth_component.get_auth_state_mut() = auth_state.clone();
-                        return Ok(());
-                    }
-                }
-            }
-            GitHubSetupStep::CreatingRepo => {
-                // Create the repository
-                // Validate username is set (needed for next step)
-                if setup_data.username.is_none() {
-                    error!("Invalid state: username not set in CreatingRepo step");
-                    auth_state.error_message = Some(
-                        "❌ Internal error: Username not available. Please try again.".to_string(),
-                    );
-                    auth_state.status_message = None;
-                    auth_state.step = GitHubAuthStep::Input;
-                    auth_state.setup_data = None;
-                    *self.github_auth_component.get_auth_state_mut() = auth_state.clone();
-                    return Ok(());
-                }
-                let token = setup_data.token.clone();
-                let repo_name = setup_data.repo_name.clone();
-
-                let is_private = setup_data.is_private;
-                let create_result = self.runtime.block_on(async {
-                    let client = GitHubClient::new(token.clone());
-                    client
-                        .create_repo(&repo_name, "My dotfiles managed by dotstate", is_private)
-                        .await
-                });
-
-                match create_result {
-                    Ok(_) => {
-                        setup_data.delay_until =
-                            Some(std::time::Instant::now() + Duration::from_millis(500));
-                        setup_data.is_new_repo = true; // Mark as new repo creation
-                        auth_state.step =
-                            GitHubAuthStep::SetupStep(GitHubSetupStep::InitializingRepo);
-                        auth_state.status_message =
-                            Some("⚙️  Initializing local repository...".to_string());
-                        auth_state.setup_data = Some(setup_data); // Save setup_data
-                        *self.github_auth_component.get_auth_state_mut() = auth_state.clone();
-                    }
-                    Err(e) => {
-                        auth_state.error_message =
-                            Some(format!("❌ Failed to create repository: {}", e));
-                        auth_state.status_message = None;
-                        auth_state.step = GitHubAuthStep::Input;
-                        auth_state.setup_data = None;
-                        *self.github_auth_component.get_auth_state_mut() = auth_state.clone();
-                        return Ok(());
-                    }
-                }
-            }
-            GitHubSetupStep::InitializingRepo => {
-                // Initialize local repository
-                let username = match setup_data.username.as_ref() {
-                    Some(u) => u,
-                    None => {
-                        error!("Invalid state: username not set in InitializingRepo step");
-                        auth_state.error_message = Some(
-                            "❌ Internal error: Username not available. Please try again."
-                                .to_string(),
-                        );
-                        auth_state.status_message = None;
-                        auth_state.step = GitHubAuthStep::Input;
-                        auth_state.setup_data = None;
-                        *self.github_auth_component.get_auth_state_mut() = auth_state.clone();
-                        return Ok(());
-                    }
-                };
-                let token = setup_data.token.clone();
-                let repo_name = setup_data.repo_name.clone();
-                let repo_path = self.config.repo_path.clone();
-
-                std::fs::create_dir_all(&repo_path)
-                    .context("Failed to create repository directory")?;
-
-                let mut git_mgr = GitManager::open_or_init(&repo_path)?;
-
-                // Add remote
-                let remote_url = format!(
-                    "https://{}@github.com/{}/{}.git",
-                    token, username, repo_name
-                );
-                git_mgr.add_remote("origin", &remote_url)?;
-
-                // Create initial commit
-                std::fs::write(
-                    repo_path.join("README.md"),
-                    format!("# {}\n\nDotfiles managed by dotstate", repo_name),
-                )?;
-
-                // Create profile manifest with default profile
-                // Use "Personal" as default profile name if active_profile is empty
-                let default_profile_name = if self.config.active_profile.is_empty() {
-                    "Personal".to_string()
-                } else {
-                    self.config.active_profile.clone()
-                };
-
-                let manifest = crate::utils::ProfileManifest {
-                    profiles: vec![crate::utils::profile_manifest::ProfileInfo {
-                        name: default_profile_name.clone(),
-                        description: None, // Default profile, no description yet
-                        synced_files: Vec::new(),
-                        packages: Vec::new(),
-                    }],
-                };
-                manifest.save(&repo_path)?;
-
-                git_mgr.commit_all("Initial commit")?;
-
-                let current_branch = git_mgr
-                    .get_current_branch()
-                    .unwrap_or_else(|| self.config.default_branch.clone());
-
-                // Before pushing, fetch and merge any remote commits (GitHub might have created an initial commit)
-                // This prevents "NotFastForward" errors
-                if let Err(e) = git_mgr.pull("origin", &current_branch, Some(&token)) {
-                    // If pull fails (e.g., remote branch doesn't exist yet), that's fine - we'll push
-                    info!(
-                        "Could not pull from remote (this is normal for new repos): {}",
-                        e
-                    );
-                } else {
-                    info!("Successfully pulled from remote before pushing");
-                }
-
-                git_mgr.push("origin", &current_branch, Some(&token))?;
-                git_mgr.set_upstream_tracking("origin", &current_branch)?;
-
-                // Update config
-                self.config.github = Some(GitHubConfig {
-                    owner: username.clone(),
-                    repo: repo_name.clone(),
-                    token: Some(token.clone()),
-                });
-                self.config.repo_name = repo_name.clone();
-                self.config.active_profile = default_profile_name.clone();
-                self.config
-                    .save(&self.config_path)
-                    .context("Failed to save configuration")?;
-
-                // Load manifest and populate profile selection state
-                let manifest = crate::utils::ProfileManifest::load_or_backfill(&repo_path)?;
-                self.ui_state.profile_selection.profiles =
-                    manifest.profiles.iter().map(|p| p.name.clone()).collect();
-                if !self.ui_state.profile_selection.profiles.is_empty() {
-                    self.ui_state.profile_selection.list_state.select(Some(0));
-                }
-
-                auth_state.status_message =
-                    Some("✅ Repository created and initialized successfully".to_string());
-                *self.github_auth_component.get_auth_state_mut() = auth_state.clone();
-
-                // Move to complete step with delay to show success message
-                auth_state.step = GitHubAuthStep::SetupStep(GitHubSetupStep::Complete);
-                self.config = Config::load_or_create(&self.config_path)?;
-                auth_state.status_message = Some(format!(
-                    "✅ Setup complete!\n\nRepository: {}/{}\nLocal path: {:?}\n\nPreparing profile selection...",
-                    username, repo_name, repo_path
-                ));
-                // Add delay to show success message before transitioning
-                setup_data.delay_until =
-                    Some(std::time::Instant::now() + Duration::from_millis(2000));
-                setup_data.is_new_repo = true; // Mark as new repo creation
-                auth_state.setup_data = Some(setup_data);
-                *self.github_auth_component.get_auth_state_mut() = auth_state.clone();
-            }
-            GitHubSetupStep::DiscoveringProfiles => {
-                // Discover profiles from the cloned repo
-                let repo_path = self.config.repo_path.clone();
-
-                // Load manifest - synced_files should already be in manifest
-                let mut manifest = crate::utils::ProfileManifest::load_or_backfill(&repo_path)?;
-
-                // If manifest has profiles but synced_files are empty, backfill from directory
-                for profile_info in &mut manifest.profiles {
-                    if profile_info.synced_files.is_empty() {
-                        let profile_dir = repo_path.join(&profile_info.name);
-                        if profile_dir.exists() && profile_dir.is_dir() {
-                            profile_info.synced_files =
-                                list_files_in_profile_dir(&profile_dir, &repo_path)
-                                    .unwrap_or_default();
-                        }
-                    }
-                }
-                manifest.save(&repo_path)?;
-
-                if !manifest.profiles.is_empty() && self.config.active_profile.is_empty() {
-                    self.config.active_profile = manifest.profiles[0].name.clone();
-                    self.config.save(&self.config_path)?;
-                }
-
-                // Set up profile selection state
-                self.ui_state.profile_selection.profiles =
-                    manifest.profiles.iter().map(|p| p.name.clone()).collect();
-                if !self.ui_state.profile_selection.profiles.is_empty() {
-                    self.ui_state.profile_selection.list_state.select(Some(0));
-                }
-
-                // Move to complete step - show success message in progress screen
-                if !self.ui_state.profile_selection.profiles.is_empty() {
-                    auth_state.status_message = Some(format!(
-                        "✅ Setup complete!\n\nFound {} profile(s) in the repository.\n\nPreparing profile selection...",
-                        self.ui_state.profile_selection.profiles.len()
-                    ));
-                } else {
-                    // For new repos, we might not have username in setup_data
-                    // Use config if available, otherwise use repo_name
-                    let username = setup_data
-                        .username
-                        .as_ref()
-                        .or_else(|| self.config.github.as_ref().map(|g| &g.owner))
-                        .unwrap_or(&setup_data.repo_name);
-                    let repo_name = setup_data.repo_name.clone();
-                    auth_state.status_message = Some(format!(
-                        "✅ Setup complete!\n\nRepository: {}/{}\nLocal path: {:?}\n\nNo profiles found. You can create one from the main menu.\n\nPreparing main menu...",
-                        username, repo_name, repo_path
-                    ));
-                }
-                // Add a delay to show the success message before transitioning
-                setup_data.delay_until =
-                    Some(std::time::Instant::now() + Duration::from_millis(2000));
-                auth_state.step = GitHubAuthStep::SetupStep(GitHubSetupStep::Complete);
-                auth_state.setup_data = Some(setup_data);
-                *self.github_auth_component.get_auth_state_mut() = auth_state.clone();
-            }
-            GitHubSetupStep::Complete => {
-                // Delay complete, transition to next screen
-                let profile_count = self.ui_state.profile_selection.profiles.len();
-                let is_new_repo = setup_data.is_new_repo;
-
-                // Determine target screen and whether to scan dotfiles
-                let should_scan_dotfiles = is_new_repo && profile_count == 1;
-                let target_screen = if profile_count > 0 {
-                    if should_scan_dotfiles {
-                        Screen::DotfileSelection
-                    } else {
-                        Screen::ProfileSelection
-                    }
-                } else {
-                    Screen::MainMenu
-                };
-
-                // Update auth_state before dropping borrow
-                auth_state.step = GitHubAuthStep::Input; // Reset to input state
-                auth_state.status_message = None;
-                auth_state.setup_data = None;
-                *self.github_auth_component.get_auth_state_mut() = auth_state.clone();
-
-                // Drop mutable borrow of auth_state before calling scan_dotfiles
-                // Note: drop() on a reference doesn't do anything, but we're explicitly ending the borrow scope
-                let _ = auth_state;
-
-                if should_scan_dotfiles {
-                    // New install with default profile - go directly to dotfile selection
-                    // Sync backup_enabled from config
-                    self.ui_state.dotfile_selection.backup_enabled = self.config.backup_enabled;
-                    // Trigger search for dotfiles
-                    self.scan_dotfiles()?;
-                    // Reset state when entering the page
-                    self.ui_state.dotfile_selection.status_message = None;
-                }
-
-                self.ui_state.current_screen = target_screen;
-                return Ok(()); // Early return to avoid using auth_state after match
-            }
-        }
-
-        // Save updated setup_data back (only if it wasn't already consumed/saved in the step)
-        // Steps that complete set setup_data to None, so we only save if it's still needed
-        if auth_state.setup_data.is_none()
-            && matches!(auth_state.step, GitHubAuthStep::SetupStep(_))
+        // DEBUG LOGGING
         {
-            // Only save if we're still in setup and data wasn't consumed
-            // But actually, each step that needs to continue already saves it
-            // So we only need to save if the step didn't save it yet
-            // For now, let's not save here - each step handles its own saving
-        }
-
-        Ok(())
-    }
-
-    #[allow(dead_code)] // Kept for reference, but replaced by process_github_setup_step
-    fn process_github_setup(&mut self) -> Result<()> {
-        let auth_state = &mut self.ui_state.github_auth;
-
-        // Set processing state FIRST before any blocking operations
-        auth_state.step = GitHubAuthStep::Processing;
-        auth_state.error_message = None;
-
-        // Step 1: Connecting to GitHub - set this immediately
-        auth_state.status_message = Some("🔌 Connecting to GitHub...".to_string());
-
-        // Sync state to component so UI can render it
-        *self.github_auth_component.get_auth_state_mut() = auth_state.clone();
-
-        // Small delay to allow UI to render the progress screen
-        // This gives the event loop a chance to process and render
-        // Note: This won't work perfectly because we're blocking, but it helps
-        std::thread::sleep(Duration::from_millis(300));
-
-        // Trim whitespace from token
-        let token = auth_state.token_input.trim().to_string();
-        let repo_name = self.config.repo_name.clone();
-
-        // Token validation - do not log token content for security
-
-        // Validate token format before making API call
-        if !token.starts_with("ghp_") {
-            let actual_start = if token.len() >= 4 {
-                &token[..4]
-            } else {
-                "too short"
-            };
-            auth_state.error_message = Some(format!(
-                "❌ Invalid token format: Must start with 'ghp_' but starts with '{}'.\n\
-                    Token length: {} characters.\n\
-                    First 10 chars: '{}'\n\
-                    Please check that you copied the entire token correctly.\n\
-                    Make sure you're pasting the full token (40+ characters).",
-                actual_start,
-                token.len(),
-                if token.len() >= 10 {
-                    &token[..10]
-                } else {
-                    &token
-                }
-            ));
-            auth_state.step = GitHubAuthStep::Input;
-            auth_state.status_message = None;
-            return Ok(());
-        }
-
-        if token.len() < 40 {
-            auth_state.error_message = Some(format!(
-                "❌ Token appears incomplete: {} characters (expected 40+).\n\
-                    First 10 chars: '{}'\n\
-                    Make sure you copied the entire token from GitHub.",
-                token.len(),
-                &token[..token.len().min(10)]
-            ));
-            auth_state.step = GitHubAuthStep::Input;
-            auth_state.status_message = None;
-            return Ok(());
-        }
-
-        // Step 2: Validating token
-        auth_state.status_message = Some("🔑 Validating your token...".to_string());
-        *self.github_auth_component.get_auth_state_mut() = auth_state.clone();
-
-        // Small delay for UX
-        std::thread::sleep(Duration::from_millis(800));
-
-        // Use the runtime to run async code
-        let result = self.runtime.block_on(async {
-            // Verify token and get user
-            let client = GitHubClient::new(token.clone());
-            let user = client.get_user().await?;
-
-            // Step 3: Check if repo exists
-            let repo_exists = client.repo_exists(&user.login, &repo_name).await?;
-
-            Ok::<(String, bool), anyhow::Error>((user.login, repo_exists))
-        });
-
-        match result {
-            Ok((username, exists)) => {
-                let repo_path = self.config.repo_path.clone();
-
-                // Step 3: Checking if repo exists (already done, but show status)
-                auth_state.status_message = Some("🔍 Checking if repository exists...".to_string());
-                *self.github_auth_component.get_auth_state_mut() = auth_state.clone();
-
-                // Small delay for UX
-                std::thread::sleep(Duration::from_millis(600));
-
-                if exists {
-                    // Step 4: Cloning the repo
-                    auth_state.status_message = Some(format!(
-                        "📥 Cloning repository {}/{}...",
-                        username, repo_name
-                    ));
-                    *self.github_auth_component.get_auth_state_mut() = auth_state.clone();
-
-                    // Small delay before cloning
-                    std::thread::sleep(Duration::from_millis(500));
-
-                    // Remove existing directory if it exists
-                    if repo_path.exists() {
-                        std::fs::remove_dir_all(&repo_path)
-                            .context("Failed to remove existing directory")?;
-                    }
-
-                    // Clone existing repository using git2
-                    let remote_url = format!("https://github.com/{}/{}.git", username, repo_name);
-                    match GitManager::clone(&remote_url, &repo_path, Some(&token)) {
-                        Ok(_) => {
-                            auth_state.status_message =
-                                Some("✅ Repository cloned successfully!".to_string());
-                            *self.github_auth_component.get_auth_state_mut() = auth_state.clone();
-
-                            // Small delay after cloning
-                            std::thread::sleep(Duration::from_millis(500));
-                        }
-                        Err(e) => {
-                            auth_state.error_message =
-                                Some(format!("❌ Failed to clone repository: {}", e));
-                            auth_state.status_message = None;
-                            auth_state.step = GitHubAuthStep::Input;
-                            return Ok(());
-                        }
-                    }
-                } else {
-                    // Step 4: Creating new repository
-                    auth_state.status_message = Some(format!(
-                        "📦 Creating repository {}/{}...",
-                        username, repo_name
-                    ));
-                    *self.github_auth_component.get_auth_state_mut() = auth_state.clone();
-
-                    // Small delay for UX
-                    std::thread::sleep(Duration::from_millis(600));
-
-                    // Create repository
-                    let is_private = auth_state.is_private;
-                    let create_result = self.runtime.block_on(async {
-                        let client = GitHubClient::new(token.clone());
-                        client
-                            .create_repo(&repo_name, "My dotfiles managed by dotstate", is_private)
-                            .await
-                    });
-
-                    match create_result {
-                        Ok(_) => {
-                            auth_state.status_message =
-                                Some("⚙️  Initializing local repository...".to_string());
-                            *self.github_auth_component.get_auth_state_mut() = auth_state.clone();
-
-                            // Small delay for UX
-                            std::thread::sleep(Duration::from_millis(500));
-
-                            // Initialize local repository
-                            std::fs::create_dir_all(&repo_path)
-                                .context("Failed to create repository directory")?;
-
-                            let mut git_mgr = GitManager::open_or_init(&repo_path)?;
-
-                            // Add remote
-                            let remote_url = format!(
-                                "https://{}@github.com/{}/{}.git",
-                                token, username, repo_name
-                            );
-                            // Add remote (this also sets up tracking)
-                            git_mgr.add_remote("origin", &remote_url)?;
-
-                            // Create initial commit
-                            std::fs::write(
-                                repo_path.join("README.md"),
-                                format!("# {}\n\nDotfiles managed by dotstate", repo_name),
-                            )?;
-
-                            // Create profile manifest with default profile
-                            // Use "Personal" as default profile name if active_profile is empty
-                            let default_profile_name = if self.config.active_profile.is_empty() {
-                                "Personal".to_string()
-                            } else {
-                                self.config.active_profile.clone()
-                            };
-
-                            let manifest = crate::utils::ProfileManifest {
-                                profiles: vec![crate::utils::profile_manifest::ProfileInfo {
-                                    name: default_profile_name.clone(),
-                                    description: None, // Default profile, no description yet
-                                    synced_files: Vec::new(),
-                                    packages: Vec::new(),
-                                }],
-                            };
-                            manifest.save(&repo_path)?;
-
-                            git_mgr.commit_all("Initial commit")?;
-
-                            // Get current branch name (should be 'main' after ensure_main_branch)
-                            let current_branch = git_mgr
-                                .get_current_branch()
-                                .unwrap_or_else(|| self.config.default_branch.clone());
-
-                            // Push to remote using the actual branch name and set upstream
-                            git_mgr.push("origin", &current_branch, Some(&token))?;
-
-                            // Ensure tracking is set up after push
-                            git_mgr.set_upstream_tracking("origin", &current_branch)?;
-
-                            // Update config with default profile name
-                            self.config.active_profile = default_profile_name.clone();
-                            self.config
-                                .save(&self.config_path)
-                                .context("Failed to save configuration")?;
-
-                            auth_state.status_message = Some(
-                                "✅ Repository created and initialized successfully".to_string(),
-                            );
-                            *self.github_auth_component.get_auth_state_mut() = auth_state.clone();
-                        }
-                        Err(e) => {
-                            auth_state.error_message =
-                                Some(format!("❌ Failed to create repository: {}", e));
-                            auth_state.status_message = None;
-                            auth_state.step = GitHubAuthStep::Input;
-                            return Ok(());
-                        }
-                    }
-                }
-
-                // Update config
-                self.config.github = Some(GitHubConfig {
-                    owner: username.clone(),
-                    repo: repo_name.clone(),
-                    token: Some(token.clone()),
-                });
-                self.config.repo_name = repo_name.clone();
-                self.config
-                    .save(&self.config_path)
-                    .context("Failed to save configuration")?;
-
-                // Verify config was saved
-                if !self.config_path.exists() {
-                    auth_state.error_message = Some(
-                        "Warning: Config file was not created. Please check permissions."
-                            .to_string(),
-                    );
-                    auth_state.step = GitHubAuthStep::Input;
-                    return Ok(());
-                }
-
-                // Discover profiles from the cloned repo
-                if exists && repo_path.exists() {
-                    auth_state.status_message = Some("🔎 Discovering profiles...".to_string());
-                    *self.github_auth_component.get_auth_state_mut() = auth_state.clone();
-
-                    // Small delay for UX
-                    std::thread::sleep(Duration::from_millis(600));
-
-                    // Discover profiles from manifest
-                    let mut manifest = crate::utils::ProfileManifest::load_or_backfill(&repo_path)?;
-
-                    // If manifest has profiles but synced_files are empty, backfill from directory
-                    for profile_info in &mut manifest.profiles {
-                        if profile_info.synced_files.is_empty() {
-                            let profile_dir = repo_path.join(&profile_info.name);
-                            if profile_dir.exists() && profile_dir.is_dir() {
-                                profile_info.synced_files =
-                                    list_files_in_profile_dir(&profile_dir, &repo_path)
-                                        .unwrap_or_default();
-                            }
-                        }
-                    }
-                    manifest.save(&repo_path)?;
-
-                    // Set active profile to first one if available and not already set
-                    if !manifest.profiles.is_empty() && self.config.active_profile.is_empty() {
-                        self.config.active_profile = manifest.profiles[0].name.clone();
-                    }
-
-                    // Save updated config
-                    self.config.save(&self.config_path)?;
-                } else {
-                    // For new repos, just reload config normally
-                    self.config = Config::load_or_create(&self.config_path)?;
-                }
-
-                // Check if we have profiles to activate (only if repo was cloned, not created)
-                if exists {
-                    // Set up profile selection state from manifest
-                    // Get manifest before borrowing ui_state (repo_path already cloned above)
-                    let repo_path_clone = self.config.repo_path.clone();
-                    let manifest =
-                        crate::utils::ProfileManifest::load_or_backfill(&repo_path_clone)
-                            .unwrap_or_default();
-                    let profile_names: Vec<String> =
-                        manifest.profiles.iter().map(|p| p.name.clone()).collect();
-                    self.ui_state.profile_selection.profiles = profile_names;
-                    if !self.ui_state.profile_selection.profiles.is_empty() {
-                        self.ui_state.profile_selection.list_state.select(Some(0));
-                    }
-
-                    if !self.ui_state.profile_selection.profiles.is_empty() {
-                        auth_state.status_message = Some(format!(
-                            "✅ Setup complete!\n\nFound {} profile(s) in the repository.\n\nPress Enter to select which profile to activate.",
-                            self.ui_state.profile_selection.profiles.len()
-                        ));
-                    } else {
-                        // No profiles found
-                        auth_state.status_message = Some(format!(
-                            "✅ Setup complete!\n\nRepository: {}/{}\nLocal path: {:?}\n\nNo profiles found. You can create one from the main menu.\n\nPress Enter to continue.",
-                            username, repo_name, repo_path
-                        ));
-                    }
-                } else {
-                    // New repo - just created, no profiles to activate yet
-                    // Reload config to ensure it's up to date
-                    self.config = Config::load_or_create(&self.config_path)?;
-                    auth_state.status_message = Some(format!(
-                        "✅ Setup complete!\n\nRepository: {}/{}\nLocal path: {:?}\n\nPress Enter to continue.",
-                        username, repo_name, repo_path
-                    ));
-                }
-
-                // Update component state
-                *self.github_auth_component.get_auth_state_mut() = auth_state.clone();
-
-                // Ensure step is set to Processing so user can press Enter to continue
-                auth_state.step = GitHubAuthStep::Processing;
-            }
-            Err(e) => {
-                // Show detailed error message
-                let error_msg = format!("❌ Authentication failed: {}", e);
-                auth_state.error_message = Some(error_msg);
-                auth_state.status_message = None;
-                auth_state.step = GitHubAuthStep::Input;
-                *self.github_auth_component.get_auth_state_mut() = auth_state.clone();
-                // Don't clear the token input so user can see what they entered
+            use std::io::Write;
+            if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open("debug_verbose.log") {
+                    writeln!(file, "initiate_provider_setup - Entry. Providers: {}", setup_state.available_providers.len()).ok();
             }
         }
 
+        // Ensure available providers are populated
+        if setup_state.available_providers.is_empty() {
+             setup_state.available_providers = vec![ProviderType::GitHub, ProviderType::Local];
+        }
+
+        // DEBUG LOGGING
+        {
+            use std::io::Write;
+            if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open("debug_verbose.log") {
+                    writeln!(file, "initiate_provider_setup - Exit. Providers: {}", setup_state.available_providers.len()).ok();
+            }
+        }
+
+        setup_state.step = ProviderSetupStep::Selection; // Start at selection
+        setup_state.status_message = None;
+        setup_state.error_message = None;
+        setup_state.selected_provider_index = 0;
+        self.ui_state.current_screen = Screen::ProviderSetup;
         Ok(())
     }
 
-    fn handle_mouse(&mut self, mouse: crossterm::event::MouseEvent) -> Result<()> {
-        use crossterm::event::{MouseButton, MouseEventKind};
+    fn process_provider_setup_step(&mut self) -> Result<()> {
+         // Process setup steps
+         // We clone state to avoid borrow issues
+         let setup_state = self.ui_state.provider_setup.clone();
+         let step = if let ProviderSetupStep::SetupPhase(s) = setup_state.step { s } else { return Ok(()); };
 
-        // Handle DotfileSelection screen mouse events
-        if self.ui_state.current_screen == Screen::DotfileSelection {
-            let state = &mut self.ui_state.dotfile_selection;
-            use crate::ui::DotfileSelectionFocus;
+         let provider_type = if setup_state.selected_provider_index < setup_state.available_providers.len() {
+             setup_state.available_providers[setup_state.selected_provider_index].clone()
+         } else {
+             ProviderType::GitHub
+         };
 
-            match mouse.kind {
-                MouseEventKind::ScrollUp => {
-                    if state.file_browser_mode {
-                        // File browser mode - scroll based on focus
-                        match state.focus {
-                            DotfileSelectionFocus::FileBrowserList => {
-                                state.file_browser_list_state.select_previous();
-                            }
-                            DotfileSelectionFocus::FileBrowserPreview => {
-                                if state.file_browser_preview_scroll > 0 {
-                                    state.file_browser_preview_scroll =
-                                        state.file_browser_preview_scroll.saturating_sub(1);
-                                }
-                            }
-                            _ => {}
-                        }
-                    } else if state.adding_custom_file {
-                        // Custom input mode - no scrolling
-                    } else {
-                        // Normal mode - scroll based on focus
-                        match state.focus {
-                            DotfileSelectionFocus::FilesList => {
-                                state.dotfile_list_state.select_previous();
-                                state.preview_scroll = 0;
-                            }
-                            DotfileSelectionFocus::Preview => {
-                                if state.preview_scroll > 0 {
-                                    state.preview_scroll = state.preview_scroll.saturating_sub(1);
-                                }
-                            }
-                            _ => {}
-                        }
-                    }
-                    return Ok(());
-                }
-                MouseEventKind::ScrollDown => {
-                    if state.file_browser_mode {
-                        // File browser mode - scroll based on focus
-                        match state.focus {
-                            DotfileSelectionFocus::FileBrowserList => {
-                                state.file_browser_list_state.select_next();
-                            }
-                            DotfileSelectionFocus::FileBrowserPreview => {
-                                state.file_browser_preview_scroll =
-                                    state.file_browser_preview_scroll.saturating_add(1);
-                            }
-                            _ => {}
-                        }
-                    } else if state.adding_custom_file {
-                        // Custom input mode - no scrolling
-                    } else {
-                        // Normal mode - scroll based on focus
-                        match state.focus {
-                            DotfileSelectionFocus::FilesList => {
-                                state.dotfile_list_state.select_next();
-                                state.preview_scroll = 0;
-                            }
-                            DotfileSelectionFocus::Preview => {
-                                state.preview_scroll = state.preview_scroll.saturating_add(1);
-                            }
-                            _ => {}
-                        }
-                    }
-                    return Ok(());
-                }
-                MouseEventKind::Down(MouseButton::Left) => {
-                    let terminal_size = self.tui.terminal_mut().size()?;
-                    let header_height = 6; // Header is 6 lines
-                    let footer_height = 1; // Footer is 1 line
-
-                    if state.file_browser_mode {
-                        // File browser popup - improved click detection
-                        // Check if click is within popup area (centered, 80% width, 70% height)
-                        let popup_width = (terminal_size.width as f32 * 0.8) as u16;
-                        let popup_height = (terminal_size.height as f32 * 0.7) as u16;
-                        let popup_x = (terminal_size.width - popup_width) / 2;
-                        let popup_y = (terminal_size.height - popup_height) / 2;
-
-                        if mouse.column >= popup_x
-                            && mouse.column < popup_x + popup_width
-                            && mouse.row >= popup_y
-                            && mouse.row < popup_y + popup_height
-                        {
-                            let popup_inner_y = mouse.row.saturating_sub(popup_y);
-                            let popup_inner_x = mouse.column.saturating_sub(popup_x);
-
-                            // Layout: path display (1), path input (3), list+preview (min), footer (2)
-                            if popup_inner_y < 1 {
-                                // Clicked on path display - focus input
-                                state.focus = DotfileSelectionFocus::FileBrowserInput;
-                                state.file_browser_path_focused = true;
-                            } else if (1..4).contains(&popup_inner_y) {
-                                // Clicked on path input field
-                                state.focus = DotfileSelectionFocus::FileBrowserInput;
-                                state.file_browser_path_focused = true;
-                            } else if popup_inner_y >= 4 && popup_inner_y < popup_height - 2 {
-                                // Clicked in list/preview area
-                                let list_preview_y = popup_inner_y - 4; // After path display and input
-
-                                if popup_inner_x < popup_width / 2 {
-                                    // Clicked on file browser list
-                                    state.focus = DotfileSelectionFocus::FileBrowserList;
-                                    // Calculate which item was clicked (accounting for list borders)
-                                    // List has borders, so first clickable row is at y=1
-                                    if list_preview_y >= 1 {
-                                        let clicked_index = (list_preview_y - 1) as usize;
-                                        if clicked_index < state.file_browser_entries.len() {
-                                            state
-                                                .file_browser_list_state
-                                                .select(Some(clicked_index));
+         match step {
+             ProviderSetupPhase::ValidatingToken => {
+                 self.ui_state.provider_setup.step = ProviderSetupStep::SetupPhase(ProviderSetupPhase::CheckingRepo);
+             }
+             ProviderSetupPhase::Connecting => {
+                 match provider_type {
+                     ProviderType::GitHub => {
+                         let token = setup_state.token_input.trim();
+                         if token.is_empty() {
+                             self.ui_state.provider_setup.error_message = Some("Token is required".to_string());
+                             self.ui_state.provider_setup.step = ProviderSetupStep::Input;
+                             return Ok(());
+                         }
+                         let client = GitHubClient::new(token.to_string());
+                         let result = self.runtime.block_on(async { client.authenticate().await });
+                          match result {
+                             Ok(username) => {
+                                 let mut data = crate::ui::ProviderSetupData {
+                                     provider_type: ProviderType::GitHub,
+                                     token: Some(token.to_string()),
+                                     repo_name: setup_state.repo_name_input.clone(),
+                                     remote_url: None,
+                                     username: Some(username),
+                                     repo_exists: None,
+                                     is_private: setup_state.is_private,
+                                     delay_until: None,
+                                     is_new_repo: false,
+                                     push_enabled: false,
+                                 };
+                                 // Check validity
+                                 self.ui_state.provider_setup.setup_data = Some(data);
+                                 self.ui_state.provider_setup.step = ProviderSetupStep::SetupPhase(ProviderSetupPhase::CheckingRepo);
+                             }
+                             Err(e) => {
+                                 self.ui_state.provider_setup.error_message = Some(format!("Authentication failed: {}", e));
+                                 self.ui_state.provider_setup.step = ProviderSetupStep::Input;
+                             }
+                          }
+                     }
+                     ProviderType::Local => {
+                         let path = setup_state.local_path_input.trim();
+                         if path.is_empty() {
+                              self.ui_state.provider_setup.error_message = Some("Path is required".to_string());
+                              self.ui_state.provider_setup.step = ProviderSetupStep::Input;
+                              return Ok(());
+                         }
+                          self.ui_state.provider_setup.setup_data = Some(crate::ui::ProviderSetupData {
+                                     provider_type: ProviderType::Local,
+                                     token: None,
+                                     repo_name: "local".to_string(),
+                                     remote_url: Some(path.to_string()),
+                                     username: Some("local".to_string()),
+                                     repo_exists: None,
+                                     is_private: true,
+                                     delay_until: None,
+                                     is_new_repo: false,
+                                     push_enabled: false,
+                             });
+                             self.ui_state.provider_setup.step = ProviderSetupStep::SetupPhase(ProviderSetupPhase::CheckingRepo);
+                     }
+                 }
+             }
+             ProviderSetupPhase::CheckingRepo => {
+                  if let Some(data) = &self.ui_state.provider_setup.setup_data {
+                       match data.provider_type {
+                           ProviderType::GitHub => {
+                               if let Some(token) = &data.token {
+                                   let client = GitHubClient::new(token.clone());
+                                   let owner = data.username.as_deref().unwrap_or("");
+                                   let repo = &data.repo_name;
+                                   let result = self.runtime.block_on(async { client.repo_exists(owner, repo).await });
+                                   match result {
+                                       Ok(exists) => {
+                                           if exists {
+                                               self.ui_state.provider_setup.step = ProviderSetupStep::SetupPhase(ProviderSetupPhase::CloningRepo);
+                                           } else {
+                                               self.ui_state.provider_setup.step = ProviderSetupStep::SetupPhase(ProviderSetupPhase::CreatingRepo);
+                                           }
+                                       }
+                                       Err(e) => {
+                                            self.ui_state.provider_setup.error_message = Some(format!("Repo check failed: {}", e));
+                                            self.ui_state.provider_setup.step = ProviderSetupStep::Input;
+                                       }
+                                   }
+                               }
+                           }
+                           ProviderType::Local => {
+                               // Start cloning (which for Local means initializing or verifying)
+                               let remote_path = data.remote_url.as_ref().map(PathBuf::from);
+                               // Check for remote
+                               if let Some(path) = &remote_path {
+                                    // Use LocalProvider to check if it exists
+                                    let provider = LocalProvider { remote_path: Some(path.clone()) };
+                                    let result = self.runtime.block_on(async { provider.repo_exists("", "").await }); // owners ignored for local
+                                    match result {
+                                        Ok(exists) => {
+                                           if exists {
+                                               self.ui_state.provider_setup.step = ProviderSetupStep::SetupPhase(ProviderSetupPhase::CloningRepo);
+                                           } else {
+                                               // Remote folder might happen not to have .git, or not exist
+                                               // We treat it as "needs creation" (init --bare)
+                                               self.ui_state.provider_setup.step = ProviderSetupStep::SetupPhase(ProviderSetupPhase::CreatingRepo);
+                                           }
+                                        }
+                                        Err(e) => {
+                                            self.ui_state.provider_setup.error_message = Some(format!("Local repo check failed: {}", e));
+                                            self.ui_state.provider_setup.step = ProviderSetupStep::Input;
                                         }
                                     }
-                                } else {
-                                    // Clicked on preview pane
-                                    state.focus = DotfileSelectionFocus::FileBrowserPreview;
-                                }
-                            }
-                        }
-                    } else if !state.adding_custom_file && mouse.row >= header_height as u16 {
-                        // Normal mode - detect which pane was clicked
-                        let content_start_y = header_height as u16;
-                        let content_end_y = terminal_size.height.saturating_sub(footer_height);
+                               } else {
+                                   // No remote - just generic init locally
+                                   self.ui_state.provider_setup.step = ProviderSetupStep::SetupPhase(ProviderSetupPhase::InitializingRepo);
+                               }
+                           }
+                       }
+                  }
+             }
+             ProviderSetupPhase::CreatingRepo => {
+                 if let Some(data) = &self.ui_state.provider_setup.setup_data {
+                     if data.provider_type == ProviderType::GitHub {
+                          if let Some(token) = &data.token {
+                               let client = GitHubClient::new(token.clone());
+                               let res = self.runtime.block_on(async {
+                                   client.create_repo(&data.repo_name, "Dotfiles managed by dotstate", data.is_private).await
+                               });
+                               match res {
+                                   Ok(_) => {
+                                       self.ui_state.provider_setup.step = ProviderSetupStep::SetupPhase(ProviderSetupPhase::InitializingRepo);
+                                   }
+                                   Err(e) => {
+                                       self.ui_state.provider_setup.error_message = Some(format!("Create repo failed: {}", e));
+                                       self.ui_state.provider_setup.step = ProviderSetupStep::Input;
+                                   }
+                               }
+                          }
+                     } else {
+                         // Local provider: create/init bare repo if needed
+                         if let Some(path) = &data.remote_url {
+                              // Use LocalProvider to create
+                              let provider = LocalProvider { remote_path: Some(PathBuf::from(path)) };
+                              let res = self.runtime.block_on(async {
+                                   provider.create_repo(&data.repo_name, "", data.is_private).await
+                               });
+                               match res {
+                                   Ok(_) => {
+                                       self.ui_state.provider_setup.step = ProviderSetupStep::SetupPhase(ProviderSetupPhase::InitializingRepo);
+                                   }
+                                   Err(e) => {
+                                       self.ui_state.provider_setup.error_message = Some(format!("Create local repo failed: {}", e));
+                                       self.ui_state.provider_setup.step = ProviderSetupStep::Input;
+                                   }
+                               }
+                         } else {
+                              self.ui_state.provider_setup.step = ProviderSetupStep::SetupPhase(ProviderSetupPhase::InitializingRepo);
+                         }
+                     }
+                 }
+             }
+                ProviderSetupPhase::CloningRepo => {
+                    let repo_path = self.config.repo_path.clone();
+                    // Ensure the directory is clean if it exists (or empty)
+                    if repo_path.exists() {
+                         // Simple check: if it's not empty, we might fail or should warn.
+                         // For now, GitManager::clone might fail if dir is not empty.
+                    }
 
-                        if mouse.row >= content_start_y && mouse.row < content_end_y {
-                            // Determine if click is in left half (files list) or right half (preview)
-                            if mouse.column < terminal_size.width / 2 {
-                                // Clicked on files list
-                                state.focus = DotfileSelectionFocus::FilesList;
+                    if let Some(data) = &self.ui_state.provider_setup.setup_data {
+                        if let Some(url) = &data.remote_url {
+                             let token = data.token.as_deref();
+                             let res = GitManager::clone(url, &repo_path, token);
+                             match res {
+                                 Ok(_) => {
+                                     // Save config upon success
+                                      if data.provider_type == ProviderType::GitHub {
+                                           self.config.provider = Some(ProviderConfig::GitHub(GitHubConfig {
+                                               token: Some(data.token.clone().unwrap_or_default()),
+                                               repo: data.repo_name.clone(),
+                                               owner: data.username.clone().unwrap_or_default(),
+                                           }));
+                                      } else {
+                                           self.config.provider = Some(ProviderConfig::Local(crate::config::LocalConfig {
+                                               remote_path: data.remote_url.clone().map(PathBuf::from),
+                                               push_enabled: false,
+                                           }));
+                                      }
+                                      let _ = self.config.save(&self.config_path);
 
-                                // Calculate which item was clicked
-                                let clicked_row =
-                                    mouse.row.saturating_sub(content_start_y) as usize;
-                                if clicked_row < state.dotfiles.len() {
-                                    state.dotfile_list_state.select(Some(clicked_row));
-                                    state.preview_scroll = 0;
-                                }
-                            } else {
-                                // Clicked on preview pane
-                                state.focus = DotfileSelectionFocus::Preview;
-                            }
+                                     self.ui_state.provider_setup.step = ProviderSetupStep::SetupPhase(ProviderSetupPhase::DiscoveringProfiles);
+                                 }
+                                 Err(e) => {
+                                     // If clone fails, return to Input
+                                      self.ui_state.provider_setup.error_message = Some(format!("Clone failed: {}", e));
+                                      self.ui_state.provider_setup.step = ProviderSetupStep::Input;
+                                 }
+                             }
+                        } else {
+                             self.ui_state.provider_setup.error_message = Some("No remote URL provided for cloning".to_string());
+                             self.ui_state.provider_setup.step = ProviderSetupStep::Input;
                         }
                     }
-                    return Ok(());
                 }
-                _ => {}
-            }
-        }
+                ProviderSetupPhase::InitializingRepo => {
+                     // Init local repo
+                     let repo_path = self.config.repo_path.clone();
+                     // Ensure parent dirs exist
+                     if let Some(parent) = repo_path.parent() {
+                         let _ = std::fs::create_dir_all(parent);
+                     }
 
-        // Handle GitHubAuth screen mouse events
-        if let MouseEventKind::Down(button) = mouse.kind {
-            if button == MouseButton::Left {
-                let auth_state = &mut self.ui_state.github_auth;
+                     match GitManager::open_or_init(&repo_path) {
+                         Ok(mut git_manager) => {
+                             if let Some(data) = &self.ui_state.provider_setup.setup_data {
+                                 // If we have a remote URL (from CreatingRepo or Local mode), add it
+                                 if let Some(url) = &data.remote_url {
+                                     if let Err(e) = git_manager.add_remote("origin", url) {
+                                         warn!("Failed to add remote: {}", e);
+                                     }
+                                 }
 
-                // Get terminal size to determine click areas
-                let terminal_size = self.tui.terminal_mut().size()?;
-                let mouse_x = mouse.column;
+                                 // Save config upon success
+                                  if data.provider_type == ProviderType::GitHub {
+                                       self.config.provider = Some(ProviderConfig::GitHub(GitHubConfig {
+                                           token: Some(data.token.clone().unwrap_or_default()),
+                                           repo: data.repo_name.clone(),
+                                           owner: data.username.clone().unwrap_or_default(),
+                                       }));
+                                  } else {
+                                       self.config.provider = Some(ProviderConfig::Local(crate::config::LocalConfig {
+                                           remote_path: data.remote_url.clone().map(PathBuf::from),
+                                           push_enabled: false,
+                                       }));
+                                  }
+                                  let _ = self.config.save(&self.config_path);
+                             }
 
-                // Check if click is in GitHub auth screen
-                if self.ui_state.current_screen == Screen::GitHubAuth
-                    && auth_state.step == GitHubAuthStep::Input
-                {
-                    // Check if click is in token input area (roughly row 4-6, column 2-78)
-                    // This is approximate - we'd need to track exact widget positions for precision
-                    // For now, clicking anywhere in the left half focuses token input
-                    if mouse_x < terminal_size.width / 2 {
-                        auth_state.input_focused = true;
-                        // Move cursor to clicked position (approximate)
-                        let relative_x = mouse_x.saturating_sub(2) as usize;
-                        auth_state.cursor_position =
-                            relative_x.min(auth_state.token_input.chars().count());
-                    } else {
-                        // Click in help area - unfocus input
-                        auth_state.input_focused = false;
-                    }
+                             // Transition to discovery
+                             self.ui_state.provider_setup.step = ProviderSetupStep::SetupPhase(ProviderSetupPhase::DiscoveringProfiles);
+                         }
+                         Err(e) => {
+                             self.ui_state.provider_setup.error_message = Some(format!("Failed to initialize repo: {}", e));
+                             self.ui_state.provider_setup.step = ProviderSetupStep::Input;
+                         }
+                     }
                 }
-            }
-        }
-        Ok(())
+                ProviderSetupPhase::DiscoveringProfiles => {
+                    let _ = self.scan_dotfiles();
+                    self.ui_state.provider_setup.step = ProviderSetupStep::SetupPhase(ProviderSetupPhase::Complete);
+                }
+             ProviderSetupPhase::Complete => {
+                 self.ui_state.current_screen = Screen::ProfileSelection;
+                 self.ui_state.provider_setup.step = ProviderSetupStep::Selection;
+             }
+         }
+         Ok(())
     }
 
     /// Handle input for dotfile selection screen

@@ -59,8 +59,8 @@ pub fn create_split_layout(area: Rect, percentages: &[u16]) -> Vec<Rect> {
 pub fn center_popup(area: Rect, width_percent: u16, height_percent: u16) -> Rect {
     let popup_width = (area.width as f32 * (width_percent as f32 / 100.0)) as u16;
     let popup_height = (area.height as f32 * (height_percent as f32 / 100.0)) as u16;
-    let popup_x = (area.width - popup_width) / 2;
-    let popup_y = (area.height - popup_height) / 2;
+    let popup_x = area.x + (area.width - popup_width) / 2;
+    let popup_y = area.y + (area.height - popup_height) / 2;
 
     Rect::new(popup_x, popup_y, popup_width, popup_height)
 }

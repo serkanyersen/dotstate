@@ -7,8 +7,16 @@ use std::path::{Path, PathBuf};
 /// This config only stores local settings like backup preferences and active profile name.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
-    /// GitHub repository information
+    /// Git provider configuration
+    /// This replaces the old `github` field. We keep `github` as an optional field
+    /// only for deserialization (migration) purposes, but it shouldn't be used directly.
+    #[serde(default)]
+    pub provider: Option<ProviderConfig>,
+
+    /// Legacy github config for migration
+    #[serde(skip_serializing)]
     pub github: Option<GitHubConfig>,
+
     /// Current active profile/set
     pub active_profile: String,
     /// Repository root path (where dotfiles are stored locally)
@@ -30,7 +38,16 @@ pub struct Config {
     pub custom_files: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(tag = "type")]
+pub enum ProviderConfig {
+    #[serde(rename = "github")]
+    GitHub(GitHubConfig),
+    #[serde(rename = "local")]
+    Local(LocalConfig),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct GitHubConfig {
     /// Repository owner (username or org)
     pub owner: String,
@@ -38,6 +55,14 @@ pub struct GitHubConfig {
     pub repo: String,
     /// OAuth token or PAT
     pub token: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct LocalConfig {
+    /// Path to the remote repository (if any)
+    pub remote_path: Option<PathBuf>,
+    /// Whether to try pushing/pulling
+    pub push_enabled: bool,
 }
 
 // Profile struct removed - profiles are now stored in the repository manifest (.dotstate-profiles.toml)
@@ -65,6 +90,21 @@ impl Config {
                 .with_context(|| format!("Failed to read config file: {:?}", config_path))?;
             let mut config: Config =
                 toml::from_str(&content).with_context(|| "Failed to parse config file")?;
+
+            // Migration: Convert legacy github field to provider field
+            if config.provider.is_none() {
+                if let Some(github_config) = config.github.clone() {
+                    tracing::info!("Migrating legacy GitHub config to ProviderConfig");
+                    config.provider = Some(ProviderConfig::GitHub(github_config));
+                    // We don't verify connection here, just migrate the data
+                    // The main app logic will check if provider is configured
+
+                    // Save the migrated config immediately
+                    if let Err(e) = config.save(config_path) {
+                        tracing::error!("Failed to save migrated config: {}", e);
+                    }
+                }
+            }
 
             // Set defaults for missing fields (for backward compatibility)
             if config.repo_name.is_empty() {
@@ -145,6 +185,7 @@ impl Config {
     /// Get default configuration
     pub fn default() -> Self {
         Self {
+            provider: None,
             github: None,
             active_profile: String::new(),
             backup_enabled: true,

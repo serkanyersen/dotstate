@@ -65,7 +65,7 @@ impl MenuItem {
             MenuItem::SyncWithRemote => "Sync with Remote",
             MenuItem::ManageProfiles => "Manage Profiles",
             MenuItem::ManagePackages => "Manage Packages",
-            MenuItem::SetupGitHub => "Setup GitHub Repository",
+            MenuItem::SetupGitHub => "Setup Provider",
         }
     }
 
@@ -233,13 +233,15 @@ impl MenuItem {
             MenuItem::SetupGitHub => {
                 let lines = vec![
                     Line::from(vec![
-                        Span::styled("Connect to GitHub", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+                        Span::styled("Setup Provider", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
                     ]),
                     Line::from(""),
                     Line::from(vec![
-                        Span::raw("Set up cloud backup for your dotfiles! This creates a "),
-                        Span::styled("private or public repository", Style::default().fg(Color::Cyan)),
-                        Span::raw(" on GitHub to store all your configuration files."),
+                        Span::raw("Set up cloud or local backup for your dotfiles! Create a "),
+                        Span::styled("GitHub repository", Style::default().fg(Color::Cyan)),
+                        Span::raw(" or use a "),
+                        Span::styled("local folder", Style::default().fg(Color::Cyan)),
+                        Span::raw(" to store configuration files."),
                     ]),
                     Line::from(""),
                     Line::from(vec![
@@ -331,12 +333,16 @@ impl MainMenuComponent {
         }
     }
 
-    /// Check if the app is set up (GitHub configured)
+    /// Check if the app is set up (provider configured)
     fn is_setup(&self) -> bool {
         self.config
             .as_ref()
-            .and_then(|c| c.github.as_ref())
+            .and_then(|c| c.provider.as_ref())
             .is_some()
+            || self.config
+                .as_ref()
+                .and_then(|c| c.github.as_ref())
+                .is_some()
     }
 
     /// Get the currently selected menu item
@@ -383,7 +389,7 @@ impl MainMenuComponent {
     /// Get stats text based on config
     fn get_stats(&self) -> String {
         if let Some(ref config) = self.config {
-            if config.github.is_none() {
+            if config.provider.is_none() && config.github.is_none() {
                 return "Please complete setup to see status".to_string();
             }
 
@@ -488,7 +494,11 @@ impl Component for MainMenuComponent {
                     && self.has_changes_to_push
                     && is_enabled
                 {
-                    format!("{} {} ({} pending)", icon, text, self.changed_files.len())
+                    if self.changed_files.is_empty() {
+                         format!("{} {} (push pending)", icon, text)
+                    } else {
+                         format!("{} {} ({} pending)", icon, text, self.changed_files.len())
+                    }
                 } else if !is_enabled {
                     format!("{} {} (requires setup)", icon, text)
                 } else {
