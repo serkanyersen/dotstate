@@ -613,6 +613,17 @@ brew install dotstate" aria-label="Copy command">📋</button>
 
                         <div class="command-card">
                             <div class="command-header">
+                                <code class="command-name">dotstate upgrade</code>
+                                <button class="copy-btn" data-copy="dotstate upgrade" aria-label="Copy command">📋</button>
+                            </div>
+                            <p class="command-desc">Check for updates and optionally upgrade DotState. Shows available update options including install script, cargo, and homebrew.</p>
+                            <div class="command-options">
+                                <code>--check</code> Check for updates without prompting to install
+                            </div>
+                        </div>
+
+                        <div class="command-card">
+                            <div class="command-header">
                                 <code class="command-name">dotstate help</code>
                                 <button class="copy-btn" data-copy="dotstate help" aria-label="Copy command">📋</button>
                             </div>
@@ -736,6 +747,35 @@ brew install dotstate" aria-label="Copy command">📋</button>
                         <div class="code-block">
                             <code>~/.config/dotstate/config.toml</code>
                             <button class="copy-btn" data-copy="~/.config/dotstate/config.toml" aria-label="Copy path">📋</button>
+                        </div>
+
+                        <h3>Update Notifications</h3>
+                        <p>DotState automatically checks for updates and shows a notification in the main menu when a new version is available.</p>
+
+                        <div class="example-card">
+                            <h4>Check for Updates Manually</h4>
+                            <div class="code-block">
+                                <code>dotstate upgrade</code>
+                                <button class="copy-btn" data-copy="dotstate upgrade" aria-label="Copy command">📋</button>
+                            </div>
+                            <p>This command checks for updates and provides interactive options to upgrade.</p>
+                        </div>
+
+                        <div class="example-card">
+                            <h4>Disable Update Checks</h4>
+                            <p>Add this to your <code>config.toml</code> to disable automatic update checks:</p>
+                            <div class="code-block">
+                                <code>[updates]<br>check_enabled = false</code>
+                                <button class="copy-btn" data-copy="[updates]
+check_enabled = false" aria-label="Copy config">📋</button>
+                            </div>
+                            <p>You can also configure the check interval (default: 24 hours):</p>
+                            <div class="code-block">
+                                <code>[updates]<br>check_enabled = true<br>check_interval_hours = 48</code>
+                                <button class="copy-btn" data-copy="[updates]
+check_enabled = true
+check_interval_hours = 48" aria-label="Copy config">📋</button>
+                            </div>
                         </div>
 
                         <div class="tip">

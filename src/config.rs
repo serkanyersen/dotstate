@@ -317,4 +317,122 @@ custom_files = []
         let loaded = Config::load_or_create(&config_path).unwrap();
         assert_eq!(loaded.repo_mode, RepoMode::GitHub);
     }
+
+    #[test]
+    fn test_update_config_defaults() {
+        let update_config = UpdateConfig::default();
+        assert!(update_config.check_enabled);
+        assert_eq!(update_config.check_interval_hours, 24);
+    }
+
+    #[test]
+    fn test_config_includes_update_config() {
+        let config = Config::default();
+        assert!(config.updates.check_enabled);
+        assert_eq!(config.updates.check_interval_hours, 24);
+    }
+
+    #[test]
+    fn test_update_config_serialization() {
+        let temp_dir = TempDir::new().unwrap();
+        let config_path = temp_dir.path().join("config.toml");
+        let repo_path = temp_dir.path().join("repo");
+
+        let mut config = Config::default();
+        config.repo_path = repo_path;
+        config.updates.check_enabled = false;
+        config.updates.check_interval_hours = 48;
+        config.save(&config_path).unwrap();
+
+        let loaded = Config::load_or_create(&config_path).unwrap();
+        assert!(!loaded.updates.check_enabled);
+        assert_eq!(loaded.updates.check_interval_hours, 48);
+    }
+
+    #[test]
+    fn test_old_config_defaults_update_config() {
+        let temp_dir = TempDir::new().unwrap();
+        let config_path = temp_dir.path().join("config.toml");
+        let repo_path = temp_dir.path().join("repo");
+
+        // Write an old-style config without updates section
+        let old_config = format!(
+            r#"
+active_profile = ""
+repo_path = "{}"
+repo_name = "dotstate-storage"
+default_branch = "main"
+backup_enabled = true
+profile_activated = true
+custom_files = []
+"#,
+            repo_path.display()
+        );
+        std::fs::write(&config_path, old_config).unwrap();
+
+        // Load should default updates to enabled with 24h interval
+        let loaded = Config::load_or_create(&config_path).unwrap();
+        assert!(loaded.updates.check_enabled);
+        assert_eq!(loaded.updates.check_interval_hours, 24);
+    }
+
+    #[test]
+    fn test_update_config_custom_interval() {
+        let temp_dir = TempDir::new().unwrap();
+        let config_path = temp_dir.path().join("config.toml");
+        let repo_path = temp_dir.path().join("repo");
+
+        // Write config with custom update interval
+        let config_content = format!(
+            r#"
+active_profile = ""
+repo_path = "{}"
+repo_name = "dotstate-storage"
+default_branch = "main"
+backup_enabled = true
+profile_activated = true
+custom_files = []
+
+[updates]
+check_enabled = true
+check_interval_hours = 168
+"#,
+            repo_path.display()
+        );
+        std::fs::write(&config_path, config_content).unwrap();
+
+        let loaded = Config::load_or_create(&config_path).unwrap();
+        assert!(loaded.updates.check_enabled);
+        assert_eq!(loaded.updates.check_interval_hours, 168); // 1 week
+    }
+
+    #[test]
+    fn test_update_config_disabled() {
+        let temp_dir = TempDir::new().unwrap();
+        let config_path = temp_dir.path().join("config.toml");
+        let repo_path = temp_dir.path().join("repo");
+
+        // Write config with updates disabled
+        let config_content = format!(
+            r#"
+active_profile = ""
+repo_path = "{}"
+repo_name = "dotstate-storage"
+default_branch = "main"
+backup_enabled = true
+profile_activated = true
+custom_files = []
+
+[updates]
+check_enabled = false
+"#,
+            repo_path.display()
+        );
+        std::fs::write(&config_path, config_content).unwrap();
+
+        let loaded = Config::load_or_create(&config_path).unwrap();
+        assert!(!loaded.updates.check_enabled);
+        // Should still have default interval even when disabled
+        assert_eq!(loaded.updates.check_interval_hours, 24);
+    }
 }
