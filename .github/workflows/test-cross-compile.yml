@@ -1,0 +1,60 @@
+name: Test Cross-Compilation
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/release.yml'
+      - 'Cargo.toml'
+      - 'src/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-aarch64-build:
+    name: Test aarch64-unknown-linux-gnu build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-unknown-linux-gnu
+
+      - name: Install cross-compilation dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu libc6-dev-arm64-cross
+
+      - name: Configure cargo for cross-compilation
+        run: |
+          mkdir -p .cargo
+          cat >> .cargo/config.toml <<EOF
+          [target.aarch64-unknown-linux-gnu]
+          linker = "aarch64-linux-gnu-gcc"
+          EOF
+
+      - name: Set environment variables for cross-compilation
+        run: |
+          echo "CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
+          echo "CXX_aarch64_unknown_linux_gnu=aarch64-linux-gnu-g++" >> $GITHUB_ENV
+          echo "AR_aarch64_unknown_linux_gnu=aarch64-linux-gnu-ar" >> $GITHUB_ENV
+          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
+
+      - name: Cache Cargo dependencies
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: '.'
+
+      - name: Build for aarch64-unknown-linux-gnu
+        run: cargo build --release --target aarch64-unknown-linux-gnu
+
+      - name: Verify binary
+        run: |
+          file target/aarch64-unknown-linux-gnu/release/dotstate
+          # Check that it's actually an ARM64 binary
+          file target/aarch64-unknown-linux-gnu/release/dotstate | grep -q "ARM aarch64" || (echo "❌ Binary is not ARM64!" && exit 1)
+          echo "✅ Binary is ARM64"
+
