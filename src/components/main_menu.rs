@@ -19,7 +19,7 @@ pub enum MenuItem {
     SyncWithRemote,
     ManageProfiles,
     ManagePackages,
-    SetupGitHub,
+    SetupRepository,
 }
 
 impl MenuItem {
@@ -30,15 +30,15 @@ impl MenuItem {
             MenuItem::SyncWithRemote,
             MenuItem::ManageProfiles,
             MenuItem::ManagePackages,
-            MenuItem::SetupGitHub,
+            MenuItem::SetupRepository,
         ]
     }
 
-    /// Check if this menu item requires GitHub setup
+    /// Check if this menu item requires repository setup
     pub fn requires_setup(&self) -> bool {
         match self {
-            MenuItem::SetupGitHub => false, // Always available
-            _ => true,                      // All other items require setup
+            MenuItem::SetupRepository => false, // Always available
+            _ => true,                          // All other items require setup
         }
     }
 
@@ -54,7 +54,7 @@ impl MenuItem {
             MenuItem::SyncWithRemote => "🔄",
             MenuItem::ManageProfiles => "👤",
             MenuItem::ManagePackages => "📦",
-            MenuItem::SetupGitHub => "🔧",
+            MenuItem::SetupRepository => "🔧",
         }
     }
 
@@ -65,7 +65,7 @@ impl MenuItem {
             MenuItem::SyncWithRemote => "Sync with Remote",
             MenuItem::ManageProfiles => "Manage Profiles",
             MenuItem::ManagePackages => "Manage Packages",
-            MenuItem::SetupGitHub => "Setup GitHub Repository",
+            MenuItem::SetupRepository => "Setup git repository",
         }
     }
 
@@ -230,40 +230,63 @@ impl MenuItem {
                 ];
                 Text::from(lines)
             }
-            MenuItem::SetupGitHub => {
+            MenuItem::SetupRepository => {
                 let lines = vec![
+                    Line::from(vec![Span::styled(
+                        "Setup Git Repository",
+                        Style::default()
+                            .fg(Color::Yellow)
+                            .add_modifier(Modifier::BOLD),
+                    )]),
+                    Line::from(""),
                     Line::from(vec![
-                        Span::styled("Connect to GitHub", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+                        Span::raw("Configure a git repository to store and sync your dotfiles. "),
+                        Span::styled(
+                            "Choose how you want to set up:",
+                            Style::default().fg(Color::Cyan),
+                        ),
                     ]),
                     Line::from(""),
                     Line::from(vec![
-                        Span::raw("Set up cloud backup for your dotfiles! This creates a "),
-                        Span::styled("private or public repository", Style::default().fg(Color::Cyan)),
-                        Span::raw(" on GitHub to store all your configuration files."),
+                        Span::styled(
+                            "Option 1: ",
+                            Style::default()
+                                .fg(Color::Green)
+                                .add_modifier(Modifier::BOLD),
+                        ),
+                        Span::styled("Create for me (GitHub)", Style::default().fg(Color::Green)),
                     ]),
+                    Line::from(vec![Span::raw(
+                        "  Automatically create a repository on GitHub.",
+                    )]),
+                    Line::from(vec![Span::raw(
+                        "  Requires a GitHub Personal Access Token.",
+                    )]),
                     Line::from(""),
                     Line::from(vec![
-                        Span::raw("Once connected, you can "),
-                        Span::styled("sync your dotfiles across multiple computers", Style::default().fg(Color::Green)),
-                        Span::raw(", share configurations with your team, or simply have a secure backup in the cloud."),
+                        Span::styled(
+                            "Option 2: ",
+                            Style::default()
+                                .fg(Color::Blue)
+                                .add_modifier(Modifier::BOLD),
+                        ),
+                        Span::styled("Use my own repository", Style::default().fg(Color::Blue)),
                     ]),
+                    Line::from(vec![Span::raw(
+                        "  Use any git host (GitHub, GitLab, Bitbucket, etc.)",
+                    )]),
+                    Line::from(vec![Span::raw(
+                        "  You set up the repo, dotstate just uses it.",
+                    )]),
                     Line::from(""),
                     Line::from(vec![
-                        Span::raw("The setup process will:\n"),
-                        Span::styled("  1. ", Style::default().fg(Color::Yellow)),
-                        Span::raw("Create a GitHub repository\n"),
-                        Span::styled("  2. ", Style::default().fg(Color::Yellow)),
-                        Span::raw("Clone it to your local machine\n"),
-                        Span::styled("  3. ", Style::default().fg(Color::Yellow)),
-                        Span::raw("Set up your first profile"),
-                    ]),
-                    Line::from(""),
-                    Line::from(vec![
-                        Span::styled("💡 Tip: ", Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD)),
-                        Span::raw("You'll need a GitHub Personal Access Token with "),
-                        Span::styled("repo", Style::default().fg(Color::Yellow)),
-                        Span::raw(" scope. Create one at "),
-                        Span::styled("github.com/settings/tokens", Style::default().fg(Color::Cyan)),
+                        Span::styled(
+                            "💡 Tip: ",
+                            Style::default()
+                                .fg(Color::Magenta)
+                                .add_modifier(Modifier::BOLD),
+                        ),
+                        Span::raw("Both options sync your dotfiles across machines!"),
                     ]),
                 ];
                 Text::from(lines)
@@ -278,7 +301,7 @@ impl MenuItem {
             MenuItem::SyncWithRemote => "🔄",
             MenuItem::ManageProfiles => "👤",
             MenuItem::ManagePackages => "📦",
-            MenuItem::SetupGitHub => "🔧",
+            MenuItem::SetupRepository => "🔧",
         }
     }
 
@@ -317,8 +340,8 @@ pub struct MainMenuComponent {
 impl MainMenuComponent {
     pub fn new(has_changes_to_push: bool) -> Self {
         let mut list_state = ListState::default();
-        // Default to SetupGitHub if not set up, otherwise first item
-        let default_item = MenuItem::SetupGitHub;
+        // Default to SetupRepository if not set up, otherwise first item
+        let default_item = MenuItem::SetupRepository;
         list_state.select(Some(default_item.to_index()));
 
         Self {
@@ -331,12 +354,12 @@ impl MainMenuComponent {
         }
     }
 
-    /// Check if the app is set up (GitHub configured)
+    /// Check if the app is set up (GitHub or Local mode configured)
     fn is_setup(&self) -> bool {
         self.config
             .as_ref()
-            .and_then(|c| c.github.as_ref())
-            .is_some()
+            .map(|c| c.is_repo_configured())
+            .unwrap_or(false)
     }
 
     /// Get the currently selected menu item
@@ -382,8 +405,10 @@ impl MainMenuComponent {
 
     /// Get stats text based on config
     fn get_stats(&self) -> String {
+        use crate::config::RepoMode;
+
         if let Some(ref config) = self.config {
-            if config.github.is_none() {
+            if !config.is_repo_configured() {
                 return "Please complete setup to see status".to_string();
             }
 
@@ -399,9 +424,15 @@ impl MainMenuComponent {
             let profile_count = manifest.profiles.len();
             let active_profile = &config.active_profile;
 
+            // Show different info based on repo mode
+            let repo_info = match config.repo_mode {
+                RepoMode::GitHub => format!("Repository: {}", config.repo_name),
+                RepoMode::Local => format!("Repository: {} (local)", config.repo_path.display()),
+            };
+
             let mut stats = format!(
-                "Synced Files: {}\nProfiles: {} (Active: {})\nRepository: {}",
-                synced_count, profile_count, active_profile, config.repo_name
+                "Synced Files: {}\nProfiles: {} (Active: {})\n{}",
+                synced_count, profile_count, active_profile, repo_info
             );
 
             // Add pending changes if any

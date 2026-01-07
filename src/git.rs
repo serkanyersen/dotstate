@@ -1164,6 +1164,128 @@ impl GitManager {
 
         Ok(Some(String::from_utf8_lossy(&diff_buf).to_string()))
     }
+
+    /// Get the remote URL for a given remote name
+    #[allow(dead_code)]
+    pub fn get_remote_url(&self, remote_name: &str) -> Result<Option<String>> {
+        match self.repo.find_remote(remote_name) {
+            Ok(remote) => Ok(remote.url().map(|s| s.to_string())),
+            Err(_) => Ok(None),
+        }
+    }
+}
+
+/// Validation result for local repository
+#[derive(Debug)]
+pub struct LocalRepoValidation {
+    pub is_valid: bool,
+    #[allow(dead_code)]
+    pub has_git: bool,
+    #[allow(dead_code)]
+    pub has_origin: bool,
+    pub remote_url: Option<String>,
+    pub error_message: Option<String>,
+}
+
+/// Validate a local repository for use with DotState
+///
+/// Checks:
+/// 1. Path exists
+/// 2. Is a git repository (has .git directory)
+/// 3. Has a remote named "origin" configured
+pub fn validate_local_repo(path: &Path) -> LocalRepoValidation {
+    // Expand ~ to home directory
+    let expanded_path = if path.starts_with("~") {
+        if let Some(home) = dirs::home_dir() {
+            home.join(path.strip_prefix("~").unwrap_or(path))
+        } else {
+            path.to_path_buf()
+        }
+    } else {
+        path.to_path_buf()
+    };
+
+    // Check if path exists
+    if !expanded_path.exists() {
+        return LocalRepoValidation {
+            is_valid: false,
+            has_git: false,
+            has_origin: false,
+            remote_url: None,
+            error_message: Some(format!("Path does not exist: {}", expanded_path.display())),
+        };
+    }
+
+    // Check if it's a git repository
+    let git_dir = expanded_path.join(".git");
+    if !git_dir.exists() {
+        return LocalRepoValidation {
+            is_valid: false,
+            has_git: false,
+            has_origin: false,
+            remote_url: None,
+            error_message: Some(
+                "Not a git repository. Run 'git clone <url> <path>' first.".to_string(),
+            ),
+        };
+    }
+
+    // Try to open the repository
+    let repo = match Repository::open(&expanded_path) {
+        Ok(r) => r,
+        Err(e) => {
+            return LocalRepoValidation {
+                is_valid: false,
+                has_git: true,
+                has_origin: false,
+                remote_url: None,
+                error_message: Some(format!("Failed to open repository: {}", e)),
+            };
+        }
+    };
+
+    // Check for origin remote
+    let remote_url = match repo.find_remote("origin") {
+        Ok(remote) => remote.url().map(|s| s.to_string()),
+        Err(_) => {
+            return LocalRepoValidation {
+                is_valid: false,
+                has_git: true,
+                has_origin: false,
+                remote_url: None,
+                error_message: Some(
+                    "No 'origin' remote found. Run 'git remote add origin <url>' first."
+                        .to_string(),
+                ),
+            };
+        }
+    };
+
+    LocalRepoValidation {
+        is_valid: true,
+        has_git: true,
+        has_origin: true,
+        remote_url,
+        error_message: None,
+    }
+}
+
+/// Expand ~ to home directory in a path string
+pub fn expand_path(path_str: &str) -> std::path::PathBuf {
+    if let Some(stripped) = path_str.strip_prefix("~/") {
+        if let Some(home) = dirs::home_dir() {
+            return home.join(stripped);
+        }
+    } else if let Some(stripped) = path_str.strip_prefix('~') {
+        // Handle case of just "~" or "~something" (without slash)
+        if let Some(home) = dirs::home_dir() {
+            if stripped.is_empty() {
+                return home;
+            }
+            return home.join(stripped);
+        }
+    }
+    std::path::PathBuf::from(path_str)
 }
 
 #[cfg(test)]
@@ -1291,5 +1413,73 @@ mod tests {
         // Should ignore manifest and only mention test.txt
         assert!(msg.contains("Add") || msg.contains("Update"));
         assert!(!msg.contains("profile configuration"));
+    }
+
+    #[test]
+    fn test_validate_local_repo_nonexistent() {
+        let result = validate_local_repo(Path::new("/nonexistent/path"));
+        assert!(!result.is_valid);
+        assert!(!result.has_git);
+        assert!(!result.has_origin);
+        assert!(result.error_message.is_some());
+    }
+
+    #[test]
+    fn test_validate_local_repo_not_git() {
+        let temp_dir = TempDir::new().unwrap();
+        let result = validate_local_repo(temp_dir.path());
+        assert!(!result.is_valid);
+        assert!(!result.has_git);
+        assert!(!result.has_origin);
+        assert!(result
+            .error_message
+            .unwrap()
+            .contains("Not a git repository"));
+    }
+
+    #[test]
+    fn test_validate_local_repo_no_origin() {
+        let temp_dir = TempDir::new().unwrap();
+        // Initialize a repo without origin
+        let _git_mgr = GitManager::open_or_init(temp_dir.path()).unwrap();
+
+        let result = validate_local_repo(temp_dir.path());
+        assert!(!result.is_valid);
+        assert!(result.has_git);
+        assert!(!result.has_origin);
+        assert!(result.error_message.unwrap().contains("No 'origin' remote"));
+    }
+
+    #[test]
+    fn test_validate_local_repo_valid() {
+        let temp_dir = TempDir::new().unwrap();
+        // Initialize a repo with origin
+        let mut git_mgr = GitManager::open_or_init(temp_dir.path()).unwrap();
+        git_mgr
+            .add_remote("origin", "https://github.com/test/test.git")
+            .unwrap();
+
+        let result = validate_local_repo(temp_dir.path());
+        assert!(result.is_valid);
+        assert!(result.has_git);
+        assert!(result.has_origin);
+        assert!(result.error_message.is_none());
+        assert_eq!(
+            result.remote_url,
+            Some("https://github.com/test/test.git".to_string())
+        );
+    }
+
+    #[test]
+    fn test_expand_path() {
+        let home = dirs::home_dir().unwrap();
+
+        // Test ~ expansion
+        let expanded = expand_path("~/test");
+        assert_eq!(expanded, home.join("test"));
+
+        // Test without ~
+        let no_expand = expand_path("/absolute/path");
+        assert_eq!(no_expand, std::path::PathBuf::from("/absolute/path"));
     }
 }

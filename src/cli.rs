@@ -75,15 +75,20 @@ impl Cli {
     }
 
     fn cmd_sync(message: Option<String>) -> Result<()> {
+        use crate::config::RepoMode;
+
         info!("CLI: sync command executed");
         let config_path = crate::utils::get_config_path();
 
         let config =
             Config::load_or_create(&config_path).context("Failed to load configuration")?;
 
-        if config.github.is_none() {
-            warn!("CLI sync: GitHub not configured");
-            eprintln!("❌ GitHub not configured. Please run 'dotstate' to set up GitHub sync.");
+        // Check if repository is configured (either GitHub or Local mode)
+        if !config.is_repo_configured() {
+            warn!("CLI sync: Repository not configured");
+            eprintln!(
+                "❌ Repository not configured. Please run 'dotstate' to set up repository sync."
+            );
             std::process::exit(1);
         }
 
@@ -93,10 +98,16 @@ impl Cli {
         let branch = git_mgr
             .get_current_branch()
             .unwrap_or_else(|| config.default_branch.clone());
-        let token_string = config.get_github_token();
+
+        // Get token based on repo mode (None for Local mode)
+        let token_string = match config.repo_mode {
+            RepoMode::Local => None,
+            RepoMode::GitHub => config.get_github_token(),
+        };
         let token = token_string.as_deref();
 
-        if token.is_none() {
+        // Only require token for GitHub mode
+        if matches!(config.repo_mode, RepoMode::GitHub) && token.is_none() {
             eprintln!("❌ GitHub token not found.");
             eprintln!();
             eprintln!("Please provide a GitHub token using one of these methods:");
@@ -124,7 +135,11 @@ impl Cli {
             .pull_with_rebase("origin", &branch, token)
             .context("Failed to pull from remote")?;
 
-        println!("📤 Pushing to GitHub...");
+        let push_dest = match config.repo_mode {
+            RepoMode::GitHub => "GitHub",
+            RepoMode::Local => "remote",
+        };
+        println!("📤 Pushing to {}...", push_dest);
         git_mgr
             .push("origin", &branch, token)
             .context("Failed to push to remote")?;
@@ -398,8 +413,8 @@ impl Cli {
         let mut config =
             Config::load_or_create(&config_path).context("Failed to load configuration")?;
 
-        if config.github.is_none() {
-            eprintln!("❌ GitHub not configured. Please run 'dotstate' to set up GitHub sync.");
+        if !config.is_repo_configured() {
+            eprintln!("❌ Repository not configured. Please run 'dotstate' to set up repository.");
             std::process::exit(1);
         }
 
@@ -488,8 +503,8 @@ impl Cli {
         let mut config =
             Config::load_or_create(&config_path).context("Failed to load configuration")?;
 
-        if config.github.is_none() {
-            eprintln!("❌ GitHub not configured. Please run 'dotstate' to set up GitHub sync.");
+        if !config.is_repo_configured() {
+            eprintln!("❌ Repository not configured. Please run 'dotstate' to set up repository.");
             std::process::exit(1);
         }
 

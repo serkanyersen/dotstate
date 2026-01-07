@@ -2,12 +2,26 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
+/// Repository setup mode
+/// Determines how the repository was configured and how sync operations authenticate
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub enum RepoMode {
+    /// Repository created/managed via GitHub API (requires token for sync)
+    #[default]
+    GitHub,
+    /// User-provided repository (uses system git credentials for sync)
+    Local,
+}
+
 /// Main configuration structure
 /// Note: Profiles are stored in the repository manifest (.dotstate-profiles.toml), not in this config file.
 /// This config only stores local settings like backup preferences and active profile name.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
-    /// GitHub repository information
+    /// Repository setup mode (GitHub API or local/user-provided)
+    #[serde(default)]
+    pub repo_mode: RepoMode,
+    /// GitHub repository information (only used in GitHub mode)
     pub github: Option<GitHubConfig>,
     /// Current active profile/set
     pub active_profile: String,
@@ -145,6 +159,7 @@ impl Config {
     /// Get default configuration
     pub fn default() -> Self {
         Self {
+            repo_mode: RepoMode::default(),
             github: None,
             active_profile: String::new(),
             backup_enabled: true,
@@ -157,6 +172,14 @@ impl Config {
             repo_name: default_repo_name(),
             default_branch: "main".to_string(),
             custom_files: Vec::new(),
+        }
+    }
+
+    /// Check if the repository is configured (either GitHub or Local mode)
+    pub fn is_repo_configured(&self) -> bool {
+        match self.repo_mode {
+            RepoMode::GitHub => self.github.is_some(),
+            RepoMode::Local => self.repo_path.join(".git").exists(),
         }
     }
 
@@ -194,6 +217,7 @@ mod tests {
     fn test_config_default() {
         let config = Config::default();
         assert_eq!(config.active_profile, "");
+        assert_eq!(config.repo_mode, RepoMode::GitHub);
     }
 
     #[test]
@@ -211,5 +235,54 @@ mod tests {
         // Both should have empty active_profile since repo_path doesn't exist
         assert_eq!(config.active_profile, loaded.active_profile);
         assert_eq!(loaded.active_profile, "");
+    }
+
+    #[test]
+    fn test_repo_mode_serialization() {
+        let temp_dir = TempDir::new().unwrap();
+        let config_path = temp_dir.path().join("config.toml");
+        let repo_path = temp_dir.path().join("repo");
+
+        // Test GitHub mode
+        let mut config = Config::default();
+        config.repo_path = repo_path.clone();
+        config.repo_mode = RepoMode::GitHub;
+        config.save(&config_path).unwrap();
+
+        let loaded = Config::load_or_create(&config_path).unwrap();
+        assert_eq!(loaded.repo_mode, RepoMode::GitHub);
+
+        // Test Local mode
+        config.repo_mode = RepoMode::Local;
+        config.save(&config_path).unwrap();
+
+        let loaded = Config::load_or_create(&config_path).unwrap();
+        assert_eq!(loaded.repo_mode, RepoMode::Local);
+    }
+
+    #[test]
+    fn test_old_config_defaults_to_github_mode() {
+        let temp_dir = TempDir::new().unwrap();
+        let config_path = temp_dir.path().join("config.toml");
+        let repo_path = temp_dir.path().join("repo");
+
+        // Write an old-style config without repo_mode
+        let old_config = format!(
+            r#"
+active_profile = ""
+repo_path = "{}"
+repo_name = "dotstate-storage"
+default_branch = "main"
+backup_enabled = true
+profile_activated = true
+custom_files = []
+"#,
+            repo_path.display()
+        );
+        std::fs::write(&config_path, old_config).unwrap();
+
+        // Load should default repo_mode to GitHub
+        let loaded = Config::load_or_create(&config_path).unwrap();
+        assert_eq!(loaded.repo_mode, RepoMode::GitHub);
     }
 }

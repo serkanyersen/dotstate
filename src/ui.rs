@@ -17,9 +17,14 @@ pub enum Screen {
     ManagePackages,
 }
 
-/// GitHub auth state
+/// GitHub auth state (also handles local repo setup)
 #[derive(Debug, Clone)]
 pub struct GitHubAuthState {
+    // Setup mode selection
+    pub setup_mode: SetupMode, // Current setup mode (Choosing, GitHub, Local)
+    pub mode_selection_index: usize, // 0 = Create for me (GitHub), 1 = Use own repo (Local)
+
+    // GitHub mode fields
     pub token_input: String,
     pub repo_name_input: String,
     pub repo_location_input: String,
@@ -35,6 +40,12 @@ pub struct GitHubAuthState {
     pub repo_already_configured: bool,  // Whether repo was already set up
     /// Intermediate data stored during GitHub setup process
     pub setup_data: Option<GitHubSetupData>,
+
+    // Local mode fields
+    pub local_repo_path_input: String, // Path to user's local repository
+    pub local_repo_path_cursor: usize, // Cursor position in local path input
+    #[allow(dead_code)]
+    pub local_step: LocalSetupStep, // Current step in local setup flow (reserved for future async flow)
 }
 
 /// Intermediate data stored during GitHub setup process
@@ -78,6 +89,30 @@ pub enum GitHubSetupStep {
     Complete,
 }
 
+/// Setup mode for repository configuration
+/// Determines which setup flow the user is in
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SetupMode {
+    /// Initial screen - user chooses between GitHub and Local modes
+    #[default]
+    Choosing,
+    /// GitHub mode - dotstate creates/manages the repository via GitHub API
+    GitHub,
+    /// Local mode - user provides their own pre-configured repository
+    Local,
+}
+
+/// State machine for local setup process
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum LocalSetupStep {
+    #[default]
+    Input,
+    #[allow(dead_code)]
+    Validating,
+    #[allow(dead_code)]
+    Complete,
+}
+
 impl Default for GitHubAuthState {
     fn default() -> Self {
         let default_repo_path = dirs::home_dir()
@@ -87,6 +122,11 @@ impl Default for GitHubAuthState {
             .join("storage");
 
         Self {
+            // Setup mode selection
+            setup_mode: SetupMode::default(),
+            mode_selection_index: 0, // Default to "Create for me (GitHub)"
+
+            // GitHub mode fields
             token_input: String::new(),
             repo_name_input: crate::config::default_repo_name(),
             repo_location_input: default_repo_path.to_string_lossy().to_string(),
@@ -101,6 +141,11 @@ impl Default for GitHubAuthState {
             is_editing_token: false,
             repo_already_configured: false,
             setup_data: None,
+
+            // Local mode fields
+            local_repo_path_input: default_repo_path.to_string_lossy().to_string(),
+            local_repo_path_cursor: 0,
+            local_step: LocalSetupStep::Input,
         }
     }
 }
