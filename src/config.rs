@@ -177,7 +177,8 @@ impl Config {
         // Fall back to config token
         self.github
             .as_ref()
-            .and_then(|gh| gh.token.as_ref()).cloned()
+            .and_then(|gh| gh.token.as_ref())
+            .cloned()
     }
 
     // Profile-related methods removed - use ProfileManifest directly
