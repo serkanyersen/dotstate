@@ -17,7 +17,7 @@ Managing dotfiles can be a pain. You want your `.zshrc`, `.vimrc`, and other con
 - 🎨 **Beautiful TUI** - Intuitive interface that doesn't require learning Git
 - ⚡ **Lightning fast** - Non-blocking operations, instant feedback
 - 🛡️ **Safe** - Automatic backups before any file operations
-- 🔄 **GitHub-powered** - Your dotfiles stored securely in a private or public repo
+- 🔄 **Git-powered** - Store dotfiles in GitHub, GitLab, Bitbucket, or any git host
 
 ## What Makes DotState Different?
 
@@ -41,7 +41,8 @@ Managing dotfiles can be a pain. You want your `.zshrc`, `.vimrc`, and other con
 ### 🎯 Core Features
 
 - **Profile Management**: Create separate profiles for different contexts (work, personal, Mac, Linux, etc.)
-- **GitHub Sync**: Automatic sync with GitHub (private or public repos)
+- **Flexible Git Sync**: Automatic sync with GitHub, GitLab, Bitbucket, or any git host
+- **Two Setup Modes**: Let DotState create a GitHub repo for you, or use your own repository
 - **Smart File Detection**: Automatically finds common dotfiles in your home directory
 - **Safe Operations**: Automatic backups before any file modification
 - **Symlink Management**: Automatic creation and management of symlinks
@@ -103,17 +104,22 @@ brew install serkanyersen/dotstate/dotstate
    ```
 
 2. **First-time Setup**:
-   - Enter your GitHub token (create one at [github.com/settings/tokens](https://github.com/settings/tokens))
-     - **Tip**: You can also set the `DOTSTATE_GITHUB_TOKEN` environment variable instead of entering it in the TUI
-   - Choose repository name and location
-   - Select repository visibility (private/public)
+   - Choose how to set up your repository:
+     - **Option A: Create for me (GitHub)** - DotState creates a repo on GitHub
+       - Enter your GitHub token (create one at [github.com/settings/tokens](https://github.com/settings/tokens))
+       - **Tip**: You can also set the `DOTSTATE_GITHUB_TOKEN` environment variable
+       - Choose repository name and visibility (private/public)
+     - **Option B: Use my own repository** - Bring your own git repo
+       - Create a repo on any git host (GitHub, GitLab, Bitbucket, etc.)
+       - Clone it locally and set up your credentials
+       - Point DotState to your local repo path
 
 3. **Add Your Files**:
    - Navigate to "Manage Files"
    - Select files to sync (they're automatically added)
    - Files are moved to the repo and symlinked automatically
 
-4. **Sync to GitHub**:
+4. **Sync with Remote**:
    - Go to "Sync with Remote"
    - Your files are committed, pulled, and pushed automatically
 
@@ -155,10 +161,14 @@ dotstate help
 
 ## Configuration
 
-### GitHub Token
+### Repository Setup Modes
 
-DotState supports two ways to provide your GitHub token:
+DotState supports two repository setup modes:
 
+#### GitHub Mode (Automatic)
+Let DotState create and manage a GitHub repository for you. Requires a GitHub Personal Access Token.
+
+**GitHub Token Configuration:**
 1. **Environment Variable** (Recommended for automation):
    ```bash
    export DOTSTATE_GITHUB_TOKEN=ghp_your_token_here
@@ -167,10 +177,19 @@ DotState supports two ways to provide your GitHub token:
 
 2. **Config File**: The token can be stored in the config file (set during first-time setup).
 
-**Note**: If `DOTSTATE_GITHUB_TOKEN` is set, it will be used automatically, and the token in the config file becomes optional. This is useful for:
-- CI/CD pipelines
-- Shared machines where you don't want to store tokens in config files
-- Using different tokens for different environments
+#### Local Mode (Bring Your Own Repo)
+Use any existing git repository from any host (GitHub, GitLab, Bitbucket, self-hosted, etc.).
+
+**Setup:**
+1. Create a repository on your preferred git host
+2. Clone it locally: `git clone <url> ~/.config/dotstate/storage`
+3. Ensure you can push: `git push origin main`
+4. In DotState, choose "Use my own repository" and enter the path
+
+**Benefits of Local Mode:**
+- Works with any git host
+- Uses your existing SSH keys or git credentials
+- No GitHub token required
 
 ## Security Considerations
 
@@ -184,7 +203,7 @@ DotState supports two ways to provide your GitHub token:
 
 - **Rust**: Latest stable version (for building from source)
 - **Git**: For repository operations
-- **GitHub Account**: For cloud sync (optional, but recommended)
+- **Git Account**: GitHub, GitLab, Bitbucket, or any git host (optional, for cloud sync)
 
 ## Project Status
 

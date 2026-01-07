@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Local Repository Mode**: Use your own git repository instead of having DotState create one via GitHub
+  - Support for any git host (GitHub, GitLab, Bitbucket, self-hosted, etc.)
+  - Uses system git credentials (SSH keys, git credential manager) - no token required
+  - New setup mode selection screen on initial setup
+  - Validation for local repos (checks for .git directory and origin remote)
 - Package manager feature with support for multiple package managers
 - Profile-based package management
 - Custom package support with user-defined install commands
@@ -19,6 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Unified commit logic for both CLI and TUI
 
 ### Changed
+- Renamed "Setup GitHub Repository" to "Setup git repository" in main menu
+- Updated menu explanation to describe both setup options (GitHub vs Local)
+- Sync operations now work without token in Local mode
+- CLI commands updated to support Local mode
 - Improved popup sizing for custom packages
 - Enhanced package checking UX (removed auto-check on page load)
 - Better error messages and user feedback

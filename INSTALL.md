@@ -148,3 +148,16 @@ If you encounter build errors:
 
 After installation, see the [README.md](README.md) for usage instructions.
 
+### First-time Setup
+
+When you first run `dotstate`, you'll be asked to choose a setup mode:
+
+1. **Create for me (GitHub)**: DotState creates a repository on your GitHub account
+   - Requires a GitHub Personal Access Token
+   - Best for simple, automated setup
+
+2. **Use my own repository**: Bring your own git repository
+   - Works with GitHub, GitLab, Bitbucket, or any git host
+   - Uses your existing SSH keys or git credentials
+   - No token required
+

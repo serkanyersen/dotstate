@@ -152,7 +152,7 @@ impl App {
         self.tui.enter()?;
 
         // Check if profile is deactivated and show warning
-        if !self.config.profile_activated && self.config.github.is_some() {
+        if !self.config.profile_activated && self.config.is_repo_configured() {
             warn!("Profile '{}' is deactivated", self.config.active_profile);
             // Profile is deactivated - show warning message
             self.message_component = Some(MessageComponent::new(
@@ -2320,10 +2320,10 @@ impl App {
         info!("Menu selection: {:?}", selected_item);
 
         match selected_item {
-            MenuItem::SetupGitHub => {
-                // Setup GitHub Repository
-                // Check if repo is already configured
-                let is_configured = self.config.github.is_some();
+            MenuItem::SetupRepository => {
+                // Setup git repository
+                // Check if repo is already configured (either GitHub or Local mode)
+                let is_configured = self.config.is_repo_configured();
 
                 // Initialize auth state with current config values
                 if is_configured {
@@ -2334,10 +2334,20 @@ impl App {
                     self.ui_state.github_auth.repo_name_input = self.config.repo_name.clone();
                     self.ui_state.github_auth.repo_location_input =
                         self.config.repo_path.to_string_lossy().to_string();
+                    self.ui_state.github_auth.local_repo_path_input =
+                        self.config.repo_path.to_string_lossy().to_string();
                     self.ui_state.github_auth.is_private = true; // Default to private
+                                                                 // Set setup mode based on config
+                    self.ui_state.github_auth.setup_mode = match self.config.repo_mode {
+                        crate::config::RepoMode::GitHub => crate::ui::SetupMode::GitHub,
+                        crate::config::RepoMode::Local => crate::ui::SetupMode::Local,
+                    };
                 } else {
                     self.ui_state.github_auth.repo_already_configured = false;
                     self.ui_state.github_auth.is_editing_token = false;
+                    // Start in "Choosing" mode for new setup
+                    self.ui_state.github_auth.setup_mode = crate::ui::SetupMode::Choosing;
+                    self.ui_state.github_auth.mode_selection_index = 0;
                 }
 
                 self.ui_state.current_screen = Screen::GitHubAuth;
@@ -2394,8 +2404,8 @@ impl App {
         self.ui_state.has_changes_to_push = false;
         self.ui_state.sync_with_remote.changed_files.clear();
 
-        // Check if GitHub is configured and repo exists
-        if self.config.github.is_none() {
+        // Check if repository is configured and repo exists
+        if !self.config.is_repo_configured() {
             return;
         }
 
@@ -2436,8 +2446,59 @@ impl App {
     }
 
     fn handle_github_auth_input(&mut self, key: KeyEvent) -> Result<()> {
+        use crate::ui::SetupMode;
+
         let auth_state = &mut self.ui_state.github_auth;
         auth_state.error_message = None;
+
+        // Handle setup mode selection first (before step-based handling)
+        match auth_state.setup_mode {
+            SetupMode::Choosing => {
+                // Handle mode selection screen
+                match key.code {
+                    KeyCode::Up => {
+                        if auth_state.mode_selection_index > 0 {
+                            auth_state.mode_selection_index -= 1;
+                        }
+                        return Ok(());
+                    }
+                    KeyCode::Down => {
+                        if auth_state.mode_selection_index < 1 {
+                            auth_state.mode_selection_index += 1;
+                        }
+                        return Ok(());
+                    }
+                    KeyCode::Enter => {
+                        // Select mode and transition
+                        if auth_state.mode_selection_index == 0 {
+                            // GitHub mode selected
+                            auth_state.setup_mode = SetupMode::GitHub;
+                        } else {
+                            // Local mode selected
+                            auth_state.setup_mode = SetupMode::Local;
+                            auth_state.input_focused = true;
+                        }
+                        return Ok(());
+                    }
+                    KeyCode::Esc => {
+                        // Cancel and go back to main menu
+                        self.ui_state.current_screen = Screen::MainMenu;
+                        *auth_state = Default::default();
+                        return Ok(());
+                    }
+                    _ => {
+                        return Ok(());
+                    }
+                }
+            }
+            SetupMode::Local => {
+                // Handle local setup screen
+                return self.handle_local_setup_input(key);
+            }
+            SetupMode::GitHub => {
+                // Continue to existing GitHub setup handling below
+            }
+        }
 
         match auth_state.step {
             GitHubAuthStep::Input => {
@@ -2701,6 +2762,133 @@ impl App {
                 }
             }
         }
+        Ok(())
+    }
+
+    /// Handle keyboard input for local setup screen
+    fn handle_local_setup_input(&mut self, key: KeyEvent) -> Result<()> {
+        use crate::ui::SetupMode;
+
+        let auth_state = &mut self.ui_state.github_auth;
+        auth_state.error_message = None;
+
+        // If already configured, only allow Esc to go back
+        if auth_state.repo_already_configured {
+            if key.code == KeyCode::Esc {
+                self.ui_state.current_screen = Screen::MainMenu;
+                *auth_state = Default::default();
+            }
+            return Ok(());
+        }
+
+        // Check for Ctrl+S to validate and save
+        if key.code == KeyCode::Char('s') && key.modifiers.contains(KeyModifiers::CONTROL) {
+            // Validate local repo
+            let path_str = auth_state.local_repo_path_input.trim();
+            if path_str.is_empty() {
+                auth_state.error_message = Some("Please enter a repository path".to_string());
+                return Ok(());
+            }
+
+            let expanded_path = crate::git::expand_path(path_str);
+            let validation = crate::git::validate_local_repo(&expanded_path);
+
+            if !validation.is_valid {
+                auth_state.error_message = validation.error_message;
+                return Ok(());
+            }
+
+            // Validation passed - save config
+            auth_state.status_message = Some(format!(
+                "✅ Valid repository found!\n\nRemote: {}\n\nSaving configuration...",
+                validation.remote_url.as_deref().unwrap_or("unknown")
+            ));
+
+            // Update config for local mode
+            self.config.repo_mode = crate::config::RepoMode::Local;
+            self.config.repo_path = expanded_path.clone();
+            self.config.github = None; // Clear GitHub config for local mode
+
+            // Save config
+            if let Err(e) = self.config.save(&crate::utils::get_config_path()) {
+                auth_state.error_message = Some(format!("Failed to save config: {}", e));
+                auth_state.status_message = None;
+                return Ok(());
+            }
+
+            // Verify git repository can be opened
+            if let Err(e) = crate::git::GitManager::open_or_init(&expanded_path) {
+                auth_state.error_message = Some(format!("Failed to open repository: {}", e));
+                auth_state.status_message = None;
+                return Ok(());
+            }
+
+            // Load or create profile manifest
+            let manifest =
+                crate::utils::ProfileManifest::load_or_backfill(&expanded_path).unwrap_or_default();
+
+            // Set up profile selection
+            let profiles: Vec<String> = manifest.profiles.iter().map(|p| p.name.clone()).collect();
+
+            if profiles.is_empty() {
+                // No profiles found, create default profile
+                let default_profile = "default";
+                self.config.active_profile = default_profile.to_string();
+                self.config.save(&crate::utils::get_config_path())?;
+
+                // Go directly to main menu
+                self.ui_state.current_screen = Screen::MainMenu;
+                *auth_state = Default::default();
+
+                // Update main menu config
+                self.main_menu_component.update_config(self.config.clone());
+            } else {
+                // Show profile selection
+                self.ui_state.profile_selection.profiles = profiles;
+                self.ui_state.profile_selection.list_state.select(Some(0));
+                self.ui_state.current_screen = Screen::ProfileSelection;
+                *auth_state = Default::default();
+            }
+
+            return Ok(());
+        }
+
+        match key.code {
+            KeyCode::Esc => {
+                // Go back to mode selection
+                auth_state.setup_mode = SetupMode::Choosing;
+                auth_state.error_message = None;
+                auth_state.status_message = None;
+            }
+            KeyCode::Char(c) => {
+                crate::utils::handle_char_insertion(
+                    &mut auth_state.local_repo_path_input,
+                    &mut auth_state.local_repo_path_cursor,
+                    c,
+                );
+            }
+            KeyCode::Backspace => {
+                crate::utils::handle_backspace(
+                    &mut auth_state.local_repo_path_input,
+                    &mut auth_state.local_repo_path_cursor,
+                );
+            }
+            KeyCode::Delete => {
+                crate::utils::handle_delete(
+                    &mut auth_state.local_repo_path_input,
+                    &mut auth_state.local_repo_path_cursor,
+                );
+            }
+            KeyCode::Left | KeyCode::Right | KeyCode::Home | KeyCode::End => {
+                crate::utils::handle_cursor_movement(
+                    &auth_state.local_repo_path_input,
+                    &mut auth_state.local_repo_path_cursor,
+                    key.code,
+                );
+            }
+            _ => {}
+        }
+
         Ok(())
     }
 
@@ -4926,11 +5114,11 @@ impl App {
     fn start_sync(&mut self) -> Result<()> {
         info!("Starting sync operation");
 
-        // Check if GitHub is configured
-        if self.config.github.is_none() {
-            warn!("Sync attempted but GitHub not configured");
+        // Check if repository is configured (GitHub or Local mode)
+        if !self.config.is_repo_configured() {
+            warn!("Sync attempted but repository not configured");
             self.ui_state.sync_with_remote.sync_result = Some(
-                "Error: GitHub repository not configured.\n\nPlease set up your GitHub repository first from the main menu.".to_string()
+                "Error: Repository not configured.\n\nPlease set up your repository first from the main menu.".to_string()
             );
             self.ui_state.sync_with_remote.show_result_popup = true;
             return Ok(());
@@ -4972,10 +5160,18 @@ impl App {
         let branch = git_mgr
             .get_current_branch()
             .unwrap_or_else(|| self.config.default_branch.clone());
-        let token_string = self.config.get_github_token();
+
+        // Get token based on repo mode
+        // In Local mode, we use system credentials (no token needed)
+        // In GitHub mode, we require a token
+        let token_string = match self.config.repo_mode {
+            crate::config::RepoMode::Local => None,
+            crate::config::RepoMode::GitHub => self.config.get_github_token(),
+        };
         let token = token_string.as_deref();
 
-        if token.is_none() {
+        // Only require token for GitHub mode
+        if matches!(self.config.repo_mode, crate::config::RepoMode::GitHub) && token.is_none() {
             self.ui_state.sync_with_remote.is_syncing = false;
             self.ui_state.sync_with_remote.sync_progress = None;
             self.ui_state.sync_with_remote.sync_result = Some(
@@ -5067,13 +5263,13 @@ impl App {
         Ok(())
     }
 
-    /// Pull changes from GitHub repository (deprecated - use sync instead)
+    /// Pull changes from remote repository (deprecated - use sync instead)
     #[allow(dead_code)]
     fn pull_changes(&mut self) -> Result<()> {
-        // Check if GitHub is configured
-        if self.config.github.is_none() {
+        // Check if repository is configured (GitHub or Local mode)
+        if !self.config.is_repo_configured() {
             self.ui_state.dotfile_selection.status_message = Some(
-                "Error: GitHub repository not configured.\n\nPlease set up your GitHub repository first from the main menu.".to_string()
+                "Error: Repository not configured.\n\nPlease set up your repository first from the main menu.".to_string()
             );
             return Ok(());
         }
@@ -5104,12 +5300,15 @@ impl App {
             .get_current_branch()
             .unwrap_or_else(|| self.config.default_branch.clone());
 
-        // Pull from remote
-        // Get token from environment variable or config
-        let token_string = self.config.get_github_token();
+        // Get token based on repo mode (None for Local mode)
+        let token_string = match self.config.repo_mode {
+            crate::config::RepoMode::Local => None,
+            crate::config::RepoMode::GitHub => self.config.get_github_token(),
+        };
         let token = token_string.as_deref();
 
-        if token.is_none() {
+        // Only require token for GitHub mode
+        if matches!(self.config.repo_mode, crate::config::RepoMode::GitHub) && token.is_none() {
             self.ui_state.dotfile_selection.status_message = Some(
                 "Error: GitHub token not found.\n\n\
                 Please provide a GitHub token using one of these methods:\n\n\
@@ -5126,7 +5325,7 @@ impl App {
         match git_mgr.pull("origin", &branch, token) {
             Ok(_) => {
                 self.ui_state.dotfile_selection.status_message = Some(
-                    format!("✓ Successfully pulled changes from GitHub!\n\nBranch: {}\nRepository: {:?}\n\nNote: You may need to re-sync files if the repository structure changed.", branch, repo_path)
+                    format!("✓ Successfully pulled changes from remote!\n\nBranch: {}\nRepository: {:?}\n\nNote: You may need to re-sync files if the repository structure changed.", branch, repo_path)
                 );
             }
             Err(e) => {

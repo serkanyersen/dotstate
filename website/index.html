@@ -7,7 +7,7 @@
     <!-- Primary Meta Tags -->
     <title>DotState - Modern Dotfile Manager Built with Rust | Secure & Fast</title>
     <meta name="title" content="DotState - Modern Dotfile Manager Built with Rust | Secure & Fast">
-    <meta name="description" content="DotState is a modern, secure dotfile manager built with Rust. Sync your .zshrc, .vimrc, and config files across machines with GitHub. Zero Git knowledge required. Automatic backups, profile management, and beautiful TUI.">
+    <meta name="description" content="DotState is a modern, secure dotfile manager built with Rust. Sync your .zshrc, .vimrc, and config files across machines with GitHub, GitLab, Bitbucket, or any git host. Zero Git knowledge required. Automatic backups, profile management, and beautiful TUI.">
     <meta name="keywords" content="dotfile manager, dotfiles, rust, dotfile sync, github dotfiles, configuration management, dotfile backup, symlink manager, terminal ui, tui, rust cli, dotfile tool, config sync, profile management, dotfile organizer">
     <meta name="author" content="Serkan Yersen">
     <meta name="robots" content="index, follow">
@@ -19,7 +19,7 @@
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://dotstate.serkan.dev">
     <meta property="og:title" content="DotState - Modern Dotfile Manager Built with Rust">
-    <meta property="og:description" content="Manage your dotfiles effortlessly. Sync to GitHub, organize by profiles, and keep your configuration files safe. Built with Rust for speed and security.">
+    <meta property="og:description" content="Manage your dotfiles effortlessly. Sync to GitHub, GitLab, Bitbucket, or any git host. Organize by profiles and keep your configuration files safe. Built with Rust for speed and security.">
     <meta property="og:image" content="https://dotstate.serkan.dev/og-image.png">
     <meta property="og:site_name" content="DotState">
     <meta property="og:locale" content="en_US">
@@ -63,7 +63,7 @@
             "ratingValue": "5",
             "ratingCount": "1"
         },
-        "description": "A modern, secure, and user-friendly dotfile manager built with Rust. Sync your configuration files across machines with GitHub integration.",
+        "description": "A modern, secure, and user-friendly dotfile manager built with Rust. Sync your configuration files across machines with any git host (GitHub, GitLab, Bitbucket, self-hosted).",
         "url": "https://dotstate.serkan.dev",
         "downloadUrl": "https://crates.io/crates/dotstate",
         "programmingLanguage": "Rust",
@@ -75,12 +75,13 @@
         "keywords": "dotfile manager, rust, github sync, configuration management, terminal ui",
         "featureList": [
             "Profile Management",
-            "GitHub Sync",
+            "Flexible Git Sync (GitHub, GitLab, Bitbucket, self-hosted)",
             "Automatic Backups",
             "Symlink Management",
             "Package Management",
             "Beautiful TUI",
-            "CLI Support"
+            "CLI Support",
+            "Local Repository Mode"
         ]
     }
     </script>
@@ -126,7 +127,7 @@
         <header class="header" role="banner">
             <div class="header-content">
                 <h1 class="logo">DOTSTATE</h1>
-                <p class="tagline">Manage your dotfiles with ease. Sync to GitHub, organize by profiles, and keep your configuration files safe.</p>
+                <p class="tagline">Manage your dotfiles with ease. Sync to any git host, organize by profiles, and keep your configuration files safe.</p>
             </div>
         </header>
 
@@ -245,7 +246,7 @@ brew install dotstate" aria-label="Copy install command">📋</button>
                             <li>🎨 <strong>Beautiful TUI</strong> - Intuitive interface that doesn't require learning Git</li>
                             <li>⚡ <strong>Lightning fast</strong> - Non-blocking operations, instant feedback</li>
                             <li>🛡️ <strong>Safe</strong> - Automatic backups before any file operations</li>
-                            <li>🔄 <strong>GitHub-powered</strong> - Your dotfiles stored securely in a private or public repo</li>
+                            <li>🔄 <strong>Git-powered</strong> - Store dotfiles in GitHub, GitLab, Bitbucket, or any git host</li>
                         </ul>
 
                         <div class="comparison">
@@ -327,8 +328,8 @@ brew install dotstate" aria-label="Copy install command">📋</button>
                             </div>
                             <div class="feature-card">
                                 <div class="feature-icon" aria-hidden="true">🔄</div>
-                                <h4>GitHub Sync</h4>
-                                <p>Automatic sync with GitHub (private or public repos). Keep your dotfiles backed up and accessible from anywhere.</p>
+                                <h4>Flexible Git Sync</h4>
+                                <p>Sync with any git host: GitHub, GitLab, Bitbucket, or self-hosted. Use DotState-managed repos or bring your own.</p>
                             </div>
                             <div class="feature-card">
                                 <div class="feature-icon" aria-hidden="true">🔍</div>
@@ -441,7 +442,7 @@ brew install dotstate" aria-label="Copy command">📋</button>
                         <ul class="requirements-list">
                             <li><strong>Rust:</strong> Latest stable version (for building from source)</li>
                             <li><strong>Git:</strong> For repository operations</li>
-                            <li><strong>GitHub Account:</strong> For cloud sync (optional, but recommended)</li>
+                            <li><strong>Git Host Account:</strong> GitHub, GitLab, Bitbucket, or any git host (optional)</li>
                             <li><strong>Operating System:</strong> Linux, macOS, or Windows</li>
                         </ul>
                     </div>
@@ -472,15 +473,22 @@ brew install dotstate" aria-label="Copy command">📋</button>
                             <div class="step-number">2</div>
                             <div class="step-content">
                                 <h3>First-time Setup</h3>
-                                <p>Configure DotState for the first time:</p>
+                                <p>Choose how to manage your dotfiles repository:</p>
                                 <ul>
-                                    <li>Enter your GitHub token (create one at <a href="https://github.com/settings/tokens" target="_blank" rel="noopener noreferrer">github.com/settings/tokens</a>)
+                                    <li><strong>Option A: Create for me (GitHub)</strong>
                                         <ul>
-                                            <li><strong>Tip:</strong> You can also set the <code>DOTSTATE_GITHUB_TOKEN</code> environment variable instead of entering it in the TUI</li>
+                                            <li>DotState creates a repository on your GitHub account</li>
+                                            <li>Requires a GitHub token (<a href="https://github.com/settings/tokens" target="_blank" rel="noopener noreferrer">github.com/settings/tokens</a>)</li>
+                                            <li><strong>Tip:</strong> You can set <code>DOTSTATE_GITHUB_TOKEN</code> environment variable</li>
                                         </ul>
                                     </li>
-                                    <li>Choose repository name and location</li>
-                                    <li>Select repository visibility (private/public)</li>
+                                    <li><strong>Option B: Use my own repository</strong>
+                                        <ul>
+                                            <li>Create a repo on any git host (GitHub, GitLab, Bitbucket, etc.)</li>
+                                            <li>Clone it locally and set up your git credentials</li>
+                                            <li>Provide the local path to DotState - no token required!</li>
+                                        </ul>
+                                    </li>
                                 </ul>
                             </div>
                         </div>
@@ -501,11 +509,12 @@ brew install dotstate" aria-label="Copy command">📋</button>
                         <div class="step">
                             <div class="step-number">4</div>
                             <div class="step-content">
-                                <h3>Sync to GitHub</h3>
-                                <p>Push your dotfiles to GitHub:</p>
+                                <h3>Sync with Remote</h3>
+                                <p>Push your dotfiles to your git remote:</p>
                                 <ul>
                                     <li>Go to "Sync with Remote"</li>
                                     <li>Your files are committed, pulled, and pushed automatically</li>
+                                    <li>Works with GitHub, GitLab, Bitbucket, or any git host</li>
                                 </ul>
                             </div>
                         </div>
@@ -632,7 +641,12 @@ brew install dotstate" aria-label="Copy command">📋</button>
                             <ol>
                                 <li>Install DotState: <code>cargo install dotstate</code></li>
                                 <li>Launch TUI: <code>dotstate</code></li>
-                                <li>Enter your GitHub token</li>
+                                <li>Choose your setup mode:
+                                    <ul>
+                                        <li><strong>GitHub mode:</strong> Enter your GitHub token</li>
+                                        <li><strong>Local mode:</strong> Clone your existing repo and provide the path</li>
+                                    </ul>
+                                </li>
                                 <li>Select your profile</li>
                                 <li>Activate symlinks: <code>dotstate activate</code></li>
                             </ol>
@@ -687,45 +701,47 @@ brew install dotstate" aria-label="Copy command">📋</button>
                 <article class="content-section" id="configuration">
                     <div class="section-header">
                         <span class="section-icon" aria-hidden="true">⚙️</span>
-                        <h2>DotState Configuration - Environment Variables and Settings</h2>
+                        <h2>DotState Configuration - Repository Modes and Settings</h2>
                     </div>
                     <div class="section-content">
-                        <p>DotState supports flexible configuration options for GitHub authentication and other settings.</p>
+                        <p>DotState supports two repository modes, giving you flexibility in how you manage your dotfiles.</p>
 
-                        <h3>GitHub Token Configuration</h3>
-                        <p>DotState supports two ways to provide your GitHub token:</p>
+                        <h3>Repository Modes</h3>
 
                         <div class="example-card">
-                            <h4>1. Environment Variable (Recommended for Automation)</h4>
-                            <p>Set the <code>DOTSTATE_GITHUB_TOKEN</code> environment variable:</p>
-                            <div class="code-block">
-                                <code>export DOTSTATE_GITHUB_TOKEN=ghp_your_token_here</code>
-                                <button class="copy-btn" data-copy="export DOTSTATE_GITHUB_TOKEN=ghp_your_token_here" aria-label="Copy command">📋</button>
-                            </div>
-                            <p><strong>Priority:</strong> The environment variable takes precedence over the config file token.</p>
-                            <p><strong>Use cases:</strong></p>
+                            <h4>🌐 GitHub Mode (DotState-managed)</h4>
+                            <p>DotState creates and manages a repository on your GitHub account. Requires a GitHub Personal Access Token.</p>
+                            <p><strong>Best for:</strong> Users who want a simple, automated setup.</p>
+                            <p><strong>Token options:</strong></p>
                             <ul>
-                                <li>CI/CD pipelines</li>
-                                <li>Shared machines where you don't want to store tokens in config files</li>
-                                <li>Using different tokens for different environments</li>
-                                <li>Automated scripts and workflows</li>
+                                <li>Environment variable: <code>export DOTSTATE_GITHUB_TOKEN=ghp_your_token</code></li>
+                                <li>Config file (set during first-time setup)</li>
                             </ul>
                         </div>
 
                         <div class="example-card">
-                            <h4>2. Config File</h4>
-                            <p>The token can be stored in the config file (set during first-time setup). The config file is located at:</p>
-                            <div class="code-block">
-                                <code>~/.config/dotstate/config.toml</code>
-                                <button class="copy-btn" data-copy="~/.config/dotstate/config.toml" aria-label="Copy path">📋</button>
-                            </div>
-                            <p><strong>Note:</strong> If <code>DOTSTATE_GITHUB_TOKEN</code> is set, it will be used automatically, and the token in the config file becomes optional.</p>
+                            <h4>📁 Local Mode (User-provided)</h4>
+                            <p>Use your own pre-existing git repository. Works with any git host (GitHub, GitLab, Bitbucket, self-hosted, etc.).</p>
+                            <p><strong>Best for:</strong> Users with existing dotfiles repos, enterprise environments, or non-GitHub users.</p>
+                            <p><strong>Requirements:</strong></p>
+                            <ul>
+                                <li>A locally cloned git repository with an "origin" remote</li>
+                                <li>Git credentials configured (SSH keys, git credential manager, etc.)</li>
+                            </ul>
+                            <p><strong>No token required!</strong> DotState uses your system's git credentials for push/pull operations.</p>
+                        </div>
+
+                        <h3>Configuration File</h3>
+                        <p>DotState stores configuration at:</p>
+                        <div class="code-block">
+                            <code>~/.config/dotstate/config.toml</code>
+                            <button class="copy-btn" data-copy="~/.config/dotstate/config.toml" aria-label="Copy path">📋</button>
                         </div>
 
                         <div class="tip">
                             <span class="tip-icon" aria-hidden="true">💡</span>
                             <div>
-                                <strong>Best Practice:</strong> For production environments and automation, use the <code>DOTSTATE_GITHUB_TOKEN</code> environment variable. For personal use, either method works fine.
+                                <strong>Tip:</strong> For CI/CD and automation with GitHub mode, use the <code>DOTSTATE_GITHUB_TOKEN</code> environment variable. For Local mode, ensure your git credentials are properly configured.
                             </div>
                         </div>
                     </div>
@@ -764,7 +780,8 @@ brew install dotstate" aria-label="Copy command">📋</button>
 
                         <div class="security-card">
                             <h4>🔐 Token Security</h4>
-                            <p>GitHub tokens can be provided via the <code>DOTSTATE_GITHUB_TOKEN</code> environment variable (recommended for automation) or stored in config files with secure permissions. Use tokens with minimal required permissions (only <code>repo</code> scope).</p>
+                            <p><strong>GitHub Mode:</strong> Tokens can be provided via the <code>DOTSTATE_GITHUB_TOKEN</code> environment variable or stored in config files. Use tokens with minimal required permissions (only <code>repo</code> scope).</p>
+                            <p><strong>Local Mode:</strong> No tokens stored by DotState. Uses your system's git credentials (SSH keys, git credential manager).</p>
                         </div>
 
                         <h3>Security Best Practices</h3>
