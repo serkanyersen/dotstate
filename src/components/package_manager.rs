@@ -2,6 +2,7 @@ use crate::components::footer;
 use crate::components::header::Header;
 use crate::components::input_field::InputField;
 use crate::config::Config;
+use crate::styles::{theme, LIST_HIGHLIGHT_SYMBOL};
 use crate::ui::{
     AddPackageField, InstallationStep, PackageManagerState, PackagePopupType, PackageStatus,
 };
@@ -43,8 +44,8 @@ impl PackageManagerComponent {
 
         // Check if popup is active or installation is in progress - if so, render dark background and popup/progress
         if state.popup_type != PackagePopupType::None {
-            // Render dark background to dim the screen
-            let background = Block::default().style(Style::default().bg(Color::Black));
+            // Render background to dim the screen
+            let background = Block::default().style(Style::default().bg(Color::Reset));
             frame.render_widget(background, area);
 
             // Render popup
@@ -100,6 +101,7 @@ impl PackageManagerComponent {
         state: &mut PackageManagerState,
     ) -> Result<()> {
         use crate::utils::{focused_border_style, unfocused_border_style};
+        let t = theme();
 
         if state.packages.is_empty() {
             // Show empty state message
@@ -136,9 +138,9 @@ impl PackageManagerComponent {
 
                     let text = format!("{} {}", status_icon, package.name);
                     let style = match state.package_statuses.get(idx) {
-                        Some(PackageStatus::Installed) => Style::default().fg(Color::Green),
-                        Some(PackageStatus::NotInstalled) => Style::default().fg(Color::Red),
-                        Some(PackageStatus::Error(_)) => Style::default().fg(Color::Yellow),
+                        Some(PackageStatus::Installed) => Style::default().fg(t.success),
+                        Some(PackageStatus::NotInstalled) => Style::default().fg(t.error),
+                        Some(PackageStatus::Error(_)) => Style::default().fg(t.warning),
                         _ => Style::default(),
                     };
                     ListItem::new(text).style(style)
@@ -152,11 +154,8 @@ impl PackageManagerComponent {
                         .title("Packages")
                         .border_style(focused_border_style()),
                 )
-                .highlight_style(
-                    Style::default()
-                        .fg(Color::Yellow)
-                        .add_modifier(Modifier::BOLD),
-                );
+                .highlight_style(t.highlight_style())
+                .highlight_symbol(LIST_HIGHLIGHT_SYMBOL);
 
             frame.render_stateful_widget(list, area, &mut state.list_state);
         }
@@ -270,6 +269,7 @@ impl PackageManagerComponent {
         state: &mut PackageManagerState,
         _config: &Config,
     ) -> Result<()> {
+        let t = theme();
         // Make popup larger to fit all fields, especially for custom packages
         let popup_width = 80;
         let popup_height = if state.add_is_custom { 60 } else { 50 };
@@ -310,11 +310,9 @@ impl PackageManagerComponent {
             .split(popup_area);
 
         // Title (no border, just text)
-        let title_para = Paragraph::new(title).alignment(Alignment::Center).style(
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
-        );
+        let title_para = Paragraph::new(title)
+            .alignment(Alignment::Center)
+            .style(t.title_style());
         frame.render_widget(title_para, chunks[0]);
 
         // Name field
@@ -506,16 +504,17 @@ impl PackageManagerComponent {
             );
 
             // Create styled text for checkbox
+            let t = theme();
             let is_focused = state.add_focused_field == AddPackageField::Manager
                 && state.add_manager_selected == idx;
             let checkbox_style = if is_focused {
                 Style::default()
-                    .fg(Color::Yellow)
+                    .fg(t.text_emphasis)
                     .add_modifier(Modifier::BOLD)
             } else if *is_selected {
-                Style::default().fg(Color::Green)
+                Style::default().fg(t.success)
             } else {
-                Style::default().fg(Color::White)
+                t.text_style()
             };
 
             let checkbox_text = Paragraph::new(full_text).style(checkbox_style);
@@ -613,8 +612,8 @@ impl PackageManagerComponent {
     ) -> Result<()> {
         use ratatui::style::{Color, Modifier, Style};
 
-        // Render dark background
-        let background = Block::default().style(Style::default().bg(Color::Black));
+        // Render background
+        let background = Block::default().style(Style::default().bg(Color::Reset));
         frame.render_widget(background, area);
 
         match &state.installation_step {
@@ -643,14 +642,11 @@ impl PackageManagerComponent {
                     ])
                     .split(popup_area);
 
+                let t = theme();
                 // Title
                 let title = Paragraph::new("Installing Packages")
                     .alignment(Alignment::Center)
-                    .style(
-                        Style::default()
-                            .fg(Color::Cyan)
-                            .add_modifier(Modifier::BOLD),
-                    );
+                    .style(t.title_style());
                 frame.render_widget(title, chunks[0]);
 
                 // Progress info
@@ -665,7 +661,7 @@ impl PackageManagerComponent {
                 );
                 let progress_para = Paragraph::new(progress_text)
                     .alignment(Alignment::Center)
-                    .style(Style::default().fg(Color::Yellow));
+                    .style(Style::default().fg(t.warning));
                 frame.render_widget(progress_para, chunks[1]);
 
                 // Output area (scrollable)
@@ -678,7 +674,7 @@ impl PackageManagerComponent {
                 let output_para = Paragraph::new(output_text)
                     .block(Block::default().borders(Borders::ALL).title("Output"))
                     .wrap(Wrap { trim: true })
-                    .style(Style::default().fg(Color::White));
+                    .style(t.text_style());
                 frame.render_widget(output_para, chunks[2]);
 
                 // Footer
@@ -699,14 +695,11 @@ impl PackageManagerComponent {
                     ])
                     .split(popup_area);
 
+                let t = theme();
                 // Title
                 let title = Paragraph::new("Installation Complete")
                     .alignment(Alignment::Center)
-                    .style(
-                        Style::default()
-                            .fg(Color::Green)
-                            .add_modifier(Modifier::BOLD),
-                    );
+                    .style(t.success_style().add_modifier(Modifier::BOLD));
                 frame.render_widget(title, chunks[0]);
 
                 // Summary
@@ -727,7 +720,7 @@ impl PackageManagerComponent {
                 let summary_para = Paragraph::new(summary)
                     .block(Block::default().borders(Borders::ALL).title("Summary"))
                     .wrap(Wrap { trim: true })
-                    .style(Style::default().fg(Color::White));
+                    .style(t.text_style());
                 frame.render_widget(summary_para, chunks[1]);
 
                 // Footer
@@ -783,6 +776,7 @@ impl PackageManagerComponent {
             ])
             .split(popup_area);
 
+        let t = theme();
         // Title
         let title = Paragraph::new("Install Missing Packages")
             .block(
@@ -790,14 +784,10 @@ impl PackageManagerComponent {
                     .borders(Borders::ALL)
                     .title("Package Manager")
                     .title_alignment(Alignment::Center)
-                    .style(Style::default().bg(Color::Black)),
+                    .style(t.background_style()),
             )
             .alignment(Alignment::Center)
-            .style(
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD),
-            );
+            .style(Style::default().fg(t.warning).add_modifier(Modifier::BOLD));
         frame.render_widget(title, chunks[0]);
 
         // Message
@@ -811,7 +801,7 @@ impl PackageManagerComponent {
         };
         let message_para = Paragraph::new(message)
             .wrap(Wrap { trim: true })
-            .style(Style::default().fg(Color::White));
+            .style(t.text_style());
         frame.render_widget(message_para, chunks[2]);
 
         // Package list
@@ -819,14 +809,14 @@ impl PackageManagerComponent {
             let package_list: Vec<ListItem> = missing_packages
                 .iter()
                 .map(|name| {
-                    ListItem::new(format!("  • {}", name)).style(Style::default().fg(Color::Cyan))
+                    ListItem::new(format!("  • {}", name)).style(Style::default().fg(t.primary))
                 })
                 .collect();
             let list = List::new(package_list).block(
                 Block::default()
                     .borders(Borders::ALL)
                     .title("Packages to Install")
-                    .border_style(Style::default().fg(Color::DarkGray)),
+                    .border_style(t.border_style()),
             );
             frame.render_widget(list, chunks[3]);
         }
@@ -834,7 +824,7 @@ impl PackageManagerComponent {
         // Instructions
         let instructions = Paragraph::new("Press Y/Enter to install, N/Esc to cancel")
             .alignment(Alignment::Center)
-            .style(Style::default().fg(Color::DarkGray));
+            .style(t.muted_style());
         frame.render_widget(instructions, chunks[5]);
 
         Ok(())

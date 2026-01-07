@@ -2,6 +2,7 @@ use crate::components::component::{Component, ComponentAction};
 use crate::components::footer::Footer;
 use crate::components::header::Header;
 use crate::config::Config;
+use crate::styles::{theme, LIST_HIGHLIGHT_SYMBOL};
 use crate::ui::Screen;
 use crate::utils::{create_standard_layout, focused_border_style, get_home_dir};
 use anyhow::Result;
@@ -66,8 +67,8 @@ impl Component for SyncedFilesComponent {
         // Clear the entire area first
         frame.render_widget(Clear, area);
 
-        // Background
-        let background = Block::default().style(Style::default().bg(Color::Black));
+        // Background - use Reset to inherit terminal's native background
+        let background = Block::default().style(Style::default().bg(Color::Reset));
         frame.render_widget(background, area);
 
         let (header_chunk, content_chunk, footer_chunk) = create_standard_layout(area, 5, 2);
@@ -83,12 +84,13 @@ impl Component for SyncedFilesComponent {
         // Get synced files from manifest
         let synced_files = Self::get_synced_files(&self.config);
 
+        let t = theme();
         // Content: List of synced files
         if synced_files.is_empty() {
             let empty_message = Paragraph::new(
                 "No files are currently synced.\n\nGo to 'Scan & Select Dotfiles' to start syncing your dotfiles."
             )
-                .style(Style::default().fg(Color::DarkGray))
+                .style(t.muted_style())
                 .wrap(Wrap { trim: true })
                 .block(Block::default()
                     .borders(Borders::ALL)
@@ -116,25 +118,26 @@ impl Component for SyncedFilesComponent {
                     };
 
                     let style = if self.list_state.selected() == Some(i) {
-                        Style::default()
-                            .fg(Color::Yellow)
-                            .add_modifier(Modifier::BOLD | Modifier::REVERSED)
+                        t.highlight_style()
                     } else {
-                        Style::default().fg(Color::White)
+                        t.text_style()
                     };
 
                     ListItem::new(format!("{} {}", status, path)).style(style)
                 })
                 .collect();
 
-            let list = List::new(items).block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .border_style(focused_border_style())
-                    .title(format!("Synced Files ({})", synced_files.len()))
-                    .title_alignment(Alignment::Center)
-                    .padding(ratatui::widgets::Padding::new(1, 1, 1, 1)),
-            );
+            let list = List::new(items)
+                .block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .border_style(focused_border_style())
+                        .title(format!("Synced Files ({})", synced_files.len()))
+                        .title_alignment(Alignment::Center)
+                        .padding(ratatui::widgets::Padding::new(1, 1, 1, 1)),
+                )
+                .highlight_style(t.highlight_style())
+                .highlight_symbol(LIST_HIGHLIGHT_SYMBOL);
 
             frame.render_stateful_widget(list, content_chunk, &mut self.list_state);
 

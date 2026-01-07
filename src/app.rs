@@ -9,6 +9,7 @@ use crate::config::{Config, GitHubConfig};
 use crate::file_manager::FileManager;
 use crate::git::GitManager;
 use crate::github::GitHubClient;
+use crate::styles::LIST_HIGHLIGHT_SYMBOL;
 use crate::tui::Tui;
 use crate::ui::{
     AddPackageField, GitHubAuthField, GitHubAuthStep, GitHubSetupStep, InstallationStep,
@@ -22,7 +23,6 @@ use crossterm::event::{
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
-use syntect::highlighting::Theme;
 use syntect::parsing::SyntaxSet;
 use tokio::runtime::Runtime;
 use tracing::{debug, error, info, trace, warn};
@@ -81,7 +81,7 @@ pub struct App {
     message_component: Option<MessageComponent>,
     // Syntax highlighting assets
     syntax_set: SyntaxSet,
-    theme: Theme,
+    theme_set: syntect::highlighting::ThemeSet,
 }
 
 impl App {
@@ -105,22 +105,6 @@ impl App {
         // Initialize syntax highlighting
         let syntax_set = SyntaxSet::load_defaults_newlines();
         let theme_set = syntect::highlighting::ThemeSet::load_defaults();
-        // Use a dark theme that contrasts well with standard terminal colors
-        let theme = theme_set
-            .themes
-            .get("base16-ocean.dark")
-            .or_else(|| theme_set.themes.get("base16-eighties.dark"))
-            .or_else(|| theme_set.themes.get("base16-mocha.dark"))
-            .cloned()
-            .unwrap_or_else(|| {
-                // Fallback if specific themes aren't available
-                theme_set
-                    .themes
-                    .values()
-                    .next()
-                    .cloned()
-                    .expect("No themes available")
-            });
 
         let has_changes = false; // Will be checked on first draw
         let config_clone = config.clone();
@@ -143,7 +127,7 @@ impl App {
 
             message_component: None,
             syntax_set,
-            theme,
+            theme_set,
         })
     }
 
@@ -379,12 +363,43 @@ impl App {
                 }
                 Screen::DotfileSelection => {
                     // Component handles all rendering including Clear
+                    // Get theme reference before mutable borrows
+                    let syntax_theme = {
+                        use crate::styles::theme as ui_theme;
+                        let theme_type = ui_theme().theme_type;
+                        let preferred_names = match theme_type {
+                            crate::styles::ThemeType::Light => vec![
+                                "base16-ocean.light",
+                                "Solarized (light)",
+                                "GitHub",
+                            ],
+                            crate::styles::ThemeType::Dark | crate::styles::ThemeType::NoColor => vec![
+                                "base16-ocean.dark",
+                                "base16-eighties.dark",
+                                "base16-mocha.dark",
+                                "InspiredGitHub",
+                            ],
+                        };
+
+                        let mut theme_opt = None;
+                        for name in &preferred_names {
+                            if let Some(theme) = self.theme_set.themes.get(*name) {
+                                theme_opt = Some(theme);
+                                break;
+                            }
+                        }
+                        theme_opt.unwrap_or_else(|| {
+                            self.theme_set.themes.values().next()
+                                .expect("No syntect themes available")
+                        })
+                    };
+
                     if let Err(e) = self.dotfile_selection_component.render_with_state(
                         frame,
                         area,
                         &mut self.ui_state,
                         &self.syntax_set,
-                        &self.theme,
+                        syntax_theme,
                     ) {
                         eprintln!("Error rendering dotfile selection: {}", e);
                     }
@@ -394,12 +409,43 @@ impl App {
                 }
                 Screen::SyncWithRemote => {
                     // Component handles all rendering including Clear
+                    // Get theme reference before mutable borrows
+                    let syntax_theme = {
+                        use crate::styles::theme as ui_theme;
+                        let theme_type = ui_theme().theme_type;
+                        let preferred_names = match theme_type {
+                            crate::styles::ThemeType::Light => vec![
+                                "base16-ocean.light",
+                                "Solarized (light)",
+                                "GitHub",
+                            ],
+                            crate::styles::ThemeType::Dark | crate::styles::ThemeType::NoColor => vec![
+                                "base16-ocean.dark",
+                                "base16-eighties.dark",
+                                "base16-mocha.dark",
+                                "InspiredGitHub",
+                            ],
+                        };
+
+                        let mut theme_opt = None;
+                        for name in &preferred_names {
+                            if let Some(theme) = self.theme_set.themes.get(*name) {
+                                theme_opt = Some(theme);
+                                break;
+                            }
+                        }
+                        theme_opt.unwrap_or_else(|| {
+                            self.theme_set.themes.values().next()
+                                .expect("No syntect themes available")
+                        })
+                    };
+
                     if let Err(e) = self.push_changes_component.render_with_state(
                         frame,
                         area,
                         &mut self.ui_state.sync_with_remote,
                         &self.syntax_set,
-                        &self.theme,
+                        syntax_theme,
                     ) {
                         eprintln!("Error rendering sync with remote: {}", e);
                     }
@@ -550,7 +596,7 @@ impl App {
                     frame.render_widget(Clear, area);
 
                     let background = Block::default()
-                        .style(Style::default().bg(Color::Black));
+                        .style(Style::default().bg(Color::Reset));
                     frame.render_widget(background, area);
 
                     let (header_chunk, content_chunk, footer_chunk) = create_standard_layout(area, 5, 2);
@@ -570,7 +616,7 @@ impl App {
                                 .border_style(Style::default().fg(Color::Cyan))
                         )
                         .highlight_style(Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD))
-                        .highlight_symbol("> ");
+                        .highlight_symbol(LIST_HIGHLIGHT_SYMBOL);
 
                     frame.render_stateful_widget(list, content_chunk, &mut state.list_state);
 

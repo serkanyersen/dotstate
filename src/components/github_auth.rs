@@ -2,6 +2,7 @@ use crate::components::component::{Component, ComponentAction};
 use crate::components::footer::Footer;
 use crate::components::header::Header;
 use crate::components::input_field::InputField;
+use crate::styles::{theme, LIST_HIGHLIGHT_SYMBOL};
 use crate::ui::{GitHubAuthField, GitHubAuthState, SetupMode};
 use crate::utils::{
     create_standard_layout, disabled_border_style, disabled_text_style, focused_border_style,
@@ -195,12 +196,13 @@ impl GitHubAuthComponent {
             "[ ] Private    [✓] Public"
         };
 
+        let t = theme();
         let text_style = if is_disabled {
             disabled_text_style()
         } else if is_focused {
-            Style::default().fg(Color::White)
+            t.text_style()
         } else {
-            Style::default().fg(Color::DarkGray)
+            Style::default().fg(t.text_muted)
         };
 
         let paragraph = Paragraph::new(visibility_text)
@@ -213,6 +215,7 @@ impl GitHubAuthComponent {
 
     /// Render the mode selection screen (choosing between GitHub and Local modes)
     fn render_mode_selection(&mut self, frame: &mut Frame, area: Rect) -> Result<()> {
+        let t = theme();
         // Layout: Header, Content, Footer
         let (header_chunk, content_chunk, footer_chunk) = create_standard_layout(area, 5, 2);
 
@@ -237,14 +240,11 @@ impl GitHubAuthComponent {
         let options = vec![
             ListItem::new(vec![Line::from(vec![
                 Span::styled("🔧 ", Style::default()),
-                Span::styled(
-                    "Create repository for me (GitHub)",
-                    Style::default().fg(Color::Green),
-                ),
+                Span::styled("Create repository for me (GitHub)", t.success_style()),
             ])]),
             ListItem::new(vec![Line::from(vec![
                 Span::styled("📁 ", Style::default()),
-                Span::styled("Use my own repository", Style::default().fg(Color::Blue)),
+                Span::styled("Use my own repository", Style::default().fg(t.tertiary)),
             ])]),
         ];
 
@@ -253,11 +253,7 @@ impl GitHubAuthComponent {
             .border_style(focused_border_style())
             .border_type(ratatui::widgets::BorderType::Rounded)
             .title("📋 Choose Setup Method")
-            .title_style(
-                Style::default()
-                    .fg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD),
-            )
+            .title_style(t.title_style())
             .title_alignment(Alignment::Center)
             .padding(ratatui::widgets::Padding::new(1, 1, 1, 1));
 
@@ -279,14 +275,9 @@ impl GitHubAuthComponent {
 
         let list = List::new(options)
             .block(list_block)
-            .highlight_style(
-                Style::default()
-                    .fg(Color::Yellow)
-                    .bg(Color::DarkGray)
-                    .add_modifier(Modifier::BOLD),
-            )
+            .highlight_style(t.highlight_style())
             .highlight_spacing(HighlightSpacing::Always)
-            .highlight_symbol("» ");
+            .highlight_symbol(LIST_HIGHLIGHT_SYMBOL);
 
         frame.render_stateful_widget(list, main_layout[0], &mut self.mode_list_state);
 
@@ -297,37 +288,33 @@ impl GitHubAuthComponent {
                 vec![
                     Line::from(vec![Span::styled(
                         "Automatic GitHub Setup",
-                        Style::default()
-                            .fg(Color::Green)
-                            .add_modifier(Modifier::BOLD),
+                        Style::default().fg(t.success).add_modifier(Modifier::BOLD),
                     )]),
                     Line::from(""),
                     Line::from("DotState will:"),
                     Line::from(vec![
-                        Span::styled("  1. ", Style::default().fg(Color::Yellow)),
+                        Span::styled("  1. ", Style::default().fg(t.text_emphasis)),
                         Span::raw("Connect to GitHub using your token"),
                     ]),
                     Line::from(vec![
-                        Span::styled("  2. ", Style::default().fg(Color::Yellow)),
+                        Span::styled("  2. ", Style::default().fg(t.text_emphasis)),
                         Span::raw("Create a repository for you"),
                     ]),
                     Line::from(vec![
-                        Span::styled("  3. ", Style::default().fg(Color::Yellow)),
+                        Span::styled("  3. ", Style::default().fg(t.text_emphasis)),
                         Span::raw("Set up syncing automatically"),
                     ]),
                     Line::from(""),
                     Line::from(vec![Span::styled(
                         "Requirements:",
-                        Style::default()
-                            .fg(Color::Cyan)
-                            .add_modifier(Modifier::BOLD),
+                        Style::default().fg(t.primary).add_modifier(Modifier::BOLD),
                     )]),
                     Line::from("• GitHub account"),
                     Line::from("• Personal Access Token (PAT)"),
                     Line::from("  with 'repo' scope"),
                     Line::from(""),
                     Line::from(vec![
-                        Span::styled("💡 ", Style::default().fg(Color::Magenta)),
+                        Span::styled("💡 ", Style::default().fg(t.secondary)),
                         Span::raw("Best for: Users who want a quick,"),
                     ]),
                     Line::from("   automated setup on GitHub."),
@@ -339,37 +326,33 @@ impl GitHubAuthComponent {
                 vec![
                     Line::from(vec![Span::styled(
                         "Use Your Own Repository",
-                        Style::default()
-                            .fg(Color::Blue)
-                            .add_modifier(Modifier::BOLD),
+                        Style::default().fg(t.tertiary).add_modifier(Modifier::BOLD),
                     )]),
                     Line::from(""),
                     Line::from("You set up the repository yourself:"),
                     Line::from(vec![
-                        Span::styled("  1. ", Style::default().fg(Color::Yellow)),
+                        Span::styled("  1. ", Style::default().fg(t.text_emphasis)),
                         Span::raw("Create a repo on any git host"),
                     ]),
                     Line::from(vec![
-                        Span::styled("  2. ", Style::default().fg(Color::Yellow)),
+                        Span::styled("  2. ", Style::default().fg(t.text_emphasis)),
                         Span::raw("Clone it to your machine"),
                     ]),
                     Line::from(vec![
-                        Span::styled("  3. ", Style::default().fg(Color::Yellow)),
+                        Span::styled("  3. ", Style::default().fg(t.text_emphasis)),
                         Span::raw("Tell DotState where it is"),
                     ]),
                     Line::from(""),
                     Line::from(vec![Span::styled(
                         "Supports:",
-                        Style::default()
-                            .fg(Color::Cyan)
-                            .add_modifier(Modifier::BOLD),
+                        Style::default().fg(t.primary).add_modifier(Modifier::BOLD),
                     )]),
                     Line::from("• GitHub, GitLab, Bitbucket"),
                     Line::from("• Self-hosted git servers"),
                     Line::from("• Any git remote"),
                     Line::from(""),
                     Line::from(vec![
-                        Span::styled("💡 ", Style::default().fg(Color::Magenta)),
+                        Span::styled("💡 ", Style::default().fg(t.secondary)),
                         Span::raw("Best for: Users who already have"),
                     ]),
                     Line::from("   a repo or use non-GitHub hosts."),
@@ -379,14 +362,10 @@ impl GitHubAuthComponent {
 
         let explanation_block = Block::default()
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Cyan))
+            .border_style(Style::default().fg(t.primary))
             .border_type(ratatui::widgets::BorderType::Rounded)
             .title(format!("💡 {}", title))
-            .title_style(
-                Style::default()
-                    .fg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD),
-            )
+            .title_style(t.title_style())
             .title_alignment(Alignment::Center)
             .padding(ratatui::widgets::Padding::new(1, 1, 1, 1));
 
@@ -408,6 +387,7 @@ impl GitHubAuthComponent {
 
     /// Render the local repository setup screen
     fn render_local_setup(&mut self, frame: &mut Frame, area: Rect) -> Result<()> {
+        let t = theme();
         // Layout: Header, Content, Footer
         let (header_chunk, content_chunk, footer_chunk) = create_standard_layout(area, 5, 2);
 
@@ -444,51 +424,45 @@ impl GitHubAuthComponent {
         let instructions_lines = vec![
             Line::from(vec![Span::styled(
                 "Set up your own git repository:",
-                Style::default()
-                    .fg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD),
+                Style::default().fg(t.primary).add_modifier(Modifier::BOLD),
             )]),
             Line::from(""),
             Line::from(vec![
-                Span::styled("1. ", Style::default().fg(Color::Yellow)),
+                Span::styled("1. ", Style::default().fg(t.text_emphasis)),
                 Span::raw("Create a repository on any git host"),
             ]),
             Line::from("   (GitHub, GitLab, Bitbucket, etc.)"),
             Line::from(""),
             Line::from(vec![
-                Span::styled("2. ", Style::default().fg(Color::Yellow)),
+                Span::styled("2. ", Style::default().fg(t.text_emphasis)),
                 Span::raw("Clone it locally:"),
             ]),
             Line::from(vec![Span::styled(
                 "   git clone <url> ~/.config/dotstate/storage",
-                Style::default().fg(Color::DarkGray),
+                Style::default().fg(t.text_muted),
             )]),
             Line::from(""),
             Line::from(vec![
-                Span::styled("3. ", Style::default().fg(Color::Yellow)),
+                Span::styled("3. ", Style::default().fg(t.text_emphasis)),
                 Span::raw("Ensure you can push:"),
             ]),
             Line::from(vec![Span::styled(
                 "   git push origin main",
-                Style::default().fg(Color::DarkGray),
+                Style::default().fg(t.text_muted),
             )]),
             Line::from(""),
             Line::from(vec![
-                Span::styled("4. ", Style::default().fg(Color::Yellow)),
+                Span::styled("4. ", Style::default().fg(t.text_emphasis)),
                 Span::raw("Enter the local path below"),
             ]),
         ];
 
         let instructions_block = Block::default()
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Blue))
+            .border_style(Style::default().fg(t.tertiary))
             .border_type(ratatui::widgets::BorderType::Rounded)
             .title("📋 Setup Instructions")
-            .title_style(
-                Style::default()
-                    .fg(Color::Blue)
-                    .add_modifier(Modifier::BOLD),
-            )
+            .title_style(Style::default().fg(t.tertiary).add_modifier(Modifier::BOLD))
             .title_alignment(Alignment::Center);
 
         let instructions = Paragraph::new(instructions_lines)
@@ -538,12 +512,13 @@ impl GitHubAuthComponent {
 
     /// Render help panel for local setup
     fn render_local_help_panel(&self, frame: &mut Frame, area: Rect) -> Result<()> {
+        let t = theme();
         if let Some(status) = &self.auth_state.status_message {
             let status_block = Block::default()
                 .borders(Borders::ALL)
                 .title("Status")
                 .title_alignment(Alignment::Center)
-                .border_style(Style::default().fg(Color::Green));
+                .border_style(Style::default().fg(t.success));
             let status_para = Paragraph::new(status.as_str())
                 .block(status_block)
                 .wrap(Wrap { trim: true });
@@ -553,7 +528,7 @@ impl GitHubAuthComponent {
                 .borders(Borders::ALL)
                 .title("Error")
                 .title_alignment(Alignment::Center)
-                .border_style(Style::default().fg(Color::Red));
+                .border_style(Style::default().fg(t.error));
             let error_para = Paragraph::new(error.as_str())
                 .block(error_block)
                 .wrap(Wrap { trim: true });
@@ -569,31 +544,26 @@ impl GitHubAuthComponent {
             let help_lines = vec![
                 Line::from(vec![Span::styled(
                     "Current Configuration",
-                    Style::default()
-                        .fg(Color::Green)
-                        .add_modifier(Modifier::BOLD),
+                    Style::default().fg(t.success).add_modifier(Modifier::BOLD),
                 )]),
                 Line::from(""),
                 Line::from(vec![
-                    Span::styled("Mode: ", Style::default().fg(Color::Cyan)),
+                    Span::styled("Mode: ", Style::default().fg(t.primary)),
                     Span::raw("Local Repository"),
                 ]),
                 Line::from(""),
-                Line::from(vec![Span::styled(
-                    "Path: ",
-                    Style::default().fg(Color::Cyan),
-                )]),
+                Line::from(vec![Span::styled("Path: ", Style::default().fg(t.primary))]),
                 Line::from(format!("  {}", path)),
                 Line::from(""),
                 Line::from(vec![Span::styled(
                     "Remote: ",
-                    Style::default().fg(Color::Cyan),
+                    Style::default().fg(t.primary),
                 )]),
                 Line::from(format!("  {}", remote_url)),
                 Line::from(""),
                 Line::from(vec![
-                    Span::styled("Status: ", Style::default().fg(Color::Cyan)),
-                    Span::styled("✅ Configured", Style::default().fg(Color::Green)),
+                    Span::styled("Status: ", Style::default().fg(t.primary)),
+                    Span::styled("✅ Configured", Style::default().fg(t.success)),
                 ]),
             ];
 
@@ -601,7 +571,7 @@ impl GitHubAuthComponent {
                 .borders(Borders::ALL)
                 .title("📋 Repository Info")
                 .title_alignment(Alignment::Center)
-                .border_style(Style::default().fg(Color::Green))
+                .border_style(Style::default().fg(t.success))
                 .border_type(ratatui::widgets::BorderType::Rounded)
                 .padding(ratatui::widgets::Padding::new(1, 1, 0, 0));
 
@@ -613,25 +583,20 @@ impl GitHubAuthComponent {
             let help_lines = vec![
                 Line::from(vec![Span::styled(
                     "Repository Path",
-                    Style::default()
-                        .fg(Color::Cyan)
-                        .add_modifier(Modifier::BOLD),
+                    Style::default().fg(t.primary).add_modifier(Modifier::BOLD),
                 )]),
                 Line::from(""),
                 Line::from("Enter the path to your cloned git repository."),
                 Line::from(""),
                 Line::from(vec![Span::styled(
                     "Requirements:",
-                    Style::default().fg(Color::Yellow),
+                    Style::default().fg(t.text_emphasis),
                 )]),
                 Line::from("• Must be a valid git repository"),
                 Line::from("• Must have a remote named 'origin'"),
                 Line::from("• Must be able to push to remote"),
                 Line::from(""),
-                Line::from(vec![Span::styled(
-                    "Tips:",
-                    Style::default().fg(Color::Green),
-                )]),
+                Line::from(vec![Span::styled("Tips:", Style::default().fg(t.success))]),
                 Line::from("• Use ~ for home directory"),
                 Line::from("• SSH or HTTPS remotes both work"),
                 Line::from("• Ensure your SSH keys or"),
@@ -642,7 +607,7 @@ impl GitHubAuthComponent {
                 .borders(Borders::ALL)
                 .title("💡 Help")
                 .title_alignment(Alignment::Center)
-                .border_style(Style::default().fg(Color::Cyan))
+                .border_style(Style::default().fg(t.primary))
                 .border_type(ratatui::widgets::BorderType::Rounded)
                 .padding(ratatui::widgets::Padding::new(1, 1, 0, 0));
 
@@ -655,12 +620,13 @@ impl GitHubAuthComponent {
     }
 
     fn render_help_panel(&self, frame: &mut Frame, area: Rect) -> Result<()> {
+        let t = theme();
         if let Some(status) = &self.auth_state.status_message {
             let status_block = Block::default()
                 .borders(Borders::ALL)
                 .title("Status")
                 .title_alignment(Alignment::Center)
-                .border_style(Style::default().fg(Color::Green));
+                .border_style(Style::default().fg(t.success));
             let status_para = Paragraph::new(status.as_str())
                 .block(status_block)
                 .wrap(Wrap { trim: true });
@@ -670,7 +636,7 @@ impl GitHubAuthComponent {
                 .borders(Borders::ALL)
                 .title("Error")
                 .title_alignment(Alignment::Center)
-                .border_style(Style::default().fg(Color::Red));
+                .border_style(Style::default().fg(t.error));
             let error_para = Paragraph::new(error.as_str())
                 .block(error_block)
                 .wrap(Wrap { trim: true });
@@ -770,7 +736,7 @@ impl GitHubAuthComponent {
                 .borders(Borders::ALL)
                 .title(title)
                 .title_alignment(Alignment::Center)
-                .border_style(Style::default().fg(Color::Cyan));
+                .border_style(Style::default().fg(t.primary));
             let help_para = Paragraph::new(help_lines.join("\n"))
                 .block(help_block)
                 .wrap(Wrap { trim: true })
@@ -785,6 +751,8 @@ impl GitHubAuthComponent {
         use ratatui::layout::Constraint;
         use ratatui::layout::Direction;
         use ratatui::layout::Layout;
+
+        let t = theme();
 
         // Layout: Header, Content, Footer
         // Header component needs more height (6) to accommodate logo and description
@@ -806,7 +774,7 @@ impl GitHubAuthComponent {
             .borders(Borders::ALL)
             .title("Progress")
             .title_alignment(Alignment::Center)
-            .border_style(Style::default().fg(Color::Cyan))
+            .border_style(Style::default().fg(t.primary))
             .border_type(ratatui::widgets::BorderType::Rounded);
 
         // Status message with styling
@@ -820,7 +788,7 @@ impl GitHubAuthComponent {
             .block(progress_block)
             .wrap(Wrap { trim: true })
             .alignment(Alignment::Center)
-            .style(Style::default().fg(Color::White));
+            .style(t.text_style());
 
         frame.render_widget(status_para, progress_area);
 
@@ -838,11 +806,11 @@ impl GitHubAuthComponent {
                 .borders(Borders::ALL)
                 .title("Error")
                 .title_alignment(Alignment::Center)
-                .border_style(Style::default().fg(Color::Red));
+                .border_style(Style::default().fg(t.error));
             let error_para = Paragraph::new(error.as_str())
                 .block(error_block)
                 .wrap(Wrap { trim: true })
-                .style(Style::default().fg(Color::Red));
+                .style(Style::default().fg(t.error));
             frame.render_widget(error_para, error_area);
         }
 
@@ -871,8 +839,8 @@ impl Component for GitHubAuthComponent {
         // Clear the entire area first
         frame.render_widget(Clear, area);
 
-        // Background
-        let background = Block::default().style(Style::default().bg(Color::Black));
+        // Background - use Reset to inherit terminal's native background
+        let background = Block::default().style(Style::default().bg(Color::Reset));
         frame.render_widget(background, area);
 
         // If processing or in setup, show progress screen instead of input form
@@ -937,14 +905,16 @@ impl Component for GitHubAuthComponent {
             ])
             .split(main_layout[0]);
 
+        let t = theme();
+
         // Instructions
         let instructions_block = Block::default()
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Blue))
+            .border_style(Style::default().fg(t.tertiary))
             .border_type(ratatui::widgets::BorderType::Rounded);
         let instructions = Paragraph::new("Fill in the details below to set up your dotfiles repository. Use Tab to navigate between fields.")
             .block(instructions_block)
-            .style(Style::default().fg(Color::White))
+            .style(t.text_style())
             .alignment(Alignment::Center);
         frame.render_widget(instructions, left_layout[0]);
 
@@ -956,7 +926,7 @@ impl Component for GitHubAuthComponent {
         if !self.auth_state.repo_already_configured {
             let reminder_text = "⚠️  If you already had a repo with a different name, make sure to enter it here, otherwise a new repo with this name will be created";
             let reminder = Paragraph::new(reminder_text)
-                .style(Style::default().fg(Color::Yellow))
+                .style(Style::default().fg(t.warning))
                 .wrap(Wrap { trim: true });
             frame.render_widget(reminder, left_layout[5]);
         }

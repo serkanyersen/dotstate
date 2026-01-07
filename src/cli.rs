@@ -12,6 +12,10 @@ use tracing::{info, warn};
 pub struct Cli {
     #[command(subcommand)]
     pub command: Option<Commands>,
+
+    /// Disable colors in the TUI (also respects NO_COLOR env var)
+    #[arg(long, global = true)]
+    pub no_colors: bool,
 }
 
 #[derive(Subcommand, Debug)]

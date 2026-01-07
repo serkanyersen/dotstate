@@ -3,6 +3,7 @@ use crate::components::footer::Footer;
 use crate::components::header::Header;
 use crate::components::input_field::InputField;
 use crate::config::Config;
+use crate::styles::{theme, LIST_HIGHLIGHT_SYMBOL};
 use crate::utils::{
     center_popup, create_standard_layout, focused_border_style, unfocused_border_style,
 };
@@ -145,8 +146,8 @@ impl ProfileManagerComponent {
         // Clear the entire area first
         frame.render_widget(Clear, area);
 
-        // Background
-        let background = Block::default().style(Style::default().bg(Color::Black));
+        // Background - use Reset to inherit terminal's native background
+        let background = Block::default().style(Style::default().bg(Color::Reset));
         frame.render_widget(background, area);
 
         // Layout: Header, Content (split), Footer
@@ -201,6 +202,7 @@ impl ProfileManagerComponent {
         profiles: &[crate::utils::ProfileInfo],
         state: &mut ProfileManagerState,
     ) -> Result<()> {
+        let t = theme();
         let active_profile = &config.active_profile;
 
         let items: Vec<ListItem> = profiles
@@ -210,10 +212,10 @@ impl ProfileManagerComponent {
                 let icon = if is_active { "⭐" } else { "  " };
                 let name_style = if is_active {
                     Style::default()
-                        .fg(Color::Yellow)
+                        .fg(t.text_emphasis)
                         .add_modifier(Modifier::BOLD)
                 } else {
-                    Style::default().fg(Color::White)
+                    t.text_style()
                 };
 
                 let file_count = profile.synced_files.len();
@@ -235,11 +237,8 @@ impl ProfileManagerComponent {
                     .title("Profiles")
                     .border_style(focused_border_style()),
             )
-            .highlight_style(
-                Style::default()
-                    .bg(Color::DarkGray)
-                    .add_modifier(Modifier::BOLD),
-            );
+            .highlight_style(t.highlight_style())
+            .highlight_symbol(LIST_HIGHLIGHT_SYMBOL);
 
         // Store clickable areas for mouse support
         // Each list item is clickable
@@ -288,12 +287,13 @@ impl ProfileManagerComponent {
             .or_else(|| profiles.iter().find(|p| p.name == *active_profile))
             .or_else(|| profiles.first());
 
+        let t = theme();
         if let Some(profile) = profile {
             let is_active = profile.name == *active_profile;
             let status = if is_active {
-                ("● Active", Color::Green)
+                ("● Active", t.success)
             } else {
-                ("○ Inactive", Color::Yellow)
+                ("○ Inactive", t.text_emphasis)
             };
 
             let description = profile.description.as_deref().unwrap_or("No description");
@@ -328,54 +328,43 @@ impl ProfileManagerComponent {
                 Line::from(vec![
                     Span::styled(
                         "Name: ",
-                        Style::default()
-                            .fg(Color::Cyan)
-                            .add_modifier(Modifier::BOLD),
+                        Style::default().fg(t.primary).add_modifier(Modifier::BOLD),
                     ),
-                    Span::styled(&profile.name, Style::default().fg(Color::White)),
+                    Span::styled(&profile.name, t.text_style()),
                 ]),
                 Line::from(""),
                 Line::from(vec![
                     Span::styled(
                         "Status: ",
-                        Style::default()
-                            .fg(Color::Cyan)
-                            .add_modifier(Modifier::BOLD),
+                        Style::default().fg(t.primary).add_modifier(Modifier::BOLD),
                     ),
                     Span::styled(status.0, Style::default().fg(status.1)),
                 ]),
                 Line::from(""),
                 Line::from(vec![Span::styled(
                     "Description:",
-                    Style::default()
-                        .fg(Color::Cyan)
-                        .add_modifier(Modifier::BOLD),
+                    Style::default().fg(t.primary).add_modifier(Modifier::BOLD),
                 )]),
                 Line::from(vec![Span::styled(
                     description,
-                    Style::default().fg(Color::Gray),
+                    Style::default().fg(t.text_muted),
                 )]),
                 Line::from(""),
                 Line::from(vec![Span::styled(
                     &files_text,
-                    Style::default()
-                        .fg(Color::Cyan)
-                        .add_modifier(Modifier::BOLD),
+                    Style::default().fg(t.primary).add_modifier(Modifier::BOLD),
                 )]),
             ];
 
             if !files_list.is_empty() {
                 for line in files_list.lines() {
-                    lines.push(Line::from(vec![Span::styled(
-                        line,
-                        Style::default().fg(Color::White),
-                    )]));
+                    lines.push(Line::from(vec![Span::styled(line, t.text_style())]));
                 }
             }
             if !more_text.is_empty() {
                 lines.push(Line::from(vec![Span::styled(
                     &more_text,
-                    Style::default().fg(Color::DarkGray),
+                    Style::default().fg(t.text_muted),
                 )]));
             }
 
@@ -458,14 +447,11 @@ impl ProfileManagerComponent {
             ])
             .split(popup_area);
 
+        let t = theme();
         // Title (no border, just text)
         let title = Paragraph::new("Create New Profile")
             .alignment(Alignment::Center)
-            .style(
-                Style::default()
-                    .fg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD),
-            );
+            .style(t.title_style());
         frame.render_widget(title, chunks[0]);
 
         // Store clickable areas for mouse support
@@ -528,9 +514,9 @@ impl ProfileManagerComponent {
                 "  "
             };
             let start_blank_style = if is_start_blank_selected {
-                Style::default().fg(Color::Green)
+                Style::default().fg(t.success)
             } else {
-                Style::default().fg(Color::White)
+                t.text_style()
             };
             items.push(
                 ListItem::new(format!("{}Start Blank", start_blank_prefix))
@@ -542,9 +528,9 @@ impl ProfileManagerComponent {
                 let is_selected = state.create_copy_from == Some(idx);
                 let prefix = if is_selected { "✓ " } else { "  " };
                 let style = if is_selected {
-                    Style::default().fg(Color::Green)
+                    Style::default().fg(t.success)
                 } else {
-                    Style::default().fg(Color::White)
+                    t.text_style()
                 };
                 let file_count = profile.synced_files.len();
                 let file_text = if file_count == 0 {
@@ -565,11 +551,8 @@ impl ProfileManagerComponent {
                         .title("Copy From")
                         .border_style(border_style),
                 )
-                .highlight_style(
-                    Style::default()
-                        .bg(Color::DarkGray)
-                        .add_modifier(Modifier::BOLD),
-                );
+                .highlight_style(t.highlight_style())
+                .highlight_symbol(LIST_HIGHLIGHT_SYMBOL);
 
             // Create a temporary list state for rendering
             // Index 0 = "Start Blank" (None), Index 1+ = profile at (idx - 1)
@@ -661,6 +644,7 @@ impl ProfileManagerComponent {
         profiles: &[crate::utils::ProfileInfo],
         state: &ProfileManagerState,
     ) -> Result<()> {
+        let t = theme();
         let popup_area = center_popup(area, 60, 30);
         frame.render_widget(Clear, popup_area);
 
@@ -682,11 +666,7 @@ impl ProfileManagerComponent {
 
         let title = Paragraph::new(format!("Rename Profile: {}", profile_name))
             .alignment(Alignment::Center)
-            .style(
-                Style::default()
-                    .fg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD),
-            );
+            .style(t.title_style());
         frame.render_widget(title, chunks[0]);
 
         // Name input

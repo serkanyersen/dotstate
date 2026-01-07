@@ -18,6 +18,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - New `dotstate upgrade` CLI command with interactive options
   - Configurable check interval and ability to disable update checks
   - Multiple update methods: install script, cargo, or homebrew
+- **Theme System**: Comprehensive theme support for light and dark terminal backgrounds
+  - Automatic theme detection and adaptation
+  - Light and dark themes with consistent color palette
+  - Syntax highlighting themes automatically match UI theme (light/dark)
+  - All UI elements (headers, footers, borders, text, lists) use theme colors
+  - Configurable via `theme` setting in config file (`"dark"` or `"light"`)
+  - `--no-colors` CLI flag to disable colors entirely
+  - `theme = "nocolor"` to disable all UI colors (same as `NO_COLOR=1`)
 - Package manager feature with support for multiple package managers
 - Profile-based package management
 - Custom package support with user-defined install commands
@@ -38,6 +46,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Better error messages and user feedback
 - Commit messages are now automatically generated from changed files instead of generic "Update dotfiles"
 - Made existence check field optional for custom packages (if empty, uses standard binary name check)
+- **UI Color System**: All hardcoded colors replaced with theme-based system
+  - Consistent color usage across all components
+  - Better visibility in both light and dark terminals
+  - All borders, headers, footers, and text now respect theme settings
 
 ### Fixed
 - Fixed git clone failures caused by `.gitconfig` URL rewrites (e.g., `url."git@github.com:".insteadOf = "https://github.com/"`)

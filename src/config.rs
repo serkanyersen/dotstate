@@ -73,6 +73,13 @@ pub struct Config {
     /// Update check configuration
     #[serde(default)]
     pub updates: UpdateConfig,
+    /// Color theme: "dark", "light", or "nocolor" (default: dark)
+    #[serde(default = "default_theme")]
+    pub theme: String,
+}
+
+fn default_theme() -> String {
+    "dark".to_string()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -204,6 +211,7 @@ impl Config {
             default_branch: "main".to_string(),
             custom_files: Vec::new(),
             updates: UpdateConfig::default(),
+            theme: default_theme(),
         }
     }
 

@@ -3,6 +3,7 @@ use crate::components::file_preview::FilePreview;
 use crate::components::footer::Footer;
 use crate::components::header::Header;
 use crate::components::input_field::InputField;
+use crate::styles::{theme as ui_theme, LIST_HIGHLIGHT_SYMBOL};
 use crate::ui::{DotfileSelectionFocus, UiState};
 use crate::utils::{
     center_popup, create_split_layout, create_standard_layout, focused_border_style,
@@ -41,8 +42,8 @@ impl DotfileSelectionComponent {
         // Clear the entire area first to prevent background bleed-through
         frame.render_widget(Clear, area);
 
-        // Background
-        let background = Block::default().style(Style::default().bg(Color::Black));
+        // Background - use Reset to inherit terminal's native background
+        let background = Block::default().style(Style::default().bg(Color::Reset));
         frame.render_widget(background, area);
 
         let selection_state = &mut state.dotfile_selection;
@@ -126,7 +127,7 @@ impl DotfileSelectionComponent {
                 .borders(Borders::ALL)
                 .title("Current Directory")
                 .title_alignment(Alignment::Center)
-                .style(Style::default().bg(Color::Black)),
+                .style(Style::default().bg(Color::Reset)),
         );
         frame.render_widget(path_display, browser_chunks[0]);
 
@@ -209,11 +210,12 @@ impl DotfileSelectionComponent {
             .position(selected_index);
 
         // Add focus indicator to file browser list
+        let t = ui_theme();
         let list_title = "Select File or Directory (Enter to load path)";
         let list_border_style = if selection_state.focus == DotfileSelectionFocus::FileBrowserList {
-            focused_border_style().bg(Color::Black)
+            focused_border_style().bg(Color::Reset)
         } else {
-            unfocused_border_style().bg(Color::Black)
+            unfocused_border_style().bg(Color::Reset)
         };
 
         let list = List::new(items)
@@ -224,12 +226,8 @@ impl DotfileSelectionComponent {
                     .title_alignment(Alignment::Center)
                     .border_style(list_border_style),
             )
-            .highlight_style(
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD | Modifier::REVERSED),
-            )
-            .highlight_symbol("» ");
+            .highlight_style(t.highlight_style())
+            .highlight_symbol(LIST_HIGHLIGHT_SYMBOL);
 
         StatefulWidget::render(
             list,
@@ -307,11 +305,11 @@ impl DotfileSelectionComponent {
         if browser_chunks.len() > 3 && browser_chunks[3].height > 0 {
             let footer_block = Block::default()
                 .borders(Borders::TOP)
-                .border_style(Style::default().fg(Color::DarkGray))
-                .style(Style::default().bg(Color::Black));
+                .border_style(Style::default().fg(t.text_muted))
+                .style(Style::default().bg(Color::Reset));
             let footer_inner = footer_block.inner(browser_chunks[3]);
             let footer = Paragraph::new("Tab: Switch Focus | ↑↓: Navigate List | u/d: Scroll Preview | Enter: Load Path | Esc: Cancel")
-                .style(Style::default().fg(Color::DarkGray))
+                .style(Style::default().fg(t.text_muted))
                 .alignment(Alignment::Center);
             frame.render_widget(footer_block, browser_chunks[3]);
             frame.render_widget(footer, footer_inner);
@@ -394,6 +392,7 @@ impl DotfileSelectionComponent {
         let description_area = left_chunks[1];
 
         // File list using ListState - simplified, no descriptions inline
+        let t = ui_theme();
         let items: Vec<ListItem> = selection_state
             .dotfiles
             .iter()
@@ -402,9 +401,9 @@ impl DotfileSelectionComponent {
                 let is_selected = selection_state.selected_for_sync.contains(&i);
                 let prefix = if is_selected { "✓ " } else { "  " };
                 let style = if is_selected {
-                    Style::default().fg(Color::Green)
+                    Style::default().fg(t.success)
                 } else {
-                    Style::default().fg(Color::White)
+                    t.text_style()
                 };
                 let path_str = dotfile.relative_path.to_string_lossy();
                 ListItem::new(format!("{}{}", prefix, path_str)).style(style)
@@ -435,12 +434,8 @@ impl DotfileSelectionComponent {
                     .title_alignment(Alignment::Center)
                     .border_style(list_border_style),
             )
-            .highlight_style(
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD | Modifier::REVERSED),
-            )
-            .highlight_symbol("> ");
+            .highlight_style(t.highlight_style())
+            .highlight_symbol(LIST_HIGHLIGHT_SYMBOL);
 
         StatefulWidget::render(
             list,
@@ -480,7 +475,7 @@ impl DotfileSelectionComponent {
                             .border_style(unfocused_border_style()),
                     )
                     .wrap(Wrap { trim: true })
-                    .style(Style::default().fg(Color::White));
+                    .style(t.text_style());
                 frame.render_widget(description_para, description_area);
             } else {
                 let empty_desc = Paragraph::new("No file selected").block(
@@ -554,7 +549,7 @@ impl DotfileSelectionComponent {
 
             frame.render_widget(Clear, status_chunks[1]);
             frame.render_widget(
-                Block::default().style(Style::default().bg(Color::DarkGray)),
+                Block::default().style(Style::default().bg(t.background)),
                 status_chunks[1],
             );
 
@@ -562,7 +557,7 @@ impl DotfileSelectionComponent {
                 .borders(Borders::ALL)
                 .title("Sync Summary")
                 .title_alignment(Alignment::Center)
-                .style(Style::default().bg(Color::DarkGray));
+                .style(Style::default().bg(t.background));
             let status_para = Paragraph::new(status.as_str())
                 .block(status_block)
                 .wrap(Wrap { trim: true });
@@ -592,8 +587,9 @@ impl DotfileSelectionComponent {
         area: Rect,
         selection_state: &crate::ui::DotfileSelectionState,
     ) -> Result<()> {
+        let t = ui_theme();
         // Dim the background
-        let dim = Block::default().style(Style::default().bg(Color::Black).fg(Color::DarkGray));
+        let dim = Block::default().style(Style::default().bg(Color::Reset).fg(t.text_muted));
         frame.render_widget(dim, area);
 
         // Create centered popup
@@ -627,40 +623,36 @@ impl DotfileSelectionComponent {
                     .borders(Borders::ALL)
                     .title("Confirmation")
                     .title_alignment(Alignment::Center)
-                    .style(Style::default().bg(Color::Black)),
+                    .style(Style::default().bg(Color::Reset)),
             )
             .alignment(Alignment::Center)
             .style(
                 Style::default()
-                    .fg(Color::Yellow)
+                    .fg(t.text_emphasis)
                     .add_modifier(Modifier::BOLD),
             );
         frame.render_widget(title, chunks[0]);
 
         // Path label
-        let path_label = Paragraph::new("Path:").style(Style::default().fg(Color::White));
+        let path_label = Paragraph::new("Path:").style(t.text_style());
         frame.render_widget(path_label, chunks[2]);
 
         // Path value (highlighted in different color)
         let path_value = Paragraph::new(path.as_str())
             .wrap(Wrap { trim: true })
-            .style(
-                Style::default()
-                    .fg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD),
-            );
+            .style(Style::default().fg(t.primary).add_modifier(Modifier::BOLD));
         frame.render_widget(path_value, chunks[3]);
 
         // Warning message
         let warning = Paragraph::new("⚠️  This will move this path to the storage repo and replace it with a symlink.\nMake sure you know what you are doing.")
             .wrap(Wrap { trim: true })
-            .style(Style::default().fg(Color::Yellow));
+            .style(Style::default().fg(t.warning));
         frame.render_widget(warning, chunks[5]);
 
         // Instructions
         let instructions = Paragraph::new("Press Y/Enter to confirm, N/Esc to cancel")
             .alignment(Alignment::Center)
-            .style(Style::default().fg(Color::DarkGray));
+            .style(Style::default().fg(t.text_muted));
         frame.render_widget(instructions, chunks[7]);
 
         Ok(())
@@ -672,7 +664,7 @@ impl Component for DotfileSelectionComponent {
         // This method is required by the trait but we use render_with_state instead
         // Clear the area as a fallback
         frame.render_widget(Clear, area);
-        let background = Block::default().style(Style::default().bg(Color::Black));
+        let background = Block::default().style(Style::default().bg(Color::Reset));
         frame.render_widget(background, area);
         Ok(())
     }

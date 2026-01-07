@@ -1,3 +1,4 @@
+use crate::styles::theme;
 use crate::widgets::DotstateLogo;
 use anyhow::Result;
 use ratatui::prelude::*;
@@ -23,16 +24,13 @@ impl Header {
         title: &str,
         description: &str,
     ) -> Result<u16, anyhow::Error> {
-        // Main header block with cyan border, padding, and title
+        let t = theme();
+        // Main header block with theme border, padding, and title
         let header_block = Block::default()
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Cyan))
+            .border_style(t.border_focused_style())
             .title(title)
-            .title_style(
-                Style::default()
-                    .fg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD),
-            )
+            .title_style(t.title_style())
             .title_alignment(Alignment::Center)
             .padding(ratatui::widgets::Padding::new(1, 1, 0, 0));
 
@@ -73,7 +71,7 @@ impl Header {
             .split(desc_area);
 
         let description_para = Paragraph::new(description)
-            .style(Style::default().fg(Color::White))
+            .style(t.text_style())
             .alignment(Alignment::Left)
             .wrap(Wrap { trim: true });
 

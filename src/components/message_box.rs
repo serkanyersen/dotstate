@@ -1,3 +1,4 @@
+use crate::styles::theme;
 use anyhow::Result;
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
@@ -13,7 +14,7 @@ impl MessageBox {
     /// * `area` - The area to render the message box in
     /// * `message` - The message text to display
     /// * `title` - Optional title (defaults to "Message")
-    /// * `color` - Optional color for the border (defaults to Blue for info)
+    /// * `color` - Optional color for the border (defaults to primary for info)
     ///
     /// # Returns
     /// Result indicating success or failure
@@ -24,15 +25,16 @@ impl MessageBox {
         title: Option<&str>,
         color: Option<Color>,
     ) -> Result<()> {
+        let t = theme();
         let title_text = title.unwrap_or("Message");
-        let border_color = color.unwrap_or(Color::Blue);
+        let border_color = color.unwrap_or(t.primary);
 
         // Detect if message is an error
         let is_error = message.to_lowercase().contains("error")
             || message.to_lowercase().contains("failed")
             || message.to_lowercase().contains("fail");
 
-        let final_color = if is_error { Color::Red } else { border_color };
+        let final_color = if is_error { t.error } else { border_color };
 
         let final_title = if is_error { "Error" } else { title_text };
 
@@ -44,7 +46,7 @@ impl MessageBox {
             .padding(ratatui::widgets::Padding::new(2, 2, 2, 2));
 
         let message_para = Paragraph::new(message)
-            .style(Style::default().fg(Color::White))
+            .style(t.text_style())
             .wrap(Wrap { trim: true })
             .block(message_block);
 
@@ -56,18 +58,21 @@ impl MessageBox {
     /// Render an error message box
     #[allow(dead_code)]
     pub fn render_error(frame: &mut Frame, area: Rect, message: &str) -> Result<()> {
-        Self::render(frame, area, message, Some("Error"), Some(Color::Red))
+        let t = theme();
+        Self::render(frame, area, message, Some("Error"), Some(t.error))
     }
 
     /// Render a status/info message box
     #[allow(dead_code)]
     pub fn render_status(frame: &mut Frame, area: Rect, message: &str) -> Result<()> {
-        Self::render(frame, area, message, Some("Status"), Some(Color::Blue))
+        let t = theme();
+        Self::render(frame, area, message, Some("Status"), Some(t.primary))
     }
 
     /// Render a success message box
     #[allow(dead_code)]
     pub fn render_success(frame: &mut Frame, area: Rect, message: &str) -> Result<()> {
-        Self::render(frame, area, message, Some("Success"), Some(Color::Green))
+        let t = theme();
+        Self::render(frame, area, message, Some("Success"), Some(t.success))
     }
 }

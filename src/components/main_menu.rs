@@ -2,6 +2,7 @@ use crate::components::component::{Component, ComponentAction};
 use crate::components::footer::Footer;
 use crate::components::header::Header;
 use crate::config::Config;
+use crate::styles::{theme, LIST_HIGHLIGHT_SYMBOL};
 use crate::utils::create_standard_layout;
 use crate::version_check::UpdateInfo;
 use anyhow::Result;
@@ -72,43 +73,45 @@ impl MenuItem {
 
     /// Get the base color for this menu item
     pub fn color(&self, has_changes: bool) -> Color {
+        let t = theme();
         match self {
-            MenuItem::SyncWithRemote if has_changes => Color::Yellow,
-            _ => Color::White,
+            MenuItem::SyncWithRemote if has_changes => t.warning,
+            _ => t.text,
         }
     }
 
     /// Get the explanation text for this menu item
     pub fn explanation(&self) -> Text<'static> {
+        let t = theme();
         match self {
             MenuItem::ScanDotfiles => {
                 let lines = vec![
                     Line::from(vec![
-                        Span::styled("Manage Your Dotfiles", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+                        Span::styled("Manage Your Dotfiles", t.title_style()),
                     ]),
                     Line::from(""),
                     Line::from(vec![
-                        Span::raw("Keep your configuration files (like "),
-                        Span::styled(".zshrc", Style::default().fg(Color::Yellow)),
-                        Span::raw(", "),
-                        Span::styled(".vimrc", Style::default().fg(Color::Yellow)),
-                        Span::raw(", "),
-                        Span::styled(".gitconfig", Style::default().fg(Color::Yellow)),
-                        Span::raw(", etc.) synchronized across all your machines. "),
+                        Span::styled("Keep your configuration files (like ", t.text_style()),
+                        Span::styled(".zshrc", t.emphasis_style()),
+                        Span::styled(", ", t.text_style()),
+                        Span::styled(".vimrc", t.emphasis_style()),
+                        Span::styled(", ", t.text_style()),
+                        Span::styled(".gitconfig", t.emphasis_style()),
+                        Span::styled(", etc.) synchronized across all your machines. ", t.text_style()),
                     ]),
                     Line::from(""),
                     Line::from(vec![
-                        Span::raw("When you select a file, it's automatically "),
-                        Span::styled("copied to your repository", Style::default().fg(Color::Green)),
-                        Span::raw(" and a "),
-                        Span::styled("symlink", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
-                        Span::raw(" is created in its place. This means your files are safely backed up and version controlled."),
+                        Span::styled("When you select a file, it's automatically ", t.text_style()),
+                        Span::styled("copied to your repository", t.success_style()),
+                        Span::styled(" and a ", t.text_style()),
+                        Span::styled("symlink", Style::default().fg(t.primary).add_modifier(Modifier::BOLD)),
+                        Span::styled(" is created in its place. This means your files are safely backed up and version controlled.", t.text_style()),
                     ]),
                     Line::from(""),
                     Line::from(vec![
-                        Span::styled("💡 Tip: ", Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD)),
-                        Span::raw("You can add custom files using the file browser, or use the CLI:\n"),
-                        Span::styled("  dotstate add ~/.myconfig", Style::default().fg(Color::Yellow)),
+                        Span::styled("💡 Tip: ", Style::default().fg(t.secondary).add_modifier(Modifier::BOLD)),
+                        Span::styled("You can add custom files using the file browser, or use the CLI:\n", t.text_style()),
+                        Span::styled("  dotstate add ~/.myconfig", t.emphasis_style()),
                     ]),
                 ];
                 Text::from(lines)
@@ -117,35 +120,35 @@ impl MenuItem {
                 let repo_name = crate::config::default_repo_name();
                 let lines = vec![
                     Line::from(vec![
-                        Span::styled("Sync with Remote Repository", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
+                        Span::styled("Sync with Remote Repository", Style::default().fg(t.success).add_modifier(Modifier::BOLD)),
                     ]),
                     Line::from(""),
                     Line::from(vec![
-                        Span::raw("Keep your dotfiles synchronized across all your devices. This feature "),
-                        Span::styled("commits", Style::default().fg(Color::Cyan)),
-                        Span::raw(" your local changes, "),
-                        Span::styled("pulls", Style::default().fg(Color::Blue)),
-                        Span::raw(" any updates from the remote, and "),
-                        Span::styled("pushes", Style::default().fg(Color::Green)),
-                        Span::raw(" everything back up."),
+                        Span::styled("Keep your dotfiles synchronized across all your devices. This feature ", t.text_style()),
+                        Span::styled("commits", Style::default().fg(t.primary)),
+                        Span::styled(" your local changes, ", t.text_style()),
+                        Span::styled("pulls", Style::default().fg(t.tertiary)),
+                        Span::styled(" any updates from the remote, and ", t.text_style()),
+                        Span::styled("pushes", t.success_style()),
+                        Span::styled(" everything back up.", t.text_style()),
                     ]),
                     Line::from(""),
                     Line::from(vec![
-                        Span::raw("Perfect for when you've made changes on one computer and want to sync them to another. "),
-                        Span::styled("All changes are automatically merged", Style::default().fg(Color::Green)),
-                        Span::raw(" with your remote repository."),
+                        Span::styled("Perfect for when you've made changes on one computer and want to sync them to another. ", t.text_style()),
+                        Span::styled("All changes are automatically merged", t.success_style()),
+                        Span::styled(" with your remote repository.", t.text_style()),
                     ]),
                     Line::from(""),
                     Line::from(vec![
-                        Span::raw("Your repository is called "),
-                        Span::styled(repo_name.clone(), Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
-                        Span::raw(" and should be visible in your GitHub account."),
+                        Span::styled("Your repository is called ", t.text_style()),
+                        Span::styled(repo_name.clone(), Style::default().fg(t.text_emphasis).add_modifier(Modifier::BOLD)),
+                        Span::styled(" and should be visible in your GitHub account.", t.text_style()),
                     ]),
                     Line::from(""),
                     Line::from(vec![
-                        Span::styled("💡 CLI: ", Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD)),
-                        Span::styled("dotstate sync", Style::default().fg(Color::Yellow)),
-                        Span::raw(" - Same functionality from the command line"),
+                        Span::styled("💡 CLI: ", Style::default().fg(t.secondary).add_modifier(Modifier::BOLD)),
+                        Span::styled("dotstate sync", t.emphasis_style()),
+                        Span::styled(" - Same functionality from the command line", t.text_style()),
                     ]),
                 ];
                 Text::from(lines)
@@ -153,37 +156,37 @@ impl MenuItem {
             MenuItem::ManageProfiles => {
                 let lines = vec![
                     Line::from(vec![
-                        Span::styled("Manage Multiple Profiles", Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD)),
+                        Span::styled("Manage Multiple Profiles", Style::default().fg(t.secondary).add_modifier(Modifier::BOLD)),
                     ]),
                     Line::from(""),
                     Line::from(vec![
-                        Span::raw("Create different sets of dotfiles for different contexts. Perfect for managing "),
-                        Span::styled("work", Style::default().fg(Color::Blue)),
-                        Span::raw(" vs "),
-                        Span::styled("personal", Style::default().fg(Color::Green)),
-                        Span::raw(" configurations, or different "),
-                        Span::styled("operating systems", Style::default().fg(Color::Cyan)),
-                        Span::raw("."),
+                        Span::styled("Create different sets of dotfiles for different contexts. Perfect for managing ", t.text_style()),
+                        Span::styled("work", Style::default().fg(t.tertiary)),
+                        Span::styled(" vs ", t.text_style()),
+                        Span::styled("personal", t.success_style()),
+                        Span::styled(" configurations, or different ", t.text_style()),
+                        Span::styled("operating systems", Style::default().fg(t.primary)),
+                        Span::styled(".", t.text_style()),
                     ]),
                     Line::from(""),
                     Line::from(vec![
-                        Span::raw("Example: Switch between a "),
-                        Span::styled("Mac", Style::default().fg(Color::Yellow)),
-                        Span::raw(" profile with macOS-specific settings and a "),
-                        Span::styled("Linux", Style::default().fg(Color::Green)),
-                        Span::raw(" profile for your servers."),
+                        Span::styled("Example: Switch between a ", t.text_style()),
+                        Span::styled("Mac", t.emphasis_style()),
+                        Span::styled(" profile with macOS-specific settings and a ", t.text_style()),
+                        Span::styled("Linux", t.success_style()),
+                        Span::styled(" profile for your servers.", t.text_style()),
                     ]),
                     Line::from(""),
                     Line::from(vec![
-                        Span::raw("Each profile maintains its own set of synced files and packages, so you can keep everything organized and context-specific."),
+                        Span::styled("Each profile maintains its own set of synced files and packages, so you can keep everything organized and context-specific.", t.text_style()),
                     ]),
                     Line::from(""),
                     Line::from(vec![
-                        Span::styled("💡 CLI: ", Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD)),
-                        Span::styled("dotstate profile list", Style::default().fg(Color::Yellow)),
-                        Span::raw(" - List all profiles\n"),
-                        Span::styled("  dotstate profile switch <name>", Style::default().fg(Color::Yellow)),
-                        Span::raw(" - Switch between profiles"),
+                        Span::styled("💡 CLI: ", Style::default().fg(t.secondary).add_modifier(Modifier::BOLD)),
+                        Span::styled("dotstate profile list", t.emphasis_style()),
+                        Span::styled(" - List all profiles\n", t.text_style()),
+                        Span::styled("  dotstate profile switch <name>", t.emphasis_style()),
+                        Span::styled(" - Switch between profiles", t.text_style()),
                     ]),
                 ];
                 Text::from(lines)
@@ -191,42 +194,42 @@ impl MenuItem {
             MenuItem::ManagePackages => {
                 let lines = vec![
                     Line::from(vec![
-                        Span::styled("Manage CLI Tools & Dependencies", Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD)),
+                        Span::styled("Manage CLI Tools & Dependencies", Style::default().fg(t.tertiary).add_modifier(Modifier::BOLD)),
                     ]),
                     Line::from(""),
                     Line::from(vec![
-                        Span::raw("Ensure all your essential command-line tools are installed across your machines. "),
-                        Span::styled("Automatically detect", Style::default().fg(Color::Cyan)),
-                        Span::raw(" which packages are missing and "),
-                        Span::styled("install them with one command", Style::default().fg(Color::Green)),
-                        Span::raw("."),
+                        Span::styled("Ensure all your essential command-line tools are installed across your machines. ", t.text_style()),
+                        Span::styled("Automatically detect", Style::default().fg(t.primary)),
+                        Span::styled(" which packages are missing and ", t.text_style()),
+                        Span::styled("install them with one command", t.success_style()),
+                        Span::styled(".", t.text_style()),
                     ]),
                     Line::from(""),
                     Line::from(vec![
-                        Span::raw("Great for setting up a new machine quickly! Just sync your dotfiles and install all your tools (like "),
-                        Span::styled("git", Style::default().fg(Color::Yellow)),
-                        Span::raw(", "),
-                        Span::styled("vim", Style::default().fg(Color::Yellow)),
-                        Span::raw(", "),
-                        Span::styled("node", Style::default().fg(Color::Yellow)),
-                        Span::raw(", etc.) in one go."),
+                        Span::styled("Great for setting up a new machine quickly! Just sync your dotfiles and install all your tools (like ", t.text_style()),
+                        Span::styled("git", t.emphasis_style()),
+                        Span::styled(", ", t.text_style()),
+                        Span::styled("vim", t.emphasis_style()),
+                        Span::styled(", ", t.text_style()),
+                        Span::styled("node", t.emphasis_style()),
+                        Span::styled(", etc.) in one go.", t.text_style()),
                     ]),
                     Line::from(""),
                     Line::from(vec![
-                        Span::raw("Supports both "),
-                        Span::styled("managed packages", Style::default().fg(Color::Green)),
-                        Span::raw(" (auto-detected from common package managers) and "),
-                        Span::styled("custom packages", Style::default().fg(Color::Cyan)),
-                        Span::raw(" with custom installation commands."),
+                        Span::styled("Supports both ", t.text_style()),
+                        Span::styled("managed packages", t.success_style()),
+                        Span::styled(" (auto-detected from common package managers) and ", t.text_style()),
+                        Span::styled("custom packages", Style::default().fg(t.primary)),
+                        Span::styled(" with custom installation commands.", t.text_style()),
                     ]),
                     Line::from(""),
                     Line::from(vec![
-                        Span::styled("💡 Example: ", Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD)),
-                        Span::raw("Add packages like "),
-                        Span::styled("ripgrep", Style::default().fg(Color::Yellow)),
-                        Span::raw(" or "),
-                        Span::styled("fzf", Style::default().fg(Color::Yellow)),
-                        Span::raw(" to your profile, and they'll be installed automatically on new machines."),
+                        Span::styled("💡 Example: ", Style::default().fg(t.secondary).add_modifier(Modifier::BOLD)),
+                        Span::styled("Add packages like ", t.text_style()),
+                        Span::styled("ripgrep", t.emphasis_style()),
+                        Span::styled(" or ", t.text_style()),
+                        Span::styled("fzf", t.emphasis_style()),
+                        Span::styled(" to your profile, and they'll be installed automatically on new machines.", t.text_style()),
                     ]),
                 ];
                 Text::from(lines)
@@ -236,58 +239,64 @@ impl MenuItem {
                     Line::from(vec![Span::styled(
                         "Setup Git Repository",
                         Style::default()
-                            .fg(Color::Yellow)
+                            .fg(t.text_emphasis)
                             .add_modifier(Modifier::BOLD),
                     )]),
                     Line::from(""),
                     Line::from(vec![
-                        Span::raw("Configure a git repository to store and sync your dotfiles. "),
+                        Span::styled(
+                            "Configure a git repository to store and sync your dotfiles. ",
+                            t.text_style(),
+                        ),
                         Span::styled(
                             "Choose how you want to set up:",
-                            Style::default().fg(Color::Cyan),
+                            Style::default().fg(t.primary),
                         ),
                     ]),
                     Line::from(""),
                     Line::from(vec![
                         Span::styled(
                             "Option 1: ",
-                            Style::default()
-                                .fg(Color::Green)
-                                .add_modifier(Modifier::BOLD),
+                            Style::default().fg(t.success).add_modifier(Modifier::BOLD),
                         ),
-                        Span::styled("Create for me (GitHub)", Style::default().fg(Color::Green)),
+                        Span::styled("Create for me (GitHub)", t.success_style()),
                     ]),
-                    Line::from(vec![Span::raw(
+                    Line::from(vec![Span::styled(
                         "  Automatically create a repository on GitHub.",
+                        t.text_style(),
                     )]),
-                    Line::from(vec![Span::raw(
+                    Line::from(vec![Span::styled(
                         "  Requires a GitHub Personal Access Token.",
+                        t.text_style(),
                     )]),
                     Line::from(""),
                     Line::from(vec![
                         Span::styled(
                             "Option 2: ",
-                            Style::default()
-                                .fg(Color::Blue)
-                                .add_modifier(Modifier::BOLD),
+                            Style::default().fg(t.tertiary).add_modifier(Modifier::BOLD),
                         ),
-                        Span::styled("Use my own repository", Style::default().fg(Color::Blue)),
+                        Span::styled("Use my own repository", Style::default().fg(t.tertiary)),
                     ]),
-                    Line::from(vec![Span::raw(
+                    Line::from(vec![Span::styled(
                         "  Use any git host (GitHub, GitLab, Bitbucket, etc.)",
+                        t.text_style(),
                     )]),
-                    Line::from(vec![Span::raw(
+                    Line::from(vec![Span::styled(
                         "  You set up the repo, dotstate just uses it.",
+                        t.text_style(),
                     )]),
                     Line::from(""),
                     Line::from(vec![
                         Span::styled(
                             "💡 Tip: ",
                             Style::default()
-                                .fg(Color::Magenta)
+                                .fg(t.secondary)
                                 .add_modifier(Modifier::BOLD),
                         ),
-                        Span::raw("Both options sync your dotfiles across machines!"),
+                        Span::styled(
+                            "Both options sync your dotfiles across machines!",
+                            t.text_style(),
+                        ),
                     ]),
                 ];
                 Text::from(lines)
@@ -308,7 +317,7 @@ impl MenuItem {
 
     /// Get the explanation panel color
     pub fn explanation_color(&self) -> Color {
-        Color::Cyan
+        theme().primary
     }
 
     /// Convert from index to MenuItem
@@ -436,26 +445,25 @@ impl MainMenuComponent {
 
     /// Get explanation text for selected menu item
     fn get_explanation(&self) -> Text<'static> {
+        let t = theme();
         if self.is_update_item_selected() {
             if let Some(ref update_info) = self.update_info {
                 let lines = vec![
                     Line::from(vec![Span::styled(
                         "Update Available!",
                         Style::default()
-                            .fg(Color::Yellow)
+                            .fg(t.text_emphasis)
                             .add_modifier(Modifier::BOLD),
                     )]),
                     Line::from(""),
                     Line::from(vec![
-                        Span::raw("A new version of DotState is available: "),
+                        Span::styled("A new version of DotState is available: ", t.text_style()),
                         Span::styled(
                             format!(
                                 "{} → {}",
                                 update_info.current_version, update_info.latest_version
                             ),
-                            Style::default()
-                                .fg(Color::Green)
-                                .add_modifier(Modifier::BOLD),
+                            Style::default().fg(t.success).add_modifier(Modifier::BOLD),
                         ),
                     ]),
                     Line::from(""),
@@ -465,22 +473,22 @@ impl MainMenuComponent {
                     )]),
                     Line::from(""),
                     Line::from(vec![
-                        Span::styled("• ", Style::default().fg(Color::Yellow)),
-                        Span::raw("Run: "),
-                        Span::styled("dotstate upgrade", Style::default().fg(Color::Cyan)),
+                        Span::styled("• ", Style::default().fg(t.text_emphasis)),
+                        Span::styled("Run: ", t.text_style()),
+                        Span::styled("dotstate upgrade", Style::default().fg(t.primary)),
                     ]),
                     Line::from(vec![
-                        Span::styled("• ", Style::default().fg(Color::Yellow)),
-                        Span::raw("Or: "),
+                        Span::styled("• ", Style::default().fg(t.text_emphasis)),
+                        Span::styled("Or: ", t.text_style()),
                         Span::styled(
                             "cargo install dotstate --force",
-                            Style::default().fg(Color::Cyan),
+                            Style::default().fg(t.primary),
                         ),
                     ]),
                     Line::from(vec![
-                        Span::styled("• ", Style::default().fg(Color::Yellow)),
-                        Span::raw("Or: "),
-                        Span::styled("brew upgrade dotstate", Style::default().fg(Color::Cyan)),
+                        Span::styled("• ", Style::default().fg(t.text_emphasis)),
+                        Span::styled("Or: ", t.text_style()),
+                        Span::styled("brew upgrade dotstate", Style::default().fg(t.primary)),
                     ]),
                 ];
                 return Text::from(lines);
@@ -558,8 +566,9 @@ impl Component for MainMenuComponent {
         // Clear the entire area first
         frame.render_widget(Clear, area);
 
-        // Background
-        let background = Block::default().style(Style::default().bg(Color::Black));
+        // Background - use theme background
+        let t = theme();
+        let background = Block::default().style(t.background_style());
         frame.render_widget(background, area);
 
         let (header_chunk, content_chunk, footer_chunk) = create_standard_layout(area, 5, 2);
@@ -596,7 +605,7 @@ impl Component for MainMenuComponent {
 
                 // Determine color based on enabled state
                 let color = if !is_enabled {
-                    Color::DarkGray // Disabled items in dark gray
+                    t.text_muted // Disabled items in muted color
                 } else {
                     menu_item.color(self.has_changes_to_push)
                 };
@@ -618,7 +627,7 @@ impl Component for MainMenuComponent {
                     } else {
                         // Disabled items stay gray even when selected
                         Style::default()
-                            .fg(Color::DarkGray)
+                            .fg(t.text_muted)
                             .add_modifier(Modifier::BOLD)
                     }
                 } else {
@@ -637,24 +646,20 @@ impl Component for MainMenuComponent {
             );
             let style = if is_selected {
                 Style::default()
-                    .fg(Color::Yellow)
+                    .fg(t.text_emphasis)
                     .add_modifier(Modifier::BOLD)
             } else {
-                Style::default().fg(Color::Yellow)
+                Style::default().fg(t.text_emphasis)
             };
             items.push(ListItem::new(update_text).style(style));
         }
 
         let list_block = Block::default()
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Cyan))
+            .border_style(t.border_focused_style())
             .border_type(ratatui::widgets::BorderType::Rounded)
             .title("📋 Menu")
-            .title_style(
-                Style::default()
-                    .fg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD),
-            )
+            .title_style(t.title_style())
             .title_alignment(Alignment::Center)
             .padding(ratatui::widgets::Padding::new(1, 1, 1, 1));
 
@@ -664,14 +669,9 @@ impl Component for MainMenuComponent {
 
         let list = List::new(items)
             .block(list_block)
-            .highlight_style(
-                Style::default()
-                    .fg(Color::Yellow)
-                    .bg(Color::DarkGray)
-                    .add_modifier(Modifier::BOLD),
-            )
+            .highlight_style(t.highlight_style())
             .highlight_spacing(HighlightSpacing::Always)
-            .highlight_symbol("» ");
+            .highlight_symbol(LIST_HIGHLIGHT_SYMBOL);
 
         let item_height = 1;
         for (i, menu_item) in menu_items.iter().enumerate() {
@@ -717,7 +717,7 @@ impl Component for MainMenuComponent {
 
         // Explanation block with colorful styling
         let (icon, color) = if self.is_update_item_selected() {
-            ("🎉", Color::Yellow)
+            ("🎉", t.text_emphasis)
         } else {
             (
                 self.selected_item.explanation_icon(),
@@ -742,11 +742,7 @@ impl Component for MainMenuComponent {
 
         // Stats block with colorful styling
         let has_pending = !self.changed_files.is_empty();
-        let stats_color = if has_pending {
-            Color::Yellow
-        } else {
-            Color::Green
-        };
+        let stats_color = if has_pending { t.warning } else { t.success };
         let stats_icon = if has_pending { "⚠️" } else { "✅" };
 
         let stats_block = Block::default()
@@ -771,13 +767,11 @@ impl Component for MainMenuComponent {
                     Line::from(vec![
                         Span::styled(
                             "Synced Files: ",
-                            Style::default()
-                                .fg(Color::Cyan)
-                                .add_modifier(Modifier::BOLD),
+                            Style::default().fg(t.primary).add_modifier(Modifier::BOLD),
                         ),
                         Span::styled(
                             line.strip_prefix("Synced Files: ").unwrap_or(""),
-                            Style::default().fg(Color::White),
+                            t.text_style(),
                         ),
                     ])
                 } else if line.starts_with("Profiles:") {
@@ -785,51 +779,44 @@ impl Component for MainMenuComponent {
                         Span::styled(
                             "Profiles: ",
                             Style::default()
-                                .fg(Color::Magenta)
+                                .fg(t.secondary)
                                 .add_modifier(Modifier::BOLD),
                         ),
                         Span::styled(
                             line.strip_prefix("Profiles: ").unwrap_or(""),
-                            Style::default().fg(Color::White),
+                            t.text_style(),
                         ),
                     ])
                 } else if line.starts_with("Repository:") {
                     Line::from(vec![
                         Span::styled(
                             "Repository: ",
-                            Style::default()
-                                .fg(Color::Blue)
-                                .add_modifier(Modifier::BOLD),
+                            Style::default().fg(t.tertiary).add_modifier(Modifier::BOLD),
                         ),
                         Span::styled(
                             line.strip_prefix("Repository: ").unwrap_or(""),
-                            Style::default().fg(Color::White),
+                            t.text_style(),
                         ),
                     ])
                 } else if line.starts_with("Pending Changes") {
                     Line::from(vec![Span::styled(
                         line,
-                        Style::default()
-                            .fg(Color::Yellow)
-                            .add_modifier(Modifier::BOLD),
+                        Style::default().fg(t.warning).add_modifier(Modifier::BOLD),
                     )])
                 } else if line.starts_with("  •") {
                     Line::from(vec![
-                        Span::styled("  • ", Style::default().fg(Color::Yellow)),
-                        Span::styled(
-                            line.strip_prefix("  • ").unwrap_or(""),
-                            Style::default().fg(Color::White),
-                        ),
+                        Span::styled("  • ", Style::default().fg(t.warning)),
+                        Span::styled(line.strip_prefix("  • ").unwrap_or(""), t.text_style()),
                     ])
                 } else if line.contains("... and") {
                     Line::from(vec![Span::styled(
                         line,
                         Style::default()
-                            .fg(Color::DarkGray)
+                            .fg(t.text_muted)
                             .add_modifier(Modifier::ITALIC),
                     )])
                 } else {
-                    Line::from(Span::styled(line, Style::default().fg(Color::White)))
+                    Line::from(Span::styled(line, t.text_style()))
                 }
             })
             .collect();

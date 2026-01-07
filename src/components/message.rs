@@ -31,8 +31,9 @@ impl Component for MessageComponent {
         // Clear the entire area first
         frame.render_widget(Clear, area);
 
-        // Background
-        let background = Block::default().style(Style::default().bg(Color::Black));
+        let t = crate::styles::theme();
+        // Background - use Reset to inherit terminal's native background
+        let background = Block::default().style(t.background_style());
         frame.render_widget(background, area);
 
         let (header_chunk, content_chunk, footer_chunk) = create_standard_layout(area, 5, 2);
@@ -46,8 +47,8 @@ impl Component for MessageComponent {
 
         // Message with styled block - use MessageBox component
         let message_color = match self.screen_type {
-            Screen::SyncWithRemote => Some(Color::Green), // Success color for sync
-            _ => Some(Color::Yellow),                     // Warning color for deactivation
+            Screen::SyncWithRemote => Some(t.success), // Success color for sync
+            _ => Some(t.warning),                      // Warning color for deactivation
         };
 
         MessageBox::render(

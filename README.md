@@ -214,6 +214,40 @@ check_enabled = true       # Set to false to disable update checks
 check_interval_hours = 24  # How often to check (default: 24 hours)
 ```
 
+### Theme Configuration
+
+DotState supports both light and dark themes that automatically adapt to your terminal background. The theme affects all UI elements including colors, borders, text, and syntax highlighting in file previews.
+
+**Changing the Theme:**
+
+Edit `~/.config/dotstate/config.toml` and set the `theme` option:
+
+```toml
+theme = "dark"   # For dark terminal backgrounds (default)
+theme = "light"  # For light terminal backgrounds
+theme = "nocolor" # Disable all UI colors (same as NO_COLOR=1 / --no-colors)
+```
+
+**Theme Features:**
+- **Automatic Syntax Highlighting**: File preview syntax highlighting automatically matches your selected theme
+- **Consistent Colors**: All UI elements (headers, footers, borders, lists, text) use theme-appropriate colors
+- **Terminal Compatibility**: Works with both light and dark terminal themes
+- **No Colors Mode**: Use `--no-colors` CLI flag or `NO_COLOR=1` to disable all colors:
+  ```bash
+  dotstate --no-colors
+  ```
+  Or:
+  ```bash
+  NO_COLOR=1 dotstate
+  ```
+
+**What Changes with Theme:**
+- Text colors (dark text on light backgrounds, light text on dark backgrounds)
+- Border colors (adjusted for visibility)
+- Highlight colors (selection indicators, focused elements)
+- Syntax highlighting themes in file previews
+- Status colors (success, warning, error indicators)
+
 ## Security Considerations
 
 - **No Shell Injection**: All commands use direct execution, not shell interpretation

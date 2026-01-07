@@ -2,6 +2,7 @@ use crate::components::component::{Component, ComponentAction};
 use crate::components::footer::Footer;
 use crate::components::header::Header;
 use crate::components::message_box::MessageBox;
+use crate::styles::{theme as ui_theme, LIST_HIGHLIGHT_SYMBOL};
 use crate::ui::SyncWithRemoteState;
 use crate::utils::create_split_layout;
 use crate::utils::{center_popup, create_standard_layout, focused_border_style};
@@ -29,8 +30,8 @@ impl Component for PushChangesComponent {
         // Clear the entire area first
         frame.render_widget(Clear, area);
 
-        // Background
-        let background = Block::default().style(Style::default().bg(Color::Black));
+        // Background - use Reset to inherit terminal's native background
+        let background = Block::default().style(Style::default().bg(Color::Reset));
         frame.render_widget(background, area);
 
         Ok(())
@@ -54,8 +55,8 @@ impl PushChangesComponent {
         // Clear the entire area first
         frame.render_widget(Clear, area);
 
-        // Background
-        let background = Block::default().style(Style::default().bg(Color::Black));
+        // Background - use Reset to inherit terminal's native background
+        let background = Block::default().style(Style::default().bg(Color::Reset));
         frame.render_widget(background, area);
 
         let (header_chunk, content_chunk, footer_chunk) = create_standard_layout(area, 5, 2);
@@ -88,22 +89,24 @@ impl PushChangesComponent {
             let is_error = result_text.to_lowercase().contains("error")
                 || result_text.to_lowercase().contains("failed");
 
+            let t = ui_theme();
             MessageBox::render(
                 frame,
                 popup_area,
                 &result_text,
                 None,
                 if is_error {
-                    Some(Color::Red)
+                    Some(t.error)
                 } else {
-                    Some(Color::Green)
+                    Some(t.success)
                 },
             )?;
         } else if state.is_syncing {
             // Show progress message
+            let t = ui_theme();
             let progress_text = state.sync_progress.as_deref().unwrap_or("Processing...");
             let progress_para = Paragraph::new(progress_text)
-                .style(Style::default().fg(Color::Yellow))
+                .style(Style::default().fg(t.warning))
                 .alignment(Alignment::Center)
                 .wrap(Wrap { trim: true })
                 .block(
@@ -117,11 +120,12 @@ impl PushChangesComponent {
             frame.render_widget(progress_para, content_chunk);
         } else {
             // Show list of changed files
+            let t = ui_theme();
             if state.changed_files.is_empty() {
                 let empty_message = Paragraph::new(
                     "No changes to sync.\n\nAll files are up to date with the remote repository.",
                 )
-                .style(Style::default().fg(Color::DarkGray))
+                .style(t.muted_style())
                 .wrap(Wrap { trim: true })
                 .block(
                     Block::default()
@@ -150,13 +154,13 @@ impl PushChangesComponent {
                     .iter()
                     .map(|file| {
                         let style = if file.starts_with("A ") {
-                            Style::default().fg(Color::Green) // Added
+                            Style::default().fg(t.success) // Added
                         } else if file.starts_with("M ") {
-                            Style::default().fg(Color::Yellow) // Modified
+                            Style::default().fg(t.warning) // Modified
                         } else if file.starts_with("D ") {
-                            Style::default().fg(Color::Red) // Deleted
+                            Style::default().fg(t.error) // Deleted
                         } else {
-                            Style::default().fg(Color::White)
+                            t.text_style()
                         };
                         ListItem::new(file.as_str()).style(style)
                     })
@@ -171,12 +175,8 @@ impl PushChangesComponent {
                             .title_alignment(Alignment::Center)
                             .padding(ratatui::widgets::Padding::new(1, 1, 1, 1)),
                     )
-                    .highlight_style(
-                        Style::default()
-                            .fg(Color::Yellow)
-                            .add_modifier(Modifier::BOLD | Modifier::REVERSED),
-                    )
-                    .highlight_symbol("> ");
+                    .highlight_style(t.highlight_style())
+                    .highlight_symbol(LIST_HIGHLIGHT_SYMBOL);
 
                 StatefulWidget::render(list, list_area, frame.buffer_mut(), &mut state.list_state);
 

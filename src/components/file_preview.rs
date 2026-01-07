@@ -1,3 +1,4 @@
+use crate::utils::{focused_border_style, unfocused_border_style};
 use anyhow::Result;
 use ratatui::prelude::*;
 use ratatui::text::{Line, Span, Text};
@@ -38,10 +39,11 @@ impl FilePreview {
         theme: &Theme,
     ) -> Result<()> {
         let preview_title = title.unwrap_or("Preview");
+        let no_color = crate::styles::theme().theme_type == crate::styles::ThemeType::NoColor;
         let border_style = if focused {
-            Style::default().fg(Color::Cyan)
+            focused_border_style()
         } else {
-            Style::default()
+            unfocused_border_style()
         };
 
         // Read file content or use override
@@ -131,24 +133,29 @@ impl FilePreview {
                     // Process only visible lines
                     let mut preview_lines = Vec::new();
                     for line in lines_iter.take(visible_height) {
-                        // Highlight the line
-                        let ranges: Vec<(SyntectStyle, &str)> = highlighter
-                            .highlight_line(line, syntax_set)
-                            .unwrap_or_default();
+                        if no_color {
+                            // No-color mode: do not emit any syntax-highlight fg/bg colors.
+                            preview_lines.push(Line::from(Span::raw(line.to_string())));
+                        } else {
+                            // Highlight the line
+                            let ranges: Vec<(SyntectStyle, &str)> = highlighter
+                                .highlight_line(line, syntax_set)
+                                .unwrap_or_default();
 
-                        // Convert to Ratatui spans
-                        let spans: Vec<Span> = ranges
-                            .into_iter()
-                            .map(|(style, text)| {
-                                let fg = Color::Rgb(
-                                    style.foreground.r,
-                                    style.foreground.g,
-                                    style.foreground.b,
-                                );
-                                Span::styled(text.to_string(), Style::default().fg(fg))
-                            })
-                            .collect();
-                        preview_lines.push(Line::from(spans));
+                            // Convert to Ratatui spans
+                            let spans: Vec<Span> = ranges
+                                .into_iter()
+                                .map(|(style, text)| {
+                                    let fg = Color::Rgb(
+                                        style.foreground.r,
+                                        style.foreground.g,
+                                        style.foreground.b,
+                                    );
+                                    Span::styled(text.to_string(), Style::default().fg(fg))
+                                })
+                                .collect();
+                            preview_lines.push(Line::from(spans));
+                        }
                     }
 
                     // Create text with lines
