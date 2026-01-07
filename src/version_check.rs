@@ -64,8 +64,7 @@ pub fn check_for_updates_now() -> Option<UpdateInfo> {
     let repo = format!("{}/{}", REPO_OWNER, REPO_NAME);
 
     // Use Duration::ZERO to skip cache and force a fresh check every time
-    let informer =
-        update_informer::new(GitHub, &repo, current_version).interval(Duration::ZERO);
+    let informer = update_informer::new(GitHub, &repo, current_version).interval(Duration::ZERO);
 
     match informer.check_version() {
         Ok(Some(new_version)) => {
