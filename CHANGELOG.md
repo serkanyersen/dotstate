@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Enhanced package checking UX (removed auto-check on page load)
 - Better error messages and user feedback
 - Commit messages are now automatically generated from changed files instead of generic "Update dotfiles"
+- Made existence check field optional for custom packages (if empty, uses standard binary name check)
 
 ## [0.1.0] - 2025-01-XX
 

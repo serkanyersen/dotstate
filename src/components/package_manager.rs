@@ -408,8 +408,8 @@ impl PackageManagerComponent {
                 &state.add_existence_check_input,
                 state.add_existence_check_cursor,
                 state.add_focused_field == AddPackageField::ExistenceCheck,
-                "Existence Check",
-                Some("Command to check if package exists"),
+                "Existence Check (optional)",
+                Some("Command to check if package exists (if empty, uses binary name check)"),
                 Alignment::Left,
                 false,
             )?;

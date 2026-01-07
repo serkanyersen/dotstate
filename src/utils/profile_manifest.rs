@@ -40,7 +40,9 @@ pub struct Package {
     /// Install command (only for custom packages, derived for managed packages)
     #[serde(default)]
     pub install_command: Option<String>,
-    /// Command to check if package exists (only for custom packages, derived for managed packages)
+    /// Command to check if package exists (optional for custom packages, derived for managed packages)
+    /// If None or empty for custom packages, the system will perform a standard existence check
+    /// derived from the binary name (checking if binary exists in PATH)
     #[serde(default)]
     pub existence_check: Option<String>,
     /// Optional manager-native check command (fallback when binary_name check fails)

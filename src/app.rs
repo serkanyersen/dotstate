@@ -6545,13 +6545,10 @@ impl App {
 
         // Validate based on package type
         if is_custom {
-            // Custom packages require install_command and existence_check
+            // Custom packages require install_command
+            // existence_check is optional - if empty, we use binary name check
             if install_command.trim().is_empty() {
                 warn!("Package validation failed: install_command is empty for custom package");
-                return Ok(false);
-            }
-            if existence_check.trim().is_empty() {
-                warn!("Package validation failed: existence_check is empty for custom package");
                 return Ok(false);
             }
         } else {
@@ -6586,7 +6583,12 @@ impl App {
                 None
             },
             existence_check: if is_custom {
-                Some(existence_check.trim().to_string())
+                let trimmed = existence_check.trim();
+                if trimmed.is_empty() {
+                    None
+                } else {
+                    Some(trimmed.to_string())
+                }
             } else {
                 None
             },
