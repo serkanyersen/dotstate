@@ -76,6 +76,9 @@ pub struct Config {
     /// Color theme: "dark", "light", or "nocolor" (default: dark)
     #[serde(default = "default_theme")]
     pub theme: String,
+    /// Keymap configuration (preset and overrides)
+    #[serde(default)]
+    pub keymap: crate::keymap::Keymap,
 }
 
 fn default_theme() -> String {
@@ -125,6 +128,7 @@ impl Default for Config {
             custom_files: Vec::new(),
             updates: UpdateConfig::default(),
             theme: default_theme(),
+            keymap: crate::keymap::Keymap::default(),
         }
     }
 }

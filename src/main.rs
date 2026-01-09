@@ -1,4 +1,5 @@
 use anyhow::Result;
+mod keymap;
 use clap::Parser;
 
 // Import from library instead of declaring modules

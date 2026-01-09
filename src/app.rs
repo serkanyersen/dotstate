@@ -628,6 +628,30 @@ impl App {
         Ok(())
     }
 
+    /// Get the action for a key event using the configured keymap
+    /// Returns None if in input mode and the action is a navigation action
+    fn get_action(&self, code: KeyCode, modifiers: KeyModifiers) -> Option<crate::keymap::Action> {
+        use crate::keymap::Action;
+
+        let action = self.config.keymap.get_action(code, modifiers)?;
+
+        // In input mode, only allow certain essential actions
+        if self.ui_state.input_mode_active {
+            match action {
+                // Always allowed even in input mode
+                Action::Cancel
+                | Action::Confirm
+                | Action::NextTab
+                | Action::PrevTab
+                | Action::Help => Some(action),
+                // Block navigation and other actions while typing
+                _ => None,
+            }
+        } else {
+            Some(action)
+        }
+    }
+
     fn handle_event(&mut self, event: Event) -> Result<()> {
         // Handle message component events first (e.g., deactivation warning on MainMenu)
         if let Some(ref mut msg_component) = self.message_component {
