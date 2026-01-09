@@ -74,6 +74,44 @@ impl Keymap {
 
         bindings
     }
+
+    /// Get the display string for navigation keys based on preset
+    /// Used for footer hints like "↑↓: Navigate" or "j/k: Navigate"
+    pub fn navigation_display(&self) -> &'static str {
+        match self.preset {
+            KeymapPreset::Standard => "↑↓",
+            KeymapPreset::Vim => "j/k",
+            KeymapPreset::Emacs => "C-n/p",
+        }
+    }
+
+    /// Get the display string for quit/cancel key based on preset
+    pub fn quit_display(&self) -> &'static str {
+        match self.preset {
+            KeymapPreset::Standard => "q/Esc",
+            KeymapPreset::Vim => "q/Esc",
+            KeymapPreset::Emacs => "C-g",
+        }
+    }
+
+    /// Get the display string for confirm key based on preset
+    pub fn confirm_display(&self) -> &'static str {
+        match self.preset {
+            KeymapPreset::Standard => "Enter",
+            KeymapPreset::Vim => "Enter",
+            KeymapPreset::Emacs => "Enter",
+        }
+    }
+
+    /// Generate footer text for common navigation screens
+    pub fn footer_navigation(&self) -> String {
+        format!(
+            "{}: Navigate | {}: Select | {}: Back | ?: Help",
+            self.navigation_display(),
+            self.confirm_display(),
+            self.quit_display()
+        )
+    }
 }
 
 #[cfg(test)]

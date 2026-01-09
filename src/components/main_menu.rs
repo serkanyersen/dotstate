@@ -872,12 +872,13 @@ impl Component for MainMenuComponent {
 
         frame.render_widget(stats_para, right_split[1]);
 
-        // Footer
-        let _ = Footer::render(
-            frame,
-            footer_chunk,
-            "↑↓: Navigate | Enter/Click: Select | q: Quit",
-        )?;
+        // Footer with dynamic keybindings from keymap
+        let footer_text = self
+            .config
+            .as_ref()
+            .map(|c| c.keymap.footer_navigation())
+            .unwrap_or_else(|| "↑↓: Navigate | Enter: Select | q: Back | ?: Help".to_string());
+        let _ = Footer::render(frame, footer_chunk, &footer_text)?;
 
         Ok(())
     }
