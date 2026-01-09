@@ -4513,15 +4513,28 @@ impl App {
             return Ok(());
         }
 
+        // Create file manager for symlink resolution
+        let file_manager = crate::file_manager::FileManager::new()?;
+
         // Validate symlink can be created before deleting original file
         let home_dir = crate::utils::get_home_dir();
         let target_path = home_dir.join(&dotfile.relative_path);
         let profile_path = repo_path.join(&profile_name);
         let repo_file_path = profile_path.join(&dotfile.relative_path);
 
-        let symlink_validation =
-            sync_validation::validate_symlink_creation(&repo_file_path, &target_path)
-                .context("Failed to validate symlink creation")?;
+        // Handle symlinks: resolve to original file for validation
+        let original_source = if file_manager.is_symlink(&dotfile.original_path) {
+            file_manager.resolve_symlink(&dotfile.original_path)?
+        } else {
+            dotfile.original_path.clone()
+        };
+
+        let symlink_validation = sync_validation::validate_symlink_creation(
+            &original_source,
+            &repo_file_path,
+            &target_path,
+        )
+        .context("Failed to validate symlink creation")?;
         if !symlink_validation.is_safe {
             let error_msg = symlink_validation
                 .error_message
@@ -4631,6 +4644,9 @@ impl App {
             return Ok(());
         }
 
+        // Create file manager for symlink resolution
+        let file_manager = crate::file_manager::FileManager::new()?;
+
         // Validate symlink can be created before deleting original file
         let home_dir = crate::utils::get_home_dir();
         let target_path = home_dir.join(relative_path);
@@ -4638,9 +4654,19 @@ impl App {
         let relative_path_buf = PathBuf::from(relative_path);
         let repo_file_path = profile_path.join(&relative_path_buf);
 
-        let symlink_validation =
-            sync_validation::validate_symlink_creation(&repo_file_path, &target_path)
-                .context("Failed to validate symlink creation")?;
+        // Handle symlinks: resolve to original file for validation
+        let original_source = if file_manager.is_symlink(full_path) {
+            file_manager.resolve_symlink(full_path)?
+        } else {
+            full_path.to_path_buf()
+        };
+
+        let symlink_validation = sync_validation::validate_symlink_creation(
+            &original_source,
+            &repo_file_path,
+            &target_path,
+        )
+        .context("Failed to validate symlink creation")?;
         if !symlink_validation.is_safe {
             let error_msg = symlink_validation
                 .error_message
@@ -4661,8 +4687,7 @@ impl App {
             profile_name
         );
 
-        // Copy file to repo
-        let file_manager = crate::file_manager::FileManager::new()?;
+        // Copy file to repo (file_manager already created above for validation)
 
         // Create parent directories
         if let Some(parent) = repo_file_path.parent() {

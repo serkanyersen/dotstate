@@ -283,15 +283,23 @@ pub fn validate_before_sync(
 ///
 /// This performs a dry-run check to ensure the symlink operation will succeed.
 /// It checks:
-/// 1. Source file/directory exists
+/// 1. Original source file/directory exists (so we can copy it to repo)
 /// 2. Target parent directory can be created
 /// 3. Target location is writable
-pub fn validate_symlink_creation(source: &Path, target: &Path) -> Result<ValidationResult> {
-    // Check if source exists
-    if !source.exists() {
+///
+/// Note: `original_source` is the file in the home directory that will be copied.
+/// `_symlink_source` is where the symlink will point (in the repo, will be created).
+/// `target` is where the symlink will be created (in the home directory).
+pub fn validate_symlink_creation(
+    original_source: &Path,
+    _symlink_source: &Path,
+    target: &Path,
+) -> Result<ValidationResult> {
+    // Check if original source exists (the file we'll copy to repo)
+    if !original_source.exists() {
         return Ok(ValidationResult::unsafe_with(format!(
             "Source file does not exist: {:?}",
-            source
+            original_source
         )));
     }
 
@@ -564,10 +572,11 @@ mod tests {
     #[test]
     fn test_validate_symlink_creation_source_missing() {
         let temp_dir = TempDir::new().unwrap();
-        let source = temp_dir.path().join("nonexistent");
+        let original_source = temp_dir.path().join("nonexistent");
+        let symlink_source = temp_dir.path().join("repo").join("source.txt");
         let target = temp_dir.path().join("target");
 
-        let result = validate_symlink_creation(&source, &target).unwrap();
+        let result = validate_symlink_creation(&original_source, &symlink_source, &target).unwrap();
         assert!(!result.is_safe);
         assert!(result.error_message.unwrap().contains("does not exist"));
     }
@@ -575,15 +584,16 @@ mod tests {
     #[test]
     fn test_validate_symlink_creation_parent_not_dir() {
         let temp_dir = TempDir::new().unwrap();
-        let source = temp_dir.path().join("source.txt");
-        File::create(&source).unwrap();
+        let original_source = temp_dir.path().join("source.txt");
+        File::create(&original_source).unwrap();
+        let symlink_source = temp_dir.path().join("repo").join("source.txt");
 
         // Create a file where parent should be
         let parent_file = temp_dir.path().join("parent");
         File::create(&parent_file).unwrap();
         let target = parent_file.join("target");
 
-        let result = validate_symlink_creation(&source, &target).unwrap();
+        let result = validate_symlink_creation(&original_source, &symlink_source, &target).unwrap();
         assert!(!result.is_safe);
         assert!(result.error_message.unwrap().contains("not a directory"));
     }
@@ -591,11 +601,12 @@ mod tests {
     #[test]
     fn test_validate_symlink_creation_success() {
         let temp_dir = TempDir::new().unwrap();
-        let source = temp_dir.path().join("source.txt");
-        File::create(&source).unwrap();
+        let original_source = temp_dir.path().join("source.txt");
+        File::create(&original_source).unwrap();
+        let symlink_source = temp_dir.path().join("repo").join("source.txt");
         let target = temp_dir.path().join("subdir").join("target");
 
-        let result = validate_symlink_creation(&source, &target).unwrap();
+        let result = validate_symlink_creation(&original_source, &symlink_source, &target).unwrap();
         assert!(result.is_safe);
     }
 
@@ -778,7 +789,8 @@ mod tests {
         std::os::unix::fs::symlink(&source, &target).unwrap();
 
         // Should still validate (symlink creation will handle replacing it)
-        let result = validate_symlink_creation(&source, &target).unwrap();
+        let symlink_source = temp_dir.path().join("repo").join("source.txt");
+        let result = validate_symlink_creation(&source, &symlink_source, &target).unwrap();
         assert!(result.is_safe);
     }
 
@@ -829,14 +841,15 @@ mod tests {
         File::create(&source).unwrap();
 
         let target = temp_dir.path().join("target");
-        let validation = validate_symlink_creation(&source, &target).unwrap();
+        let symlink_source = temp_dir.path().join("repo").join("source.txt");
+        let validation = validate_symlink_creation(&source, &symlink_source, &target).unwrap();
         assert!(validation.is_safe);
 
         // Now delete source (simulating race condition)
         std::fs::remove_file(&source).unwrap();
 
         // Re-validate should catch it
-        let revalidation = validate_symlink_creation(&source, &target).unwrap();
+        let revalidation = validate_symlink_creation(&source, &symlink_source, &target).unwrap();
         assert!(!revalidation.is_safe);
     }
 

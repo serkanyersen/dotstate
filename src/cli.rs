@@ -355,9 +355,24 @@ impl Cli {
         let repo_file_path = profile_path.join(&relative_path);
         let target_path = home.join(&relative_path);
 
-        let symlink_validation =
-            crate::utils::sync_validation::validate_symlink_creation(&repo_file_path, &target_path)
-                .context("Failed to validate symlink creation")?;
+        // Create file manager for symlink resolution
+        let file_manager = crate::file_manager::FileManager::new()?;
+
+        // Handle symlinks: resolve to original file for validation
+        let original_source = if file_manager.is_symlink(&resolved_path) {
+            file_manager
+                .resolve_symlink(&resolved_path)
+                .context("Failed to resolve symlink")?
+        } else {
+            resolved_path.clone()
+        };
+
+        let symlink_validation = crate::utils::sync_validation::validate_symlink_creation(
+            &original_source,
+            &repo_file_path,
+            &target_path,
+        )
+        .context("Failed to validate symlink creation")?;
 
         if !symlink_validation.is_safe {
             eprintln!(
@@ -371,7 +386,7 @@ impl Cli {
 
         // Copy file to repo FIRST (before deleting original)
         // This ensures we have a backup before any destructive operations
-        let file_manager = crate::file_manager::FileManager::new()?;
+        // (file_manager already created above for validation)
 
         // Create parent directories
         if let Some(parent) = repo_file_path.parent() {
