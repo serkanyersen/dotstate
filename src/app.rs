@@ -660,9 +660,10 @@ impl App {
 
             // Dotfile Selection - file browser path input
             Screen::DotfileSelection => {
-                self.ui_state.dotfile_selection.file_browser_path_focused
-                    && self.ui_state.dotfile_selection.focus
-                        == DotfileSelectionFocus::FileBrowserInput
+                self.ui_state.dotfile_selection.adding_custom_file
+                    || (self.ui_state.dotfile_selection.file_browser_path_focused
+                        && self.ui_state.dotfile_selection.focus
+                            == DotfileSelectionFocus::FileBrowserInput)
             }
 
             // Profile Selection - create popup name input
@@ -967,246 +968,396 @@ impl App {
                 }
                 return Ok(());
             }
-            Screen::ProfileSelection => {
-                // Handle profile selection events
-                let state = &mut self.ui_state.profile_selection;
+            Screen::DotfileSelection => {
+                 // 1. Modal
+                 let is_modal = self.ui_state.dotfile_selection.show_custom_file_confirm;
+                 if is_modal {
+                      let state = &mut self.ui_state.dotfile_selection;
+                      if let Event::Key(key) = event {
+                            if key.kind == KeyEventKind::Press {
+                                match key.code {
+                                     KeyCode::Char('y') | KeyCode::Char('Y') | KeyCode::Enter => {
+                                          // YES logic
+                                            let full_path = state.custom_file_confirm_path.clone().unwrap();
+                                            let relative_path = state.custom_file_confirm_relative.clone().unwrap();
 
-                // Check if warning popup is showing
-                if state.show_exit_warning {
-                    match event {
-                        Event::Key(key) if key.kind == KeyEventKind::Press => {
-                            if key.code == KeyCode::Esc {
-                                // User confirmed exit - go back to main menu WITHOUT activating
-                                state.show_exit_warning = false;
-                                self.ui_state.current_screen = Screen::MainMenu;
-                                self.ui_state.profile_selection = Default::default();
+                                            // Close confirmation modal
+                                            state.show_custom_file_confirm = false;
+                                            state.custom_file_confirm_path = None;
+                                            state.custom_file_confirm_relative = None;
+
+                                            // Release borrow
+                                            let _ = state;
+
+                                            // Sync the file
+                                            if let Err(e) = self.add_custom_file_to_sync(&full_path, &relative_path) {
+                                                let state = &mut self.ui_state.dotfile_selection;
+                                                state.status_message = Some(format!("Error: Failed to sync file: {}", e));
+                                                return Ok(());
+                                            }
+
+                                            // Re-scan to refresh the list
+                                            self.scan_dotfiles()?;
+
+                                            // Find and select the file in the list
+                                            let state = &mut self.ui_state.dotfile_selection;
+                                            if let Some(index) = state
+                                                .dotfiles
+                                                .iter()
+                                                .position(|d| d.relative_path.to_string_lossy() == relative_path)
+                                            {
+                                                state.dotfile_list_state.select(Some(index));
+                                                state.selected_for_sync.insert(index);
+                                            }
+                                     }
+                                     KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
+                                          // NO logic
+                                            state.show_custom_file_confirm = false;
+                                            state.custom_file_confirm_path = None;
+                                            state.custom_file_confirm_relative = None;
+                                     }
+                                     _ => {}
+                                }
                             }
+                      }
+                      return Ok(());
+                 }
+
+                 // 2. Input Mode
+                 if self.ui_state.input_mode_active {
+                      if let Event::Key(key) = event {
+                           if key.kind == KeyEventKind::Press {
+                                if key.code == KeyCode::Esc {
+                                     let state = &mut self.ui_state.dotfile_selection;
+                                     if state.adding_custom_file && !state.custom_file_focused {
+                                          state.adding_custom_file = false;
+                                          state.custom_file_input.clear();
+                                          return Ok(());
+                                     }
+                                }
+
+                                if self.ui_state.dotfile_selection.file_browser_mode {
+                                     self.handle_file_browser_input(key.code)?;
+                                } else if self.ui_state.dotfile_selection.adding_custom_file {
+                                     self.handle_custom_file_input(key.code)?;
+                                }
+                           }
+                      }
+                      return Ok(());
+                 }
+
+                 // 3. Normal / Keymap
+                 use crate::ui::DotfileSelectionFocus;
+                 if let Event::Key(key) = event {
+                    if key.kind == KeyEventKind::Press {
+                      let action = self.get_action(key.code, key.modifiers);
+                      enum DotfileIntent {
+                        None,
+                        ToggleSelection(usize),
+                        ToggleBackup,
+                        CreateCustom,
+                      }
+                      let mut intent = DotfileIntent::None;
+
+                      if let Some(action) = action {
+                           use crate::keymap::Action;
+                           let state = &mut self.ui_state.dotfile_selection;
+                           match action {
+                                Action::MoveUp => {
+                                    if state.focus == DotfileSelectionFocus::FilesList {
+                                        state.dotfile_list_state.select_previous();
+                                        state.preview_scroll = 0;
+                                    } else if state.focus == DotfileSelectionFocus::Preview {
+                                        if state.preview_scroll > 0 {
+                                            state.preview_scroll = state.preview_scroll.saturating_sub(1);
+                                        }
+                                    }
+                                }
+                                Action::MoveDown => {
+                                    if state.focus == DotfileSelectionFocus::FilesList {
+                                        state.dotfile_list_state.select_next();
+                                        state.preview_scroll = 0;
+                                    } else if state.focus == DotfileSelectionFocus::Preview {
+                                        state.preview_scroll = state.preview_scroll.saturating_add(1);
+                                    }
+                                }
+                                Action::Confirm => {
+                                    if state.status_message.is_some() {
+                                        state.status_message = None;
+                                    } else if let Some(idx) = state.dotfile_list_state.selected() {
+                                        intent = DotfileIntent::ToggleSelection(idx);
+                                    }
+                                }
+                                Action::NextTab => {
+                                    state.focus = match state.focus {
+                                        DotfileSelectionFocus::FilesList => DotfileSelectionFocus::Preview,
+                                        DotfileSelectionFocus::Preview => DotfileSelectionFocus::FilesList,
+                                        _ => DotfileSelectionFocus::FilesList,
+                                    };
+                                }
+                                Action::PageUp => {
+                                    if state.focus == DotfileSelectionFocus::FilesList {
+                                        if let Some(current) = state.dotfile_list_state.selected() {
+                                            let new_index = current.saturating_sub(10);
+                                            state.dotfile_list_state.select(Some(new_index));
+                                            state.preview_scroll = 0;
+                                        }
+                                    } else if state.focus == DotfileSelectionFocus::Preview {
+                                        if state.preview_scroll > 0 {
+                                            state.preview_scroll = state.preview_scroll.saturating_sub(20);
+                                        }
+                                    }
+                                }
+                                Action::PageDown => {
+                                    if state.focus == DotfileSelectionFocus::FilesList {
+                                        if let Some(current) = state.dotfile_list_state.selected() {
+                                            let new_index = (current + 10).min(state.dotfiles.len().saturating_sub(1));
+                                            state.dotfile_list_state.select(Some(new_index));
+                                            state.preview_scroll = 0;
+                                        } else if !state.dotfiles.is_empty() {
+                                            state.dotfile_list_state.select(Some(10.min(state.dotfiles.len() - 1)));
+                                            state.preview_scroll = 0;
+                                        }
+                                    } else if state.focus == DotfileSelectionFocus::Preview {
+                                        state.preview_scroll = state.preview_scroll.saturating_add(20);
+                                    }
+                                }
+                                Action::ScrollUp => {
+                                    if state.focus == DotfileSelectionFocus::Preview && state.preview_scroll > 0 {
+                                        state.preview_scroll = state.preview_scroll.saturating_sub(10);
+                                    }
+                                }
+                                Action::ScrollDown => {
+                                    if state.focus == DotfileSelectionFocus::Preview {
+                                        state.preview_scroll = state.preview_scroll.saturating_add(10);
+                                    }
+                                }
+                                Action::GoToTop => {
+                                    if state.focus == DotfileSelectionFocus::FilesList {
+                                        state.dotfile_list_state.select_first();
+                                        state.preview_scroll = 0;
+                                    } else if state.focus == DotfileSelectionFocus::Preview {
+                                        state.preview_scroll = 0;
+                                    }
+                                }
+                                Action::GoToEnd => {
+                                    if state.focus == DotfileSelectionFocus::FilesList {
+                                        state.dotfile_list_state.select_last();
+                                        state.preview_scroll = 0;
+                                    }
+                                }
+                                Action::Create => {
+                                    intent = DotfileIntent::CreateCustom;
+                                }
+                                Action::Cancel | Action::Quit => {
+                                    self.ui_state.current_screen = Screen::MainMenu;
+                                }
+                                _ => {}
+                           }
+                      } else {
+                           match key.code {
+                                KeyCode::Char('a') => { intent = DotfileIntent::CreateCustom; }
+                                KeyCode::Char('b') | KeyCode::Char('B') => { intent = DotfileIntent::ToggleBackup; }
+                                _ => {}
+                           }
+                      }
+
+                      // Execute Intent
+                      match intent {
+                          DotfileIntent::ToggleSelection(idx) => {
+                             // Need to release state borrow?
+                             // state was borrowed in the loop.
+                             // Wait, intent lets us drop state.
+                             let was_selected = self.ui_state.dotfile_selection.selected_for_sync.contains(&idx);
+                             if was_selected {
+                                self.remove_file_from_sync(idx)?;
+                             } else {
+                                self.add_file_to_sync(idx)?;
+                             }
+                          }
+                          DotfileIntent::CreateCustom => {
+                                let state = &mut self.ui_state.dotfile_selection;
+                                state.adding_custom_file = true;
+                                state.file_browser_mode = true;
+                                state.file_browser_path = crate::utils::get_home_dir();
+                                state.file_browser_selected = 0;
+                                state.file_browser_path_input = state.file_browser_path.to_string_lossy().to_string();
+                                state.file_browser_path_cursor = state.file_browser_path_input.chars().count();
+                                state.file_browser_path_focused = false;
+                                state.file_browser_preview_scroll = 0;
+                                state.focus = DotfileSelectionFocus::FileBrowserList;
+                                self.refresh_file_browser()?;
+                          }
+                          DotfileIntent::ToggleBackup => {
+                                let state = &mut self.ui_state.dotfile_selection;
+                                state.backup_enabled = !state.backup_enabled;
+                                self.config.backup_enabled = state.backup_enabled;
+                                self.config.save(&self.config_path)?;
+                          }
+                          DotfileIntent::None => {}
+                      }
+                    }
+                 }
+                 return Ok(());
+            }
+            Screen::ProfileSelection => {
+                // Check warning status (using separate scope or simple check)
+                let show_exit_warning = self.ui_state.profile_selection.show_exit_warning;
+
+                if show_exit_warning {
+                    if let Event::Key(key) = event {
+                        if key.kind == KeyEventKind::Press && key.code == KeyCode::Esc {
+                             self.ui_state.profile_selection.show_exit_warning = false;
+                             self.ui_state.current_screen = Screen::MainMenu;
+                             self.ui_state.profile_selection = Default::default();
                         }
-                        _ => {}
                     }
                     return Ok(());
                 }
 
-                // Normal profile selection handling
-                match event {
-                    Event::Key(key) if key.kind == KeyEventKind::Press => {
-                        match key.code {
-                            KeyCode::Up => {
-                                if state.show_create_popup {
-                                    // Handle input in create popup
-                                    use crate::utils::text_input::handle_cursor_movement;
-                                    handle_cursor_movement(
-                                        &state.create_name_input,
-                                        &mut state.create_name_cursor,
-                                        key.code,
-                                    );
-                                } else if let Some(current) = state.list_state.selected() {
-                                    if current > 0 {
-                                        state.list_state.select(Some(current - 1));
-                                    } else {
-                                        // Wrap to last item (Create New Profile)
+                if let Event::Key(key) = event {
+                    if key.kind == KeyEventKind::Press {
+                        // Check for keymap action first, WITHOUT borrowing state
+                        let action = self.get_action(key.code, key.modifiers);
+
+                        // Define intent enum to separate decision from execution
+                        enum ConfirmIntent {
+                            None,
+                            Create(String),
+                            Activate(String),
+                        }
+
+                        let mut confirm_intent = ConfirmIntent::None;
+
+                        if let Some(action) = action {
+                            use crate::keymap::Action;
+                            match action {
+                                Action::MoveUp => {
+                                    let state = &mut self.ui_state.profile_selection;
+                                    if state.show_create_popup {
+                                         use crate::utils::text_input::handle_cursor_movement;
+                                         handle_cursor_movement(&state.create_name_input, &mut state.create_name_cursor, key.code);
+                                    } else if let Some(current) = state.list_state.selected() {
+                                        if current > 0 {
+                                            state.list_state.select(Some(current - 1));
+                                        } else {
+                                            state.list_state.select(Some(state.profiles.len()));
+                                        }
+                                    } else if !state.profiles.is_empty() {
                                         state.list_state.select(Some(state.profiles.len()));
                                     }
-                                } else if !state.profiles.is_empty() {
-                                    state.list_state.select(Some(state.profiles.len()));
                                 }
-                            }
-                            KeyCode::Down => {
-                                if state.show_create_popup {
-                                    // Handle input in create popup
-                                    use crate::utils::text_input::handle_cursor_movement;
-                                    handle_cursor_movement(
-                                        &state.create_name_input,
-                                        &mut state.create_name_cursor,
-                                        key.code,
-                                    );
-                                } else if let Some(current) = state.list_state.selected() {
-                                    // Include "Create New Profile" in navigation (profiles.len() is the last index)
-                                    if current < state.profiles.len() {
-                                        state.list_state.select(Some(current + 1));
-                                    } else {
+                                Action::MoveDown => {
+                                    let state = &mut self.ui_state.profile_selection;
+                                    if state.show_create_popup {
+                                         use crate::utils::text_input::handle_cursor_movement;
+                                         handle_cursor_movement(&state.create_name_input, &mut state.create_name_cursor, key.code);
+                                    } else if let Some(current) = state.list_state.selected() {
+                                        if current < state.profiles.len() {
+                                            state.list_state.select(Some(current + 1));
+                                        } else {
+                                            state.list_state.select(Some(0));
+                                        }
+                                    } else if !state.profiles.is_empty() {
                                         state.list_state.select(Some(0));
                                     }
-                                } else if !state.profiles.is_empty() {
-                                    state.list_state.select(Some(0));
                                 }
-                            }
-                            KeyCode::Enter => {
-                                if state.show_create_popup {
-                                    // Create the new profile
-                                    let profile_name = state.create_name_input.trim().to_string();
-                                    if !profile_name.is_empty() {
-                                        // Close popup first
-                                        state.show_create_popup = false;
-
-                                        // Drop state borrow before calling methods on self
-                                        let profile_name_clone = profile_name.clone();
-                                        let _ = state; // End borrow
-
-                                        // Create blank profile
-                                        match self.create_profile(&profile_name_clone, None, None) {
-                                            Ok(_) => {
-                                                // Refresh profile list
-                                                let manifest = self.load_manifest()?;
-                                                let state = &mut self.ui_state.profile_selection;
-                                                state.profiles = manifest
-                                                    .profiles
-                                                    .iter()
-                                                    .map(|p| p.name.clone())
-                                                    .collect();
-
-                                                // Select the newly created profile
-                                                if let Some(idx) = state
-                                                    .profiles
-                                                    .iter()
-                                                    .position(|n| n == &profile_name_clone)
-                                                {
-                                                    state.list_state.select(Some(idx));
-                                                }
-
-                                                // Activate the new profile
-                                                if let Err(e) = self.activate_profile_after_setup(
-                                                    &profile_name_clone,
-                                                ) {
-                                                    error!("Failed to activate newly created profile: {}", e);
-                                                    self.message_component = Some(MessageComponent::new(
-                                                        "Activation Failed".to_string(),
-                                                        format!(
-                                                            "Profile '{}' was created but activation failed: {}",
-                                                            profile_name_clone, e
-                                                        ),
-                                                        Screen::MainMenu,
-                                                    ));
-                                                }
-
-                                                // Go to main menu
-                                                self.ui_state.current_screen = Screen::MainMenu;
-                                                self.ui_state.profile_selection =
-                                                    Default::default();
-                                            }
-                                            Err(e) => {
-                                                error!("Failed to create profile: {}", e);
-                                                // Show error but keep popup open
-                                                let state = &mut self.ui_state.profile_selection;
-                                                state.show_create_popup = true; // Reopen popup
-                                                self.message_component =
-                                                    Some(MessageComponent::new(
-                                                        "Creation Failed".to_string(),
-                                                        format!(
-                                                            "Failed to create profile '{}': {}",
-                                                            profile_name_clone, e
-                                                        ),
-                                                        Screen::ProfileSelection,
-                                                    ));
-                                            }
+                                Action::Confirm => {
+                                    // Collect intent using state
+                                    let state = &mut self.ui_state.profile_selection;
+                                    if state.show_create_popup {
+                                        let profile_name = state.create_name_input.trim().to_string();
+                                        if !profile_name.is_empty() {
+                                            state.show_create_popup = false;
+                                            confirm_intent = ConfirmIntent::Create(profile_name);
                                         }
-                                    }
-                                } else {
-                                    // Activate selected profile or create new
-                                    if let Some(selected_idx) = state.list_state.selected() {
-                                        // Check if "Create New Profile" is selected (last item)
-                                        if selected_idx == state.profiles.len() {
-                                            // Show create popup
+                                    } else if let Some(idx) = state.list_state.selected() {
+                                        if idx == state.profiles.len() {
+                                            // Create new profile selected
                                             state.show_create_popup = true;
                                             state.create_name_input.clear();
                                             state.create_name_cursor = 0;
-                                        } else if let Some(profile_name) =
-                                            state.profiles.get(selected_idx)
-                                        {
-                                            // Activate existing profile
-                                            let profile_name = profile_name.clone();
-                                            // state borrow ends here, allowing us to borrow self mutably
-                                            if let Err(e) =
-                                                self.activate_profile_after_setup(&profile_name)
-                                            {
-                                                error!("Failed to activate profile: {}", e);
-                                                // Show error message
-                                                self.message_component =
-                                                    Some(MessageComponent::new(
-                                                        "Activation Failed".to_string(),
-                                                        format!(
-                                                            "Failed to activate profile '{}': {}",
-                                                            profile_name, e
-                                                        ),
-                                                        Screen::MainMenu,
-                                                    ));
-                                            }
-                                            // Go to main menu
-                                            self.ui_state.current_screen = Screen::MainMenu;
-                                            self.ui_state.profile_selection = Default::default();
+                                        } else if let Some(name) = state.profiles.get(idx) {
+                                            confirm_intent = ConfirmIntent::Activate(name.clone());
                                         }
                                     }
                                 }
+                                Action::Quit | Action::Cancel => {
+                                    let state = &mut self.ui_state.profile_selection;
+                                    if state.show_create_popup {
+                                        state.show_create_popup = false;
+                                        state.create_name_input.clear();
+                                    } else {
+                                        state.show_exit_warning = true;
+                                    }
+                                }
+                                _ => {}
                             }
-                            KeyCode::Char('c') | KeyCode::Char('C') => {
-                                if !state.show_create_popup {
-                                    // Create new profile shortcut
-                                    state.show_create_popup = true;
-                                    state.create_name_input.clear();
-                                    state.create_name_cursor = 0;
+                        } else {
+                            // Raw input for popup
+                             let state = &mut self.ui_state.profile_selection;
+                             if state.show_create_popup {
+                                 use crate::utils::text_input::handle_input;
+                                 handle_input(&mut state.create_name_input, &mut state.create_name_cursor, key.code);
+                             }
+                        }
+
+                        // Execute intent (without state borrow)
+                        match confirm_intent {
+                            ConfirmIntent::Create(name) => {
+                                match self.create_profile(&name, None, None) {
+                                    Ok(_) => {
+                                        let manifest = self.load_manifest()?;
+                                        let state = &mut self.ui_state.profile_selection;
+                                        state.profiles = manifest.profiles.iter().map(|p| p.name.clone()).collect();
+                                        if let Some(idx) = state.profiles.iter().position(|n| n == &name) {
+                                            state.list_state.select(Some(idx));
+                                        }
+
+                                        // Activate logic
+                                         if let Err(e) = self.activate_profile_after_setup(&name) {
+                                             error!("Failed to activate: {}", e);
+                                             self.message_component = Some(MessageComponent::new("Activation Failed".to_string(), e.to_string(), Screen::MainMenu));
+                                        } else {
+                                             self.ui_state.current_screen = Screen::MainMenu;
+                                             self.ui_state.profile_selection = Default::default();
+                                        }
+                                    },
+                                    Err(e) => {
+                                        error!("Failed to create profile: {}", e);
+                                        let state = &mut self.ui_state.profile_selection;
+                                        state.show_create_popup = true;
+                                        self.message_component = Some(MessageComponent::new(
+                                            "Creation Failed".to_string(),
+                                            format!("Failed to create profile: {}", e),
+                                            Screen::ProfileSelection,
+                                        ));
+                                        // return Ok(()); // Fall through
+                                    }
                                 }
                             }
-                            KeyCode::Backspace => {
-                                if state.show_create_popup {
-                                    use crate::utils::text_input::handle_backspace;
-                                    handle_backspace(
-                                        &mut state.create_name_input,
-                                        &mut state.create_name_cursor,
-                                    );
-                                }
-                            }
-                            KeyCode::Delete => {
-                                if state.show_create_popup {
-                                    use crate::utils::text_input::handle_delete;
-                                    handle_delete(
-                                        &mut state.create_name_input,
-                                        &mut state.create_name_cursor,
-                                    );
-                                }
-                            }
-                            KeyCode::Left | KeyCode::Right | KeyCode::Home | KeyCode::End => {
-                                if state.show_create_popup {
-                                    use crate::utils::text_input::handle_cursor_movement;
-                                    handle_cursor_movement(
-                                        &state.create_name_input,
-                                        &mut state.create_name_cursor,
-                                        key.code,
-                                    );
-                                }
-                            }
-                            KeyCode::Char(c) => {
-                                if state.show_create_popup {
-                                    use crate::utils::text_input::handle_char_insertion;
-                                    handle_char_insertion(
-                                        &mut state.create_name_input,
-                                        &mut state.create_name_cursor,
-                                        c,
-                                    );
-                                }
-                            }
-                            KeyCode::Esc => {
-                                // Show warning before exiting - require confirmation
-                                if state.show_create_popup {
-                                    // Cancel create popup
-                                    state.show_create_popup = false;
+                            ConfirmIntent::Activate(name) => {
+                                if let Err(e) = self.activate_profile_after_setup(&name) {
+                                     error!("Failed to activate: {}", e);
+                                     self.message_component = Some(MessageComponent::new("Activation Failed".to_string(), e.to_string(), Screen::MainMenu));
                                 } else {
-                                    // Show warning before exiting
-                                    state.show_exit_warning = true;
+                                     self.ui_state.current_screen = Screen::MainMenu;
+                                     self.ui_state.profile_selection = Default::default();
                                 }
                             }
-                            _ => {}
+                            ConfirmIntent::None => {}
                         }
                     }
-                    _ => {}
                 }
                 return Ok(());
             }
             Screen::ManagePackages => {
                 // Handle package manager events
-                let state = &mut self.ui_state.package_manager;
+
 
                 // Handle popup events FIRST - popups capture all events (like profile manager does)
-                if state.popup_type != PackagePopupType::None {
+                if self.ui_state.package_manager.popup_type != PackagePopupType::None {
+                    let state = &mut self.ui_state.package_manager;
                     // Handle popup events inline
                     match event {
                         Event::Key(key) if key.kind == KeyEventKind::Press => {
@@ -1488,202 +1639,188 @@ impl App {
                     return Ok(());
                 }
 
-                match event {
+                 match event {
                     Event::Key(key) if key.kind == KeyEventKind::Press => {
-                        // Handle installation completion dismissal first
-                        if matches!(state.installation_step, InstallationStep::Complete { .. }) {
-                            // Any key dismisses the completion summary
-                            state.installation_step = InstallationStep::NotStarted;
-                            state.installation_output.clear();
-                            state.installation_delay_until = None;
-                            // Continue to handle the key normally (e.g., Esc will still exit)
+                        // Handle installation completion dismissal first (Local scope)
+                        {
+                            let state = &mut self.ui_state.package_manager;
+                            if matches!(state.installation_step, InstallationStep::Complete { .. }) {
+                                state.installation_step = InstallationStep::NotStarted;
+                                state.installation_output.clear();
+                                state.installation_delay_until = None;
+                            }
                         }
 
-                        match key.code {
-                            KeyCode::Esc => {
-                                // Only allow ESC if not checking
-                                if !state.is_checking {
-                                    // Clear installation state when leaving
-                                    state.installation_step = InstallationStep::NotStarted;
-                                    state.installation_output.clear();
-                                    state.installation_delay_until = None;
-                                    self.ui_state.current_screen = Screen::MainMenu;
-                                }
-                            }
-                            KeyCode::Up => {
-                                if !state.is_checking {
-                                    state.list_state.select_previous();
-                                }
-                            }
-                            KeyCode::Down => {
-                                if !state.is_checking {
-                                    state.list_state.select_next();
-                                }
-                            }
-                            KeyCode::Char('c') | KeyCode::Char('C') => {
-                                // Check all packages (if not in popup and not already checking)
-                                if state.popup_type == PackagePopupType::None
-                                    && !state.is_checking
-                                    && !state.packages.is_empty()
-                                {
-                                    info!(
-                                        "Starting check all packages ({} packages)",
-                                        state.packages.len()
-                                    );
-                                    // Initialize statuses if needed
-                                    if state.package_statuses.len() != state.packages.len() {
-                                        state.package_statuses =
-                                            vec![PackageStatus::Unknown; state.packages.len()];
-                                    }
-                                    // Reset all statuses to Unknown to check all
-                                    state.package_statuses =
-                                        vec![PackageStatus::Unknown; state.packages.len()];
-                                    state.is_checking = true;
-                                    state.checking_index = None;
-                                    state.checking_delay_until = Some(
-                                        std::time::Instant::now() + Duration::from_millis(100),
-                                    );
-                                }
-                            }
-                            KeyCode::Char('s') | KeyCode::Char('S') => {
-                                // Check selected package only (if not in popup and not already checking)
-                                if state.popup_type == PackagePopupType::None && !state.is_checking
-                                {
-                                    if let Some(selected_idx) = state.list_state.selected() {
-                                        if selected_idx < state.packages.len() {
-                                            let package_name =
-                                                state.packages[selected_idx].name.clone();
-                                            info!(
-                                                "Starting check selected package: {} (index: {})",
-                                                package_name, selected_idx
-                                            );
-                                            // Initialize statuses if needed
-                                            if state.package_statuses.len() != state.packages.len()
-                                            {
-                                                state.package_statuses = vec![
-                                                    PackageStatus::Unknown;
-                                                    state.packages.len()
-                                                ];
-                                            }
-                                            // Only check the selected package - set others to stay as they are
-                                            // But we need to mark this one as Unknown so it gets checked
-                                            state.package_statuses[selected_idx] =
-                                                PackageStatus::Unknown;
-                                            state.is_checking = true;
-                                            state.checking_index = Some(selected_idx);
-                                            state.checking_delay_until = Some(
-                                                std::time::Instant::now()
-                                                    + Duration::from_millis(100),
-                                            );
-                                        }
-                                    }
-                                }
-                            }
-                            KeyCode::Char('i') | KeyCode::Char('I') => {
-                                // Start installing missing packages (if not in popup and not already installing)
-                                if state.popup_type == PackagePopupType::None
-                                    && matches!(
-                                        state.installation_step,
-                                        InstallationStep::NotStarted
-                                    )
-                                    && !state.is_checking
-                                {
-                                    // Find packages that are not installed
-                                    let mut packages_to_install = Vec::new();
-                                    for (idx, status) in state.package_statuses.iter().enumerate() {
-                                        if matches!(status, PackageStatus::NotInstalled) {
-                                            packages_to_install.push(idx);
-                                        }
-                                    }
+                        let action = self.get_action(key.code, key.modifiers);
+                        if let Some(action) = action {
+                             use crate::keymap::Action;
+                             let state = &mut self.ui_state.package_manager;
+                             match action {
+                                  Action::MoveUp => {
+                                      if !state.is_checking {
+                                          state.list_state.select_previous();
+                                      }
+                                  }
+                                  Action::MoveDown => {
+                                      if !state.is_checking {
+                                          state.list_state.select_next();
+                                      }
+                                  }
+                                  Action::Refresh => {
+                                      // Check All (Old 'c')
+                                      if state.popup_type == PackagePopupType::None && !state.is_checking && !state.packages.is_empty() {
+                                          info!("Starting check all packages ({} packages)", state.packages.len());
+                                          if state.package_statuses.len() != state.packages.len() {
+                                              state.package_statuses = vec![PackageStatus::Unknown; state.packages.len()];
+                                          }
+                                          state.package_statuses = vec![PackageStatus::Unknown; state.packages.len()];
+                                          state.is_checking = true;
+                                          state.checking_index = None;
+                                          state.checking_delay_until = Some(std::time::Instant::now() + Duration::from_millis(100));
+                                      }
+                                  }
+                                  Action::Sync | Action::Confirm => { // Check Selected (Old 's') + Enter
+                                      if state.popup_type == PackagePopupType::None && !state.is_checking {
+                                          if let Some(selected_idx) = state.list_state.selected() {
+                                              if selected_idx < state.packages.len() {
+                                                  let package_name = state.packages[selected_idx].name.clone();
+                                                  info!("Starting check selected package: {} (index: {})", package_name, selected_idx);
+                                                  if state.package_statuses.len() != state.packages.len() {
+                                                      state.package_statuses = vec![PackageStatus::Unknown; state.packages.len()];
+                                                  }
+                                                  state.package_statuses[selected_idx] = PackageStatus::Unknown;
+                                                  state.is_checking = true;
+                                                  state.checking_index = Some(selected_idx);
+                                                  state.checking_delay_until = Some(std::time::Instant::now() + Duration::from_millis(100));
+                                              }
+                                          }
+                                      }
+                                  }
+                                  Action::Install => {
+                                      // Install Missing (Old 'i')
+                                      if state.popup_type == PackagePopupType::None && matches!(state.installation_step, InstallationStep::NotStarted) && !state.is_checking {
+                                           let mut packages_to_install = Vec::new();
+                                           for (idx, status) in state.package_statuses.iter().enumerate() {
+                                               if matches!(status, PackageStatus::NotInstalled) {
+                                                   packages_to_install.push(idx);
+                                               }
+                                           }
+                                           if !packages_to_install.is_empty() {
+                                                info!("Starting installation of {} missing package(s)", packages_to_install.len());
+                                                if let Some(&first_idx) = packages_to_install.first() {
+                                                    let package_name = state.packages[first_idx].name.clone();
+                                                    let total = packages_to_install.len();
+                                                    let mut install_list = packages_to_install.clone();
+                                                    install_list.remove(0);
 
-                                    if !packages_to_install.is_empty() {
-                                        info!(
-                                            "Starting installation of {} missing package(s)",
-                                            packages_to_install.len()
-                                        );
-                                        // Start installation
-                                        if let Some(&first_idx) = packages_to_install.first() {
-                                            let package_name =
-                                                state.packages[first_idx].name.clone();
-                                            let total = packages_to_install.len();
-                                            let mut install_list = packages_to_install.clone();
-                                            install_list.remove(0);
-
-                                            debug!(
-                                                "First package to install: {} (index: {})",
-                                                package_name, first_idx
-                                            );
-                                            debug!("Remaining packages: {:?}", install_list);
-
-                                            state.installation_step =
-                                                InstallationStep::Installing {
-                                                    package_index: first_idx,
-                                                    package_name,
-                                                    total_packages: total,
-                                                    packages_to_install: install_list,
-                                                    installed: Vec::new(),
-                                                    failed: Vec::new(),
-                                                    status_rx: None,
-                                                };
-                                            state.installation_output.clear();
-                                            state.installation_delay_until = Some(
-                                                std::time::Instant::now()
-                                                    + Duration::from_millis(100),
-                                            );
-                                        }
-                                    }
-                                }
-                            }
-                            KeyCode::Char('a') | KeyCode::Char('A') => {
-                                // Add new package
-                                if state.popup_type == PackagePopupType::None && !state.is_checking
-                                {
-                                    // Release borrow before calling method
-                                    let _ = state;
-                                    self.start_add_package()?;
-                                }
-                            }
-                            KeyCode::Char('e') | KeyCode::Char('E') => {
-                                // Edit selected package
-                                if state.popup_type == PackagePopupType::None && !state.is_checking
-                                {
-                                    if let Some(selected_idx) = state.list_state.selected() {
-                                        if selected_idx < state.packages.len() {
-                                            // Release borrow before calling method
-                                            let _ = state;
-                                            self.start_edit_package(selected_idx)?;
-                                        }
-                                    }
-                                }
-                            }
-                            KeyCode::Char('d') | KeyCode::Char('D') => {
-                                // Delete selected package
-                                if state.popup_type == PackagePopupType::None && !state.is_checking
-                                {
-                                    if let Some(selected_idx) = state.list_state.selected() {
-                                        if selected_idx < state.packages.len() {
-                                            state.delete_index = Some(selected_idx);
-                                            state.popup_type = PackagePopupType::Delete;
-                                            state.delete_confirm_input.clear();
-                                            state.delete_confirm_cursor = 0;
-                                        }
-                                    }
-                                }
-                            }
-                            _ => {}
+                                                    state.installation_step = InstallationStep::Installing {
+                                                        package_index: first_idx,
+                                                        package_name,
+                                                        total_packages: total,
+                                                        packages_to_install: install_list,
+                                                        installed: Vec::new(),
+                                                        failed: Vec::new(),
+                                                        status_rx: None,
+                                                    };
+                                                    state.installation_output.clear();
+                                                    state.installation_delay_until = Some(std::time::Instant::now() + Duration::from_millis(100));
+                                                }
+                                           }
+                                      }
+                                  }
+                                  Action::Create => {
+                                      // Add Package (Old 'a')
+                                      if state.popup_type == PackagePopupType::None && !state.is_checking {
+                                          let _ = state;
+                                          self.start_add_package()?;
+                                      }
+                                  }
+                                  Action::Edit => {
+                                      // Edit Package (Old 'e')
+                                      if state.popup_type == PackagePopupType::None && !state.is_checking {
+                                          if let Some(selected_idx) = state.list_state.selected() {
+                                              if selected_idx < state.packages.len() {
+                                                  let _ = state;
+                                                  self.start_edit_package(selected_idx)?;
+                                              }
+                                          }
+                                      }
+                                  }
+                                  Action::Delete => {
+                                      // Delete Package (Old 'd')
+                                      if state.popup_type == PackagePopupType::None && !state.is_checking {
+                                          if let Some(selected_idx) = state.list_state.selected() {
+                                              if selected_idx < state.packages.len() {
+                                                  state.delete_index = Some(selected_idx);
+                                                  state.popup_type = PackagePopupType::Delete;
+                                                  state.delete_confirm_input.clear();
+                                                  state.delete_confirm_cursor = 0;
+                                              }
+                                          }
+                                      }
+                                  }
+                                  Action::Cancel | Action::Quit => {
+                                      if !state.is_checking {
+                                          state.installation_step = InstallationStep::NotStarted;
+                                          state.installation_output.clear();
+                                          state.installation_delay_until = None;
+                                          self.ui_state.current_screen = Screen::MainMenu;
+                                      }
+                                  }
+                                  _ => {}
+                             }
+                        } else {
+                             // Raw Fallback
+                             let state = &mut self.ui_state.package_manager;
+                             match key.code {
+                                  // Fallback for 's' if not mapped to Sync/Confirm (though Enter handles Confirm)
+                                  KeyCode::Char('s') | KeyCode::Char('S') => {
+                                      if state.popup_type == PackagePopupType::None && !state.is_checking {
+                                          if let Some(selected_idx) = state.list_state.selected() {
+                                              if selected_idx < state.packages.len() {
+                                                  // Copy Check Selected Logic
+                                                  let package_name = state.packages[selected_idx].name.clone();
+                                                  if state.package_statuses.len() != state.packages.len() {
+                                                      state.package_statuses = vec![PackageStatus::Unknown; state.packages.len()];
+                                                  }
+                                                  state.package_statuses[selected_idx] = PackageStatus::Unknown;
+                                                  state.is_checking = true;
+                                                  state.checking_index = Some(selected_idx);
+                                                  state.checking_delay_until = Some(std::time::Instant::now() + Duration::from_millis(100));
+                                              }
+                                          }
+                                      }
+                                  }
+                                  // Fallback for 'c' if not mapped to Refresh/Create
+                                  KeyCode::Char('c') | KeyCode::Char('C') => {
+                                      // If actions didn't catch it, maybe it's Check All fallback?
+                                      if state.popup_type == PackagePopupType::None && !state.is_checking && !state.packages.is_empty() {
+                                          if state.package_statuses.len() != state.packages.len() {
+                                              state.package_statuses = vec![PackageStatus::Unknown; state.packages.len()];
+                                          }
+                                          state.package_statuses = vec![PackageStatus::Unknown; state.packages.len()];
+                                          state.is_checking = true;
+                                          state.checking_index = None;
+                                          state.checking_delay_until = Some(std::time::Instant::now() + Duration::from_millis(100));
+                                      }
+                                  }
+                                  _ => {}
+                             }
                         }
                     }
                     _ => {}
                 }
+
+
                 return Ok(());
             }
             Screen::ManageProfiles => {
                 // Get profiles from manifest
                 let profiles = self.get_profiles().unwrap_or_default();
-                let state = &mut self.ui_state.profile_manager;
 
                 // Handle popup events first
-                if state.popup_type != ProfilePopupType::None {
+                if self.ui_state.profile_manager.popup_type != ProfilePopupType::None {
+                    let state = &mut self.ui_state.profile_manager;
                     // Handle popup events inline
                     match event {
                         Event::Key(key) if key.kind == KeyEventKind::Press => {
@@ -2327,77 +2464,82 @@ impl App {
                 // Handle main view events
                 match event {
                     Event::Key(key) if key.kind == KeyEventKind::Press => {
-                        match key.code {
-                            KeyCode::Up => {
-                                if let Some(current) = state.list_state.selected() {
-                                    if current > 0 {
-                                        state.list_state.select(Some(current - 1));
-                                    }
-                                } else if !profiles.is_empty() {
-                                    state.list_state.select(Some(profiles.len() - 1));
-                                }
-                            }
-                            KeyCode::Down => {
-                                if let Some(current) = state.list_state.selected() {
-                                    if current < profiles.len().saturating_sub(1) {
-                                        state.list_state.select(Some(current + 1));
-                                    }
-                                } else if !profiles.is_empty() {
-                                    state.list_state.select(Some(0));
-                                }
-                            }
-                            KeyCode::Enter => {
-                                // Open switch popup (only if not already active)
-                                if let Some(idx) = state.list_state.selected() {
-                                    if let Some(profile) = profiles.get(idx) {
-                                        if profile.name != self.config.active_profile {
-                                            state.popup_type = ProfilePopupType::Switch;
+                        if let Some(action) = self.get_action(key.code, key.modifiers) {
+                            let state = &mut self.ui_state.profile_manager;
+                            use crate::keymap::Action;
+                            match action {
+                                Action::MoveUp => {
+                                    if let Some(current) = state.list_state.selected() {
+                                        if current > 0 {
+                                            state.list_state.select(Some(current - 1));
                                         }
-                                        // If already active, do nothing (no popup)
+                                    } else if !profiles.is_empty() {
+                                        state.list_state.select(Some(profiles.len() - 1));
                                     }
                                 }
-                            }
-                            KeyCode::Char('c') | KeyCode::Char('C') => {
-                                // Open create popup - refresh config first to get latest profiles
-                                self.config = Config::load_or_create(&self.config_path)?;
-                                use crate::components::profile_manager::CreateField;
-                                state.popup_type = ProfilePopupType::Create;
-                                state.create_name_input.clear();
-                                state.create_name_cursor = 0;
-                                state.create_description_input.clear();
-                                state.create_description_cursor = 0;
-                                state.create_copy_from = None;
-                                state.create_focused_field = CreateField::Name;
-                            }
-                            KeyCode::Char('r') | KeyCode::Char('R') => {
-                                // Open rename popup
-                                if let Some(idx) = state.list_state.selected() {
-                                    if let Some(profile) = profiles.get(idx) {
-                                        state.popup_type = ProfilePopupType::Rename;
-                                        state.rename_input = profile.name.clone();
-                                        state.rename_cursor = state.rename_input.len();
+                                Action::MoveDown => {
+                                    if let Some(current) = state.list_state.selected() {
+                                        if current < profiles.len().saturating_sub(1) {
+                                            state.list_state.select(Some(current + 1));
+                                        }
+                                    } else if !profiles.is_empty() {
+                                        state.list_state.select(Some(0));
                                     }
                                 }
-                            }
-                            KeyCode::Char('d') | KeyCode::Char('D') => {
-                                // Open delete popup
-                                if let Some(idx) = state.list_state.selected() {
-                                    if let Some(profile) = profiles.get(idx) {
-                                        if profile.name != self.config.active_profile {
-                                            state.popup_type = ProfilePopupType::Delete;
-                                            state.delete_confirm_input.clear();
-                                            state.delete_confirm_cursor = 0;
+                                Action::Confirm => {
+                                    // Open switch popup (only if not already active)
+                                    if let Some(idx) = state.list_state.selected() {
+                                        if let Some(profile) = profiles.get(idx) {
+                                            if profile.name != self.config.active_profile {
+                                                state.popup_type = ProfilePopupType::Switch;
+                                            }
                                         }
                                     }
                                 }
+                                Action::Create => {
+                                    // Open create popup - refresh config first to get latest profiles
+                                    self.config = Config::load_or_create(&self.config_path)?;
+                                    use crate::components::profile_manager::CreateField;
+                                    state.popup_type = ProfilePopupType::Create;
+                                    state.create_name_input.clear();
+                                    state.create_name_cursor = 0;
+                                    state.create_description_input.clear();
+                                    state.create_description_cursor = 0;
+                                    state.create_copy_from = None;
+                                    state.create_focused_field = CreateField::Name;
+                                }
+                                Action::Edit => {
+                                    // Open rename popup
+                                    if let Some(idx) = state.list_state.selected() {
+                                        if let Some(profile) = profiles.get(idx) {
+                                            state.popup_type = ProfilePopupType::Rename;
+                                            state.rename_input = profile.name.clone();
+                                            state.rename_cursor = state.rename_input.len();
+                                        }
+                                    }
+                                }
+                                Action::Delete => {
+                                    // Open delete popup
+                                    if let Some(idx) = state.list_state.selected() {
+                                        if let Some(profile) = profiles.get(idx) {
+                                            if profile.name != self.config.active_profile {
+                                                state.popup_type = ProfilePopupType::Delete;
+                                                state.delete_confirm_input.clear();
+                                                state.delete_confirm_cursor = 0;
+                                            }
+                                        }
+                                    }
+                                }
+                                Action::Cancel | Action::Quit => {
+                                    self.ui_state.current_screen = Screen::MainMenu;
+                                }
+                                _ => {}
                             }
-                            KeyCode::Esc => {
-                                self.ui_state.current_screen = Screen::MainMenu;
-                            }
-                            _ => {}
                         }
                     }
+
                     Event::Mouse(mouse) => {
+                        let state = &mut self.ui_state.profile_manager;
                         match mouse.kind {
                             crossterm::event::MouseEventKind::Down(
                                 crossterm::event::MouseButton::Left,
@@ -2507,9 +2649,7 @@ impl App {
         // Old event handling for screens not yet converted to components
         match event {
             Event::Key(key) if key.kind == KeyEventKind::Press => {
-                if self.ui_state.current_screen == Screen::DotfileSelection {
-                    self.handle_dotfile_selection_input(key.code)?;
-                }
+
             }
             Event::Mouse(mouse) => {
                 self.handle_mouse(mouse)?;
@@ -2688,6 +2828,10 @@ impl App {
 
     fn handle_github_auth_input(&mut self, key: KeyEvent) -> Result<()> {
         use crate::ui::SetupMode;
+        use crate::keymap::Action;
+
+        // Common action lookup
+        let action = self.get_action(key.code, key.modifiers);
 
         let auth_state = &mut self.ui_state.github_auth;
         auth_state.error_message = None;
@@ -2696,41 +2840,43 @@ impl App {
         match auth_state.setup_mode {
             SetupMode::Choosing => {
                 // Handle mode selection screen
-                match key.code {
-                    KeyCode::Up => {
-                        if auth_state.mode_selection_index > 0 {
-                            auth_state.mode_selection_index -= 1;
+                // Use Keymap Actions first
+                if let Some(action) = action {
+                    match action {
+                        Action::MoveUp => {
+                            if auth_state.mode_selection_index > 0 {
+                                auth_state.mode_selection_index -= 1;
+                            }
+                            return Ok(());
                         }
-                        return Ok(());
-                    }
-                    KeyCode::Down => {
-                        if auth_state.mode_selection_index < 1 {
-                            auth_state.mode_selection_index += 1;
+                        Action::MoveDown => {
+                            if auth_state.mode_selection_index < 1 {
+                                auth_state.mode_selection_index += 1;
+                            }
+                            return Ok(());
                         }
-                        return Ok(());
-                    }
-                    KeyCode::Enter => {
-                        // Select mode and transition
-                        if auth_state.mode_selection_index == 0 {
-                            // GitHub mode selected
-                            auth_state.setup_mode = SetupMode::GitHub;
-                        } else {
-                            // Local mode selected
-                            auth_state.setup_mode = SetupMode::Local;
-                            auth_state.input_focused = true;
+                        Action::Confirm => {
+                            // Select mode and transition
+                            if auth_state.mode_selection_index == 0 {
+                                auth_state.setup_mode = SetupMode::GitHub;
+                            } else {
+                                auth_state.setup_mode = SetupMode::Local;
+                                auth_state.input_focused = true;
+                            }
+                            return Ok(());
                         }
-                        return Ok(());
-                    }
-                    KeyCode::Esc => {
-                        // Cancel and go back to main menu
-                        self.ui_state.current_screen = Screen::MainMenu;
-                        *auth_state = Default::default();
-                        return Ok(());
-                    }
-                    _ => {
-                        return Ok(());
+                        Action::Cancel | Action::Quit => {
+                            self.ui_state.current_screen = Screen::MainMenu;
+                            *auth_state = Default::default();
+                            return Ok(());
+                        }
+                        _ => {}
                     }
                 }
+
+                // Fallback for Raw Enter/Esc if not mapped?
+                // Standard maps Enter->Confirm, Esc->Cancel.
+                // So should be covered.
             }
             SetupMode::Local => {
                 // Handle local setup screen
@@ -2745,28 +2891,38 @@ impl App {
             GitHubAuthStep::Input => {
                 // Handle "Update Token" action if repo is configured
                 if auth_state.repo_already_configured && !auth_state.is_editing_token {
-                    match key.code {
-                        KeyCode::Char('u') | KeyCode::Char('U') => {
-                            // Enable token editing
-                            auth_state.is_editing_token = true;
-                            auth_state.token_input = String::new(); // Clear token for new input
-                            auth_state.cursor_position = 0;
-                            auth_state.focused_field = GitHubAuthField::Token;
-                            return Ok(());
-                        }
-                        KeyCode::Esc => {
-                            self.ui_state.current_screen = Screen::MainMenu;
-                            *auth_state = Default::default();
-                            return Ok(());
-                        }
-                        _ => {
-                            // Ignore other keys when repo is configured and not editing
-                            return Ok(());
-                        }
-                    }
+                     // Check for 'u' (Update) or Action::Edit
+                     if let Some(Action::Edit) = action {
+                          // Enable token editing
+                          auth_state.is_editing_token = true;
+                          auth_state.token_input = String::new();
+                          auth_state.cursor_position = 0;
+                          auth_state.focused_field = GitHubAuthField::Token;
+                          return Ok(());
+                     }
+                     // Fallback for raw 'u' if Edit is mapped to something else but 'u' is legacy
+                     if key.code == KeyCode::Char('u') || key.code == KeyCode::Char('U') {
+                          auth_state.is_editing_token = true;
+                          auth_state.token_input = String::new();
+                          auth_state.cursor_position = 0;
+                          auth_state.focused_field = GitHubAuthField::Token;
+                          return Ok(());
+                     }
+
+                     if let Some(Action::Cancel | Action::Quit) = action {
+                          self.ui_state.current_screen = Screen::MainMenu;
+                          *auth_state = Default::default();
+                          return Ok(());
+                     }
+
+                     if matches!(key.code, KeyCode::Esc) { // Fallback raw escape
+                          self.ui_state.current_screen = Screen::MainMenu;
+                          *auth_state = Default::default();
+                          return Ok(());
+                     }
                 }
 
-                // Check for Ctrl+S
+                // Check for Ctrl+S (Raw check for now as Safe Save)
                 if key.code == KeyCode::Char('s') && key.modifiers.contains(KeyModifiers::CONTROL) {
                     if auth_state.repo_already_configured && auth_state.is_editing_token {
                         // Just update the token
@@ -2778,40 +2934,24 @@ impl App {
 
                         // Validate token format first
                         if !token.starts_with("ghp_") {
-                            let actual_start = if token.len() >= 4 {
-                                &token[..4]
-                            } else {
-                                "too short"
-                            };
+                            let actual_start = if token.len() >= 4 { &token[..4] } else { "too short" };
                             auth_state.error_message = Some(
-                                format!(
-                                    "❌ Invalid token format: Must start with 'ghp_' but starts with '{}'.\n\
-                                    Token length: {} characters.\n\
-                                    First 10 chars: '{}'\n\
-                                    Please check that you copied the entire token correctly.\n\
-                                    Make sure you're pasting the full token (40+ characters).",
-                                    actual_start,
-                                    token.len(),
-                                    if token.len() >= 10 { &token[..10] } else { &token }
-                                )
+                                format!("❌ Invalid token format: Must start with 'ghp_' but starts with '{}'.\n\
+                                See help for more details.", actual_start)
                             );
                             return Ok(());
                         }
 
                         if token.len() < 40 {
                             auth_state.error_message = Some(format!(
-                                "❌ Token appears incomplete: {} characters (expected 40+).\n\
-                                    First 10 chars: '{}'\n\
-                                    Make sure you copied the entire token from GitHub.",
-                                token.len(),
-                                &token[..token.len().min(10)]
+                                "❌ Token appears incomplete: {} characters (expected 40+).",
+                                token.len()
                             ));
                             return Ok(());
                         }
 
                         // Initialize setup state machine
-                        auth_state.step =
-                            GitHubAuthStep::SetupStep(crate::ui::GitHubSetupStep::Connecting);
+                        auth_state.step = GitHubAuthStep::SetupStep(crate::ui::GitHubSetupStep::Connecting);
                         auth_state.status_message = Some("🔌 Connecting to GitHub...".to_string());
                         auth_state.setup_data = Some(crate::ui::GitHubSetupData {
                             token,
@@ -2819,19 +2959,84 @@ impl App {
                             username: None,
                             repo_exists: None,
                             is_private: auth_state.is_private,
-                            delay_until: Some(
-                                std::time::Instant::now() + Duration::from_millis(500),
-                            ),
-                            is_new_repo: false, // Will be set when we know if repo exists
+                            delay_until: Some(std::time::Instant::now() + Duration::from_millis(500)),
+                            is_new_repo: false,
                         });
                         *self.github_auth_component.get_auth_state_mut() = auth_state.clone();
                     }
                     return Ok(());
                 }
 
-                // Normal input handling (new setup or token editing mode)
+                // Normal input handling
+                // Check Keymap for Navigation (only if non-character or special key)
+                let is_typing_char = match key.code {
+                    KeyCode::Char(_) => !key.modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SUPER),
+                    _ => false,
+                };
+
+                if !is_typing_char {
+                    if let Some(act) = action {
+                         match act {
+                             Action::Cancel | Action::Quit => {
+                                  self.ui_state.current_screen = Screen::MainMenu;
+                                  *auth_state = Default::default();
+                                  return Ok(());
+                             }
+                             Action::MoveLeft => {
+                                 // Handle Left
+                                 let current_input = match auth_state.focused_field {
+                                     GitHubAuthField::Token => &auth_state.token_input,
+                                     GitHubAuthField::RepoName => &auth_state.repo_name_input,
+                                     GitHubAuthField::RepoLocation => &auth_state.repo_location_input,
+                                     GitHubAuthField::IsPrivate => "",
+                                 };
+                                 crate::utils::handle_cursor_movement(current_input, &mut auth_state.cursor_position, KeyCode::Left);
+                                 return Ok(());
+                             }
+                             Action::MoveRight => {
+                                 let current_input = match auth_state.focused_field {
+                                     GitHubAuthField::Token => &auth_state.token_input,
+                                     GitHubAuthField::RepoName => &auth_state.repo_name_input,
+                                     GitHubAuthField::RepoLocation => &auth_state.repo_location_input,
+                                     GitHubAuthField::IsPrivate => "",
+                                 };
+                                 crate::utils::handle_cursor_movement(current_input, &mut auth_state.cursor_position, KeyCode::Right);
+                                 return Ok(());
+                             }
+                             Action::Home => {
+                                 let current_input = match auth_state.focused_field {
+                                     GitHubAuthField::Token => &auth_state.token_input,
+                                      // ... simplistic fallback for now since I can't access full struct easily logic here without copy paste
+                                      // Actually I can invoke handle_cursor_movement with Home
+                                      _ => &auth_state.token_input, // Placeholder, need switch
+                                 };
+                                 // Re-implementing switch to be safe
+                                 let text = match auth_state.focused_field {
+                                        GitHubAuthField::Token => &auth_state.token_input,
+                                        GitHubAuthField::RepoName => &auth_state.repo_name_input,
+                                        GitHubAuthField::RepoLocation => &auth_state.repo_location_input,
+                                        GitHubAuthField::IsPrivate => "",
+                                 };
+                                 crate::utils::handle_cursor_movement(text, &mut auth_state.cursor_position, KeyCode::Home);
+                                 return Ok(());
+                             }
+                             Action::End => {
+                                 let text = match auth_state.focused_field {
+                                        GitHubAuthField::Token => &auth_state.token_input,
+                                        GitHubAuthField::RepoName => &auth_state.repo_name_input,
+                                        GitHubAuthField::RepoLocation => &auth_state.repo_location_input,
+                                        GitHubAuthField::IsPrivate => "",
+                                 };
+                                 crate::utils::handle_cursor_movement(text, &mut auth_state.cursor_position, KeyCode::End);
+                                 return Ok(());
+                             }
+                             _ => {}
+                         }
+                    }
+                }
+
+                // Standard Raw handling (Tab, Backspace, Delete, Chars)
                 match key.code {
-                    // Tab: Navigate to next field (only if not repo configured)
                     KeyCode::Tab if !auth_state.repo_already_configured => {
                         auth_state.focused_field = match auth_state.focused_field {
                             GitHubAuthField::Token => GitHubAuthField::RepoName,
@@ -2839,17 +3044,13 @@ impl App {
                             GitHubAuthField::RepoLocation => GitHubAuthField::IsPrivate,
                             GitHubAuthField::IsPrivate => GitHubAuthField::Token,
                         };
-                        // Reset cursor position to end of new field
                         auth_state.cursor_position = match auth_state.focused_field {
                             GitHubAuthField::Token => auth_state.token_input.chars().count(),
                             GitHubAuthField::RepoName => auth_state.repo_name_input.chars().count(),
-                            GitHubAuthField::RepoLocation => {
-                                auth_state.repo_location_input.chars().count()
-                            }
+                            GitHubAuthField::RepoLocation => auth_state.repo_location_input.chars().count(),
                             GitHubAuthField::IsPrivate => 0,
                         };
                     }
-                    // BackTab: Navigate to previous field (Shift+Tab) (only if not repo configured)
                     KeyCode::BackTab if !auth_state.repo_already_configured => {
                         auth_state.focused_field = match auth_state.focused_field {
                             GitHubAuthField::Token => GitHubAuthField::IsPrivate,
@@ -2860,146 +3061,83 @@ impl App {
                         auth_state.cursor_position = match auth_state.focused_field {
                             GitHubAuthField::Token => auth_state.token_input.chars().count(),
                             GitHubAuthField::RepoName => auth_state.repo_name_input.chars().count(),
-                            GitHubAuthField::RepoLocation => {
-                                auth_state.repo_location_input.chars().count()
-                            }
+                            GitHubAuthField::RepoLocation => auth_state.repo_location_input.chars().count(),
                             GitHubAuthField::IsPrivate => 0,
                         };
                     }
-                    KeyCode::Char(c) => {
-                        // Handle Space for visibility toggle
-                        if c == ' '
-                            && auth_state.focused_field == GitHubAuthField::IsPrivate
-                            && !auth_state.repo_already_configured
-                        {
-                            auth_state.is_private = !auth_state.is_private;
-                        } else {
-                            // Regular character input (only if not disabled)
-                            match auth_state.focused_field {
-                                GitHubAuthField::Token
-                                    if !auth_state.repo_already_configured
-                                        || auth_state.is_editing_token =>
-                                {
-                                    crate::utils::handle_char_insertion(
-                                        &mut auth_state.token_input,
-                                        &mut auth_state.cursor_position,
-                                        c,
-                                    );
-                                }
-                                GitHubAuthField::RepoName
-                                    if !auth_state.repo_already_configured =>
-                                {
-                                    crate::utils::handle_char_insertion(
-                                        &mut auth_state.repo_name_input,
-                                        &mut auth_state.cursor_position,
-                                        c,
-                                    );
-                                }
-                                GitHubAuthField::RepoLocation
-                                    if !auth_state.repo_already_configured =>
-                                {
-                                    crate::utils::handle_char_insertion(
-                                        &mut auth_state.repo_location_input,
-                                        &mut auth_state.cursor_position,
-                                        c,
-                                    );
-                                }
-                                _ => {}
-                            }
-                        }
-                    }
-                    // Navigation within input
-                    KeyCode::Left | KeyCode::Right | KeyCode::Home | KeyCode::End => {
-                        let current_input = match auth_state.focused_field {
-                            GitHubAuthField::Token => &auth_state.token_input,
-                            GitHubAuthField::RepoName => &auth_state.repo_name_input,
-                            GitHubAuthField::RepoLocation => &auth_state.repo_location_input,
-                            GitHubAuthField::IsPrivate => "",
-                        };
-                        crate::utils::handle_cursor_movement(
-                            current_input,
-                            &mut auth_state.cursor_position,
-                            key.code,
-                        );
-                    }
-                    // Backspace
                     KeyCode::Backspace => match auth_state.focused_field {
-                        GitHubAuthField::Token => {
-                            crate::utils::handle_backspace(
-                                &mut auth_state.token_input,
-                                &mut auth_state.cursor_position,
-                            );
-                        }
-                        GitHubAuthField::RepoName => {
-                            crate::utils::handle_backspace(
-                                &mut auth_state.repo_name_input,
-                                &mut auth_state.cursor_position,
-                            );
-                        }
-                        GitHubAuthField::RepoLocation => {
-                            crate::utils::handle_backspace(
-                                &mut auth_state.repo_location_input,
-                                &mut auth_state.cursor_position,
-                            );
-                        }
+                        GitHubAuthField::Token => crate::utils::handle_backspace(&mut auth_state.token_input, &mut auth_state.cursor_position),
+                        GitHubAuthField::RepoName => crate::utils::handle_backspace(&mut auth_state.repo_name_input, &mut auth_state.cursor_position),
+                        GitHubAuthField::RepoLocation => crate::utils::handle_backspace(&mut auth_state.repo_location_input, &mut auth_state.cursor_position),
                         GitHubAuthField::IsPrivate => {}
                     },
-                    // Delete
                     KeyCode::Delete => match auth_state.focused_field {
-                        GitHubAuthField::Token => {
-                            crate::utils::handle_delete(
-                                &mut auth_state.token_input,
-                                &mut auth_state.cursor_position,
-                            );
-                        }
-                        GitHubAuthField::RepoName => {
-                            crate::utils::handle_delete(
-                                &mut auth_state.repo_name_input,
-                                &mut auth_state.cursor_position,
-                            );
-                        }
-                        GitHubAuthField::RepoLocation => {
-                            crate::utils::handle_delete(
-                                &mut auth_state.repo_location_input,
-                                &mut auth_state.cursor_position,
-                            );
-                        }
-                        GitHubAuthField::IsPrivate => {}
+                         GitHubAuthField::Token => crate::utils::handle_delete(&mut auth_state.token_input, &mut auth_state.cursor_position),
+                         GitHubAuthField::RepoName => crate::utils::handle_delete(&mut auth_state.repo_name_input, &mut auth_state.cursor_position),
+                         GitHubAuthField::RepoLocation => crate::utils::handle_delete(&mut auth_state.repo_location_input, &mut auth_state.cursor_position),
+                         GitHubAuthField::IsPrivate => {}
                     },
-                    KeyCode::Esc => {
-                        self.ui_state.current_screen = Screen::MainMenu;
-                        *auth_state = Default::default();
+                    KeyCode::Char(c) => {
+                        // Space toggle for IsPrivate
+                         if c == ' ' && auth_state.focused_field == GitHubAuthField::IsPrivate && !auth_state.repo_already_configured {
+                             auth_state.is_private = !auth_state.is_private;
+                         } else {
+                             // Regular char insertion
+                             match auth_state.focused_field {
+                                 GitHubAuthField::Token if !auth_state.repo_already_configured || auth_state.is_editing_token => {
+                                     crate::utils::handle_char_insertion(&mut auth_state.token_input, &mut auth_state.cursor_position, c);
+                                 }
+                                 GitHubAuthField::RepoName if !auth_state.repo_already_configured => {
+                                     crate::utils::handle_char_insertion(&mut auth_state.repo_name_input, &mut auth_state.cursor_position, c);
+                                 }
+                                 GitHubAuthField::RepoLocation if !auth_state.repo_already_configured => {
+                                     crate::utils::handle_char_insertion(&mut auth_state.repo_location_input, &mut auth_state.cursor_position, c);
+                                 }
+                                 _ => {}
+                             }
+                         }
                     }
                     _ => {}
                 }
             }
             GitHubAuthStep::Processing => {
-                // Allow user to continue after processing completes
-                // This state is no longer used - Complete step handles transition automatically
-                match key.code {
-                    KeyCode::Enter | KeyCode::Char(' ') => {
-                        // If we're still in Processing (shouldn't happen with new flow), transition
-                        if !self.ui_state.profile_selection.profiles.is_empty() {
-                            self.ui_state.current_screen = Screen::ProfileSelection;
-                        } else {
-                            self.ui_state.current_screen = Screen::MainMenu;
-                            *auth_state = Default::default();
-                        }
-                    }
-                    KeyCode::Esc => {
-                        // Reset and go back
-                        self.ui_state.current_screen = Screen::MainMenu;
-                        *auth_state = Default::default();
-                    }
-                    _ => {}
-                }
+                 // Should allow Cancel/Esc. Enter continues if done.
+                 match action {
+                      Some(Action::Confirm) => {
+                           if !self.ui_state.profile_selection.profiles.is_empty() {
+                               self.ui_state.current_screen = Screen::ProfileSelection;
+                           } else {
+                               self.ui_state.current_screen = Screen::MainMenu;
+                               *auth_state = Default::default();
+                           }
+                      }
+                      Some(Action::Cancel | Action::Quit) => {
+                           self.ui_state.current_screen = Screen::MainMenu;
+                           *auth_state = Default::default();
+                      }
+                      _ => {
+                           // Fallback Raw
+                           if matches!(key.code, KeyCode::Enter | KeyCode::Char(' ')) {
+                                if !self.ui_state.profile_selection.profiles.is_empty() {
+                                    self.ui_state.current_screen = Screen::ProfileSelection;
+                                } else {
+                                    self.ui_state.current_screen = Screen::MainMenu;
+                                    *auth_state = Default::default();
+                                }
+                           } else if matches!(key.code, KeyCode::Esc) {
+                                self.ui_state.current_screen = Screen::MainMenu;
+                                *auth_state = Default::default();
+                           }
+                      }
+                 }
             }
             GitHubAuthStep::SetupStep(_) => {
-                // Setup is in progress, ignore input (or allow Esc to cancel)
-                if key.code == KeyCode::Esc {
-                    // Cancel setup
-                    *auth_state = Default::default();
-                    self.ui_state.current_screen = Screen::MainMenu;
+                if let Some(Action::Cancel | Action::Quit) = action {
+                     *auth_state = Default::default();
+                     self.ui_state.current_screen = Screen::MainMenu;
+                } else if key.code == KeyCode::Esc {
+                     *auth_state = Default::default();
+                     self.ui_state.current_screen = Screen::MainMenu;
                 }
             }
         }
@@ -4192,222 +4330,7 @@ impl App {
     }
 
     /// Handle input for dotfile selection screen
-    fn handle_dotfile_selection_input(&mut self, key_code: KeyCode) -> Result<()> {
-        let state = &mut self.ui_state.dotfile_selection;
 
-        // PRIORITY 1: Handle custom file confirmation modal
-        if state.show_custom_file_confirm {
-            match key_code {
-                KeyCode::Char('y') | KeyCode::Char('Y') | KeyCode::Enter => {
-                    // User confirmed - proceed with sync
-                    let full_path = state.custom_file_confirm_path.clone().unwrap();
-                    let relative_path = state.custom_file_confirm_relative.clone().unwrap();
-
-                    // Close confirmation modal
-                    state.show_custom_file_confirm = false;
-                    state.custom_file_confirm_path = None;
-                    state.custom_file_confirm_relative = None;
-
-                    // Release borrow
-                    let _ = state;
-
-                    // Sync the file
-                    if let Err(e) = self.add_custom_file_to_sync(&full_path, &relative_path) {
-                        let state = &mut self.ui_state.dotfile_selection;
-                        state.status_message = Some(format!("Error: Failed to sync file: {}", e));
-                        return Ok(());
-                    }
-
-                    // Re-scan to refresh the list
-                    self.scan_dotfiles()?;
-
-                    // Find and select the file in the list
-                    let state = &mut self.ui_state.dotfile_selection;
-                    if let Some(index) = state
-                        .dotfiles
-                        .iter()
-                        .position(|d| d.relative_path.to_string_lossy() == relative_path)
-                    {
-                        state.dotfile_list_state.select(Some(index));
-                        state.selected_for_sync.insert(index);
-                    }
-                }
-                KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
-                    // User cancelled - close confirmation modal
-                    state.show_custom_file_confirm = false;
-                    state.custom_file_confirm_path = None;
-                    state.custom_file_confirm_relative = None;
-                }
-                _ => {}
-            }
-            return Ok(());
-        }
-
-        // PRIORITY 2: Handle custom file input mode
-        if state.adding_custom_file {
-            if state.file_browser_mode {
-                return self.handle_file_browser_input(key_code);
-            } else {
-                // Only allow Esc to exit, everything else goes to input handler
-                if key_code == KeyCode::Esc && !state.custom_file_focused {
-                    state.adding_custom_file = false;
-                    state.custom_file_input.clear();
-                    return Ok(());
-                }
-                return self.handle_custom_file_input(key_code);
-            }
-        }
-
-        // PRIORITY 3: Normal dotfile selection input handling
-        use crate::ui::DotfileSelectionFocus;
-        match key_code {
-            KeyCode::Char('q') | KeyCode::Esc => {
-                // Exit to main menu (changes are already applied immediately)
-                self.ui_state.current_screen = Screen::MainMenu;
-            }
-            KeyCode::Tab => {
-                // Switch focus between FilesList and Preview
-                state.focus = match state.focus {
-                    DotfileSelectionFocus::FilesList => DotfileSelectionFocus::Preview,
-                    DotfileSelectionFocus::Preview => DotfileSelectionFocus::FilesList,
-                    _ => DotfileSelectionFocus::FilesList,
-                };
-            }
-            KeyCode::Up => {
-                // Only navigate files list if it's focused
-                if state.focus == DotfileSelectionFocus::FilesList {
-                    state.dotfile_list_state.select_previous();
-                    // Reset preview scroll when changing selection
-                    state.preview_scroll = 0;
-                } else if state.focus == DotfileSelectionFocus::Preview {
-                    // Scroll preview up
-                    if state.preview_scroll > 0 {
-                        state.preview_scroll = state.preview_scroll.saturating_sub(1);
-                    }
-                }
-            }
-            KeyCode::Down => {
-                // Only navigate files list if it's focused
-                if state.focus == DotfileSelectionFocus::FilesList {
-                    state.dotfile_list_state.select_next();
-                    // Reset preview scroll when changing selection
-                    state.preview_scroll = 0;
-                } else if state.focus == DotfileSelectionFocus::Preview {
-                    // Scroll preview down
-                    state.preview_scroll = state.preview_scroll.saturating_add(1);
-                }
-            }
-            KeyCode::Enter if state.status_message.is_some() => {
-                // Clear status message after sync summary
-                state.status_message = None;
-            }
-            KeyCode::Enter => {
-                // Toggle selection and immediately sync
-                if let Some(selected_index) = state.dotfile_list_state.selected() {
-                    let was_selected = state.selected_for_sync.contains(&selected_index);
-                    // Release state borrow before calling sync function
-                    let dotfile_index = selected_index;
-                    let _ = state;
-
-                    if was_selected {
-                        // Unselect - restore file
-                        self.remove_file_from_sync(dotfile_index)?;
-                    } else {
-                        // Select - add file
-                        self.add_file_to_sync(dotfile_index)?;
-                    }
-                }
-            }
-            KeyCode::PageUp => {
-                // Jump up by 10 items in list (only if files list is focused)
-                if state.focus == DotfileSelectionFocus::FilesList {
-                    if let Some(current) = state.dotfile_list_state.selected() {
-                        let new_index = current.saturating_sub(10);
-                        state.dotfile_list_state.select(Some(new_index));
-                        state.preview_scroll = 0;
-                    }
-                } else if state.focus == DotfileSelectionFocus::Preview {
-                    // Scroll preview up by more
-                    if state.preview_scroll > 0 {
-                        state.preview_scroll = state.preview_scroll.saturating_sub(20);
-                    }
-                }
-            }
-            KeyCode::PageDown => {
-                // Jump down by 10 items in list (only if files list is focused)
-                if state.focus == DotfileSelectionFocus::FilesList {
-                    if let Some(current) = state.dotfile_list_state.selected() {
-                        let new_index = (current + 10).min(state.dotfiles.len().saturating_sub(1));
-                        state.dotfile_list_state.select(Some(new_index));
-                        state.preview_scroll = 0;
-                    } else if !state.dotfiles.is_empty() {
-                        state
-                            .dotfile_list_state
-                            .select(Some(10.min(state.dotfiles.len() - 1)));
-                        state.preview_scroll = 0;
-                    }
-                } else if state.focus == DotfileSelectionFocus::Preview {
-                    // Scroll preview down by more
-                    state.preview_scroll = state.preview_scroll.saturating_add(20);
-                }
-            }
-            KeyCode::Char('u') => {
-                // Scroll preview up (only if preview is focused)
-                if state.focus == DotfileSelectionFocus::Preview && state.preview_scroll > 0 {
-                    state.preview_scroll = state.preview_scroll.saturating_sub(10);
-                }
-            }
-            KeyCode::Char('d') => {
-                // Scroll preview down (only if preview is focused)
-                if state.focus == DotfileSelectionFocus::Preview {
-                    state.preview_scroll = state.preview_scroll.saturating_add(10);
-                }
-            }
-            KeyCode::Home => {
-                // Go to first item (only if files list is focused)
-                if state.focus == DotfileSelectionFocus::FilesList {
-                    state.dotfile_list_state.select_first();
-                    state.preview_scroll = 0;
-                } else if state.focus == DotfileSelectionFocus::Preview {
-                    // Scroll to top of preview
-                    state.preview_scroll = 0;
-                }
-            }
-            KeyCode::End => {
-                // Go to last item (only if files list is focused)
-                if state.focus == DotfileSelectionFocus::FilesList {
-                    state.dotfile_list_state.select_last();
-                    state.preview_scroll = 0;
-                }
-                // Note: No "scroll to bottom" for preview as we don't know the total length
-            }
-            KeyCode::Char('a') => {
-                // Add custom file - start with file browser
-                state.adding_custom_file = true;
-                state.file_browser_mode = true;
-                state.file_browser_path = crate::utils::get_home_dir();
-                state.file_browser_selected = 0;
-                // Initialize path input with current directory
-                state.file_browser_path_input =
-                    state.file_browser_path.to_string_lossy().to_string();
-                state.file_browser_path_cursor = state.file_browser_path_input.chars().count();
-                state.file_browser_path_focused = false;
-                state.file_browser_preview_scroll = 0;
-                state.focus = DotfileSelectionFocus::FileBrowserList; // Start with list focused
-                self.refresh_file_browser()?;
-            }
-            KeyCode::Char('b') | KeyCode::Char('B') => {
-                // Toggle backup enabled
-                state.backup_enabled = !state.backup_enabled;
-                // Save to config
-                self.config.backup_enabled = state.backup_enabled;
-                self.config.save(&self.config_path)?;
-            }
-            _ => {}
-        }
-
-        Ok(())
-    }
 
     /// Handle input for adding custom files
     fn handle_custom_file_input(&mut self, key_code: KeyCode) -> Result<()> {

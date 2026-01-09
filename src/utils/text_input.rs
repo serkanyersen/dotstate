@@ -74,6 +74,23 @@ pub fn handle_delete(text: &mut String, cursor_pos: &mut usize) {
         *text = before_cursor.chain(after_cursor).collect();
     }
 }
+/// Handle generic input for text fields (movement, editing)
+///
+/// # Arguments
+/// * `text` - Mutable reference to the text string
+/// * `cursor_pos` - Mutable reference to cursor position
+/// * `key_code` - Key code from event
+pub fn handle_input(text: &mut String, cursor_pos: &mut usize, key_code: KeyCode) {
+    match key_code {
+        KeyCode::Char(c) => handle_char_insertion(text, cursor_pos, c),
+        KeyCode::Backspace => handle_backspace(text, cursor_pos),
+        KeyCode::Delete => handle_delete(text, cursor_pos),
+        KeyCode::Left | KeyCode::Right | KeyCode::Home | KeyCode::End => {
+            handle_cursor_movement(text, cursor_pos, key_code)
+        }
+        _ => {}
+    }
+}
 
 #[cfg(test)]
 mod tests {
