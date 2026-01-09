@@ -7,6 +7,7 @@ pub mod profile_manifest;
 pub mod profile_validation;
 pub mod style;
 pub mod symlink_manager;
+pub mod sync_validation;
 pub mod text;
 pub mod text_input;
 

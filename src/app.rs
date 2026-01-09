@@ -4356,14 +4356,24 @@ impl App {
                         state.custom_file_cursor = 0;
                         state.focus = DotfileSelectionFocus::FilesList;
 
-                        // Check if it's a git repo (deny if directory is a git repo)
-                        if full_path_clone.is_dir() && crate::utils::is_git_repo(&full_path_clone) {
-                            // Show error message
+                        // Comprehensive validation before showing confirmation
+                        let previously_synced: std::collections::HashSet<String> = self
+                            .get_active_profile_info()
+                            .ok()
+                            .flatten()
+                            .map(|p| p.synced_files.iter().cloned().collect())
+                            .unwrap_or_default();
+
+                        let validation = crate::utils::sync_validation::validate_before_sync(
+                            &relative_path_clone,
+                            &full_path_clone,
+                            &previously_synced,
+                            &self.config.repo_path,
+                        );
+
+                        if !validation.is_safe {
                             let state = &mut self.ui_state.dotfile_selection;
-                            state.status_message = Some(format!(
-                                "Error: Cannot sync a git repository. Path contains a .git directory: {}",
-                                full_path_clone.display()
-                            ));
+                            state.status_message = validation.error_message.clone();
                             return Ok(());
                         }
 
@@ -4455,7 +4465,7 @@ impl App {
 
     /// Add a single file to sync (copy to repo, create symlink, update manifest)
     fn add_file_to_sync(&mut self, file_index: usize) -> Result<()> {
-        use crate::utils::SymlinkManager;
+        use crate::utils::{sync_validation, SymlinkManager};
 
         // Get profile info before borrowing state
         let profile_name = self.config.active_profile.clone();
@@ -4487,6 +4497,43 @@ impl App {
             return Ok(());
         }
 
+        // VALIDATE BEFORE ANY OPERATIONS - prevent data loss
+        let validation = sync_validation::validate_before_sync(
+            &relative_str,
+            &dotfile.original_path,
+            &previously_synced,
+            &repo_path,
+        );
+        if !validation.is_safe {
+            let error_msg = validation
+                .error_message
+                .unwrap_or_else(|| "Cannot add this file or directory".to_string());
+            state.status_message = Some(format!("Error: {}", error_msg));
+            warn!("Validation failed for {}: {}", relative_str, error_msg);
+            return Ok(());
+        }
+
+        // Validate symlink can be created before deleting original file
+        let home_dir = crate::utils::get_home_dir();
+        let target_path = home_dir.join(&dotfile.relative_path);
+        let profile_path = repo_path.join(&profile_name);
+        let repo_file_path = profile_path.join(&dotfile.relative_path);
+
+        let symlink_validation =
+            sync_validation::validate_symlink_creation(&repo_file_path, &target_path)
+                .context("Failed to validate symlink creation")?;
+        if !symlink_validation.is_safe {
+            let error_msg = symlink_validation
+                .error_message
+                .unwrap_or_else(|| "Cannot create symlink".to_string());
+            state.status_message = Some(format!("Error: {}", error_msg));
+            warn!(
+                "Symlink validation failed for {}: {}",
+                relative_str, error_msg
+            );
+            return Ok(());
+        }
+
         info!(
             "Adding file to sync: {} (profile: {})",
             relative_str, profile_name
@@ -4494,8 +4541,6 @@ impl App {
 
         // Copy file to repo
         let file_manager = crate::file_manager::FileManager::new()?;
-        let profile_path = repo_path.join(&profile_name);
-        let repo_file_path = profile_path.join(&dotfile.relative_path);
 
         // Create parent directories
         if let Some(parent) = repo_file_path.parent() {
@@ -4509,7 +4554,8 @@ impl App {
             dotfile.original_path.clone()
         };
 
-        // Copy to repo
+        // Copy to repo FIRST (before deleting original)
+        // This ensures we have a backup before any destructive operations
         file_manager
             .copy_to_repo(&source_path, &repo_file_path)
             .context("Failed to copy file to repo")?;
@@ -4547,7 +4593,7 @@ impl App {
 
     /// Add a custom file directly to sync (bypasses scan_dotfiles since custom files aren't in default list)
     fn add_custom_file_to_sync(&mut self, full_path: &Path, relative_path: &str) -> Result<()> {
-        use crate::utils::SymlinkManager;
+        use crate::utils::{sync_validation, SymlinkManager};
 
         // Get profile info before borrowing state
         let profile_name = self.config.active_profile.clone();
@@ -4565,6 +4611,49 @@ impl App {
             return Ok(());
         }
 
+        // VALIDATE BEFORE ANY OPERATIONS - prevent data loss
+        let validation = sync_validation::validate_before_sync(
+            relative_path,
+            full_path,
+            &previously_synced,
+            &repo_path,
+        );
+        if !validation.is_safe {
+            let error_msg = validation
+                .error_message
+                .unwrap_or_else(|| "Cannot add this file or directory".to_string());
+            let state = &mut self.ui_state.dotfile_selection;
+            state.status_message = Some(format!("Error: {}", error_msg));
+            warn!(
+                "Validation failed for custom file {}: {}",
+                relative_path, error_msg
+            );
+            return Ok(());
+        }
+
+        // Validate symlink can be created before deleting original file
+        let home_dir = crate::utils::get_home_dir();
+        let target_path = home_dir.join(relative_path);
+        let profile_path = repo_path.join(&profile_name);
+        let relative_path_buf = PathBuf::from(relative_path);
+        let repo_file_path = profile_path.join(&relative_path_buf);
+
+        let symlink_validation =
+            sync_validation::validate_symlink_creation(&repo_file_path, &target_path)
+                .context("Failed to validate symlink creation")?;
+        if !symlink_validation.is_safe {
+            let error_msg = symlink_validation
+                .error_message
+                .unwrap_or_else(|| "Cannot create symlink".to_string());
+            let state = &mut self.ui_state.dotfile_selection;
+            state.status_message = Some(format!("Error: {}", error_msg));
+            warn!(
+                "Symlink validation failed for custom file {}: {}",
+                relative_path, error_msg
+            );
+            return Ok(());
+        }
+
         info!(
             "Adding custom file to sync: {} -> {} (profile: {})",
             full_path.display(),
@@ -4574,9 +4663,6 @@ impl App {
 
         // Copy file to repo
         let file_manager = crate::file_manager::FileManager::new()?;
-        let profile_path = repo_path.join(&profile_name);
-        let relative_path_buf = PathBuf::from(relative_path);
-        let repo_file_path = profile_path.join(&relative_path_buf);
 
         // Create parent directories
         if let Some(parent) = repo_file_path.parent() {
@@ -4590,7 +4676,8 @@ impl App {
             full_path.to_path_buf()
         };
 
-        // Copy to repo
+        // Copy to repo FIRST (before deleting original)
+        // This ensures we have a backup before any destructive operations
         file_manager
             .copy_to_repo(&source_path, &repo_file_path)
             .context("Failed to copy file to repo")?;

@@ -70,14 +70,6 @@ pub const DEFAULT_DOTFILES: &[DotfileCandidate] = &[
         description: "Neovim configuration directory.",
     },
     DotfileCandidate {
-        path: ".config/nvim/init.vim",
-        description: "Neovim entry configuration using Vimscript.",
-    },
-    DotfileCandidate {
-        path: ".config/nvim/init.lua",
-        description: "Neovim entry configuration using Lua.",
-    },
-    DotfileCandidate {
         path: ".emacs.d",
         description: "Emacs configuration directory.",
     },

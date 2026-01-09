@@ -6,6 +6,9 @@ pub fn get_home_dir() -> PathBuf {
 }
 
 /// Check if a path is a git repository
+///
+/// This is a simple check for the immediate directory.
+/// For more robust detection (including nested repos), use `sync_validation::contains_git_repo`.
 pub fn is_git_repo(path: &Path) -> bool {
     if path.is_dir() {
         path.join(".git").exists()
