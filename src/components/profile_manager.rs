@@ -82,6 +82,12 @@ impl Default for ProfileManagerState {
 /// Profile manager component
 pub struct ProfileManagerComponent;
 
+impl Default for ProfileManagerComponent {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ProfileManagerComponent {
     pub fn new() -> Self {
         Self

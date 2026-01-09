@@ -32,6 +32,12 @@ pub struct GitHubAuthComponent {
     local_repo_path_area: Option<Rect>,
 }
 
+impl Default for GitHubAuthComponent {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl GitHubAuthComponent {
     pub fn new() -> Self {
         let mut mode_list_state = ListState::default();

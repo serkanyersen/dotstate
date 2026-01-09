@@ -438,7 +438,10 @@ impl Cli {
             .map(|p| p.synced_files.clone())
             .unwrap_or_default();
         if !current_files.contains(&relative_str) {
-            debug!("CLI: Adding {} to manifest for profile {}", relative_str, profile_name);
+            debug!(
+                "CLI: Adding {} to manifest for profile {}",
+                relative_str, profile_name
+            );
             let mut new_files = current_files;
             new_files.push(relative_str.clone());
             manifest.update_synced_files(&profile_name, new_files)?;

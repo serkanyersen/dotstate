@@ -88,11 +88,17 @@ impl FileManager {
         }
 
         if depth >= MAX_SYMLINK_DEPTH {
-            warn!("Symlink depth exceeded (max {}) for: {:?}", MAX_SYMLINK_DEPTH, path);
+            warn!(
+                "Symlink depth exceeded (max {}) for: {:?}",
+                MAX_SYMLINK_DEPTH, path
+            );
             return Err(anyhow::anyhow!("Symlink depth exceeded for: {:?}", path));
         }
 
-        debug!("Resolved symlink: {:?} -> {:?} (depth: {})", path, current, depth);
+        debug!(
+            "Resolved symlink: {:?} -> {:?} (depth: {})",
+            path, current, depth
+        );
         Ok(current)
     }
 
@@ -140,11 +146,20 @@ impl FileManager {
 
         if source_metadata.is_file() {
             let file_size = source_metadata.len();
-            info!("Copying file ({} bytes): {:?} -> {:?}", file_size, source, dest);
+            info!(
+                "Copying file ({} bytes): {:?} -> {:?}",
+                file_size, source, dest
+            );
             let bytes_copied = fs::copy(source, dest)
                 .with_context(|| format!("Failed to copy file from {:?} to {:?}", source, dest))?;
-            info!("Successfully copied file ({} bytes): {:?}", bytes_copied, dest);
-            debug!("File copy complete: source={:?}, dest={:?}, size={}", source, dest, bytes_copied);
+            info!(
+                "Successfully copied file ({} bytes): {:?}",
+                bytes_copied, dest
+            );
+            debug!(
+                "File copy complete: source={:?}, dest={:?}, size={}",
+                source, dest, bytes_copied
+            );
         } else if source_metadata.is_dir() {
             info!("Copying directory recursively: {:?} -> {:?}", source, dest);
             copy_dir_all(source, dest).with_context(|| {
@@ -193,7 +208,10 @@ pub fn copy_dir_all(src: &Path, dst: &Path) -> Result<()> {
         } else {
             if let Ok(metadata) = path.metadata() {
                 let file_size = metadata.len();
-                debug!("Copying file ({} bytes): {:?} -> {:?}", file_size, path, dst_path);
+                debug!(
+                    "Copying file ({} bytes): {:?} -> {:?}",
+                    file_size, path, dst_path
+                );
             } else {
                 debug!("Copying file: {:?} -> {:?}", path, dst_path);
             }
@@ -203,7 +221,10 @@ pub fn copy_dir_all(src: &Path, dst: &Path) -> Result<()> {
         }
     }
 
-    debug!("Directory copy complete: {:?} -> {:?} ({} files, {} dirs)", src, dst, files_copied, dirs_copied);
+    debug!(
+        "Directory copy complete: {:?} -> {:?} ({} files, {} dirs)",
+        src, dst, files_copied, dirs_copied
+    );
 
     Ok(())
 }

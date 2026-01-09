@@ -537,7 +537,10 @@ impl SymlinkManager {
 
         // Check if the symlink still exists
         if !tracked.target.exists() && tracked.target.symlink_metadata().is_err() {
-            debug!("Symlink does not exist, skipping removal: {:?}", tracked.target);
+            debug!(
+                "Symlink does not exist, skipping removal: {:?}",
+                tracked.target
+            );
             return Ok(SymlinkOperation {
                 source: tracked.source.clone(),
                 target: tracked.target.clone(),
@@ -549,7 +552,10 @@ impl SymlinkManager {
 
         // Verify it's still our symlink
         if !self.is_our_symlink(&tracked.target)? {
-            warn!("Target is not our symlink, skipping removal: {:?}", tracked.target);
+            warn!(
+                "Target is not our symlink, skipping removal: {:?}",
+                tracked.target
+            );
             return Ok(SymlinkOperation {
                 source: tracked.source.clone(),
                 target: tracked.target.clone(),
@@ -567,7 +573,10 @@ impl SymlinkManager {
         // Restore from repo source first (source of truth)
         // Only fall back to backup if repo file doesn't exist
         let restored = if tracked.source.exists() {
-            info!("Restoring from repo source: {:?} -> {:?}", tracked.source, tracked.target);
+            info!(
+                "Restoring from repo source: {:?} -> {:?}",
+                tracked.source, tracked.target
+            );
             // Create parent directories if needed
             if let Some(parent) = tracked.target.parent() {
                 if !parent.exists() {
@@ -584,13 +593,19 @@ impl SymlinkManager {
                 .context("Failed to read source metadata")?;
 
             if metadata.is_dir() {
-                debug!("Restoring directory from repo: {:?} -> {:?}", tracked.source, tracked.target);
+                debug!(
+                    "Restoring directory from repo: {:?} -> {:?}",
+                    tracked.source, tracked.target
+                );
                 crate::file_manager::copy_dir_all(&tracked.source, &tracked.target)
                     .context("Failed to copy directory from repo")?;
                 info!("Restored directory from repo: {:?}", tracked.target);
             } else {
                 let file_size = metadata.len();
-                debug!("Restoring file from repo ({} bytes): {:?} -> {:?}", file_size, tracked.source, tracked.target);
+                debug!(
+                    "Restoring file from repo ({} bytes): {:?} -> {:?}",
+                    file_size, tracked.source, tracked.target
+                );
                 fs::copy(&tracked.source, &tracked.target)
                     .context("Failed to copy file from repo")?;
                 info!("Restored file from repo: {:?}", tracked.target);
@@ -605,7 +620,10 @@ impl SymlinkManager {
                         tracked.source, backup
                     );
                     // Restore from backup (last resort)
-                    debug!("Restoring from backup: {:?} -> {:?}", backup, tracked.target);
+                    debug!(
+                        "Restoring from backup: {:?} -> {:?}",
+                        backup, tracked.target
+                    );
                     fs::rename(backup, &tracked.target).context("Failed to restore backup")?;
                     info!("Restored from backup: {:?}", tracked.target);
                     true

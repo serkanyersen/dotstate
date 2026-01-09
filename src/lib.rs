@@ -21,6 +21,6 @@ pub mod widgets;
 
 // Re-exports for convenience
 pub use config::Config;
+pub use file_manager::FileManager;
 pub use utils::ProfileManifest;
 pub use utils::SymlinkManager;
-pub use file_manager::FileManager;

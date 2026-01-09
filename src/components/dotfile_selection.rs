@@ -25,6 +25,12 @@ use syntect::parsing::SyntaxSet;
 /// This component handles rendering with Clear widget and can be extended with mouse support
 pub struct DotfileSelectionComponent;
 
+impl Default for DotfileSelectionComponent {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DotfileSelectionComponent {
     pub fn new() -> Self {
         Self

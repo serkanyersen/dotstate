@@ -441,6 +441,12 @@ pub struct UiState {
     pub package_manager: PackageManagerState,
 }
 
+impl Default for UiState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl UiState {
     pub fn new() -> Self {
         Self {

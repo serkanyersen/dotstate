@@ -19,6 +19,12 @@ use syntect::parsing::SyntaxSet;
 /// Push changes component - shows list of changes and allows pushing
 pub struct PushChangesComponent;
 
+impl Default for PushChangesComponent {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PushChangesComponent {
     pub fn new() -> Self {
         Self

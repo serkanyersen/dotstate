@@ -107,6 +107,28 @@ fn default_backup_enabled() -> bool {
     true
 }
 
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            repo_mode: RepoMode::default(),
+            github: None,
+            active_profile: String::new(),
+            backup_enabled: true,
+            profile_activated: true,
+            repo_path: dirs::home_dir()
+                .unwrap_or_else(|| PathBuf::from("."))
+                .join(".config")
+                .join("dotstate")
+                .join("storage"),
+            repo_name: default_repo_name(),
+            default_branch: "main".to_string(),
+            custom_files: Vec::new(),
+            updates: UpdateConfig::default(),
+            theme: default_theme(),
+        }
+    }
+}
+
 impl Config {
     /// Load configuration from file or create default
     /// If config doesn't exist, attempts to discover profiles from the repo manifest
@@ -192,27 +214,6 @@ impl Config {
         }
 
         Ok(())
-    }
-
-    /// Get default configuration
-    pub fn default() -> Self {
-        Self {
-            repo_mode: RepoMode::default(),
-            github: None,
-            active_profile: String::new(),
-            backup_enabled: true,
-            profile_activated: true,
-            repo_path: dirs::home_dir()
-                .unwrap_or_else(|| PathBuf::from("."))
-                .join(".config")
-                .join("dotstate")
-                .join("storage"),
-            repo_name: default_repo_name(),
-            default_branch: "main".to_string(),
-            custom_files: Vec::new(),
-            updates: UpdateConfig::default(),
-            theme: default_theme(),
-        }
     }
 
     /// Check if the repository is configured (either GitHub or Local mode)

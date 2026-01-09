@@ -17,6 +17,12 @@ use ratatui::widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Wrap};
 /// Package manager component
 pub struct PackageManagerComponent;
 
+impl Default for PackageManagerComponent {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PackageManagerComponent {
     pub fn new() -> Self {
         Self

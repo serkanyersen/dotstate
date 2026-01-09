@@ -4,6 +4,7 @@
 //! light and dark themes.
 
 use ratatui::style::{Color, Modifier, Style};
+use std::str::FromStr;
 use std::sync::OnceLock;
 
 /// List selection indicator shown next to the selected item
@@ -32,13 +33,15 @@ pub enum ThemeType {
     NoColor,
 }
 
-impl ThemeType {
-    pub fn from_str(s: &str) -> Self {
-        match s.to_lowercase().as_str() {
+impl FromStr for ThemeType {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(match s.to_lowercase().as_str() {
             "light" => ThemeType::Light,
             "nocolor" | "no-color" | "no_color" => ThemeType::NoColor,
             _ => ThemeType::Dark,
-        }
+        })
     }
 }
 
@@ -282,11 +285,11 @@ mod tests {
 
     #[test]
     fn test_theme_type_from_str() {
-        assert_eq!(ThemeType::from_str("dark"), ThemeType::Dark);
-        assert_eq!(ThemeType::from_str("light"), ThemeType::Light);
-        assert_eq!(ThemeType::from_str("nocolor"), ThemeType::NoColor);
-        assert_eq!(ThemeType::from_str("no-color"), ThemeType::NoColor);
-        assert_eq!(ThemeType::from_str("no_color"), ThemeType::NoColor);
+        assert_eq!("dark".parse::<ThemeType>().unwrap(), ThemeType::Dark);
+        assert_eq!("light".parse::<ThemeType>().unwrap(), ThemeType::Light);
+        assert_eq!("nocolor".parse::<ThemeType>().unwrap(), ThemeType::NoColor);
+        assert_eq!("no-color".parse::<ThemeType>().unwrap(), ThemeType::NoColor);
+        assert_eq!("no_color".parse::<ThemeType>().unwrap(), ThemeType::NoColor);
     }
 
     #[test]

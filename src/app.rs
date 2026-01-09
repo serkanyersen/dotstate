@@ -4604,12 +4604,18 @@ impl App {
             .map(|p| p.synced_files.clone())
             .unwrap_or_default();
         if !current_files.contains(&relative_str) {
-            debug!("TUI: Adding {} to manifest for profile {}", relative_str, profile_name);
+            debug!(
+                "TUI: Adding {} to manifest for profile {}",
+                relative_str, profile_name
+            );
             let mut new_files = current_files;
             new_files.push(relative_str);
             manifest.update_synced_files(&profile_name, new_files)?;
             manifest.save(&repo_path)?;
-            info!("TUI: Updated manifest with new file: {}", relative_str_clone);
+            info!(
+                "TUI: Updated manifest with new file: {}",
+                relative_str_clone
+            );
         } else {
             debug!("TUI: File already in manifest, skipping update");
         }
@@ -4755,7 +4761,10 @@ impl App {
             .map(|p| p.synced_files.clone())
             .unwrap_or_default();
         if !current_files.contains(&relative_path.to_string()) {
-            debug!("TUI: Adding custom file {} to manifest for profile {}", relative_path, profile_name);
+            debug!(
+                "TUI: Adding custom file {} to manifest for profile {}",
+                relative_path, profile_name
+            );
             let mut new_files = current_files;
             new_files.push(relative_path.to_string());
             manifest.update_synced_files(&profile_name, new_files)?;
