@@ -1,23 +1,8 @@
 use anyhow::Result;
-
-mod app;
-mod cli;
-mod components;
-mod config;
-mod dotfile_candidates;
-mod file_manager;
-mod git;
-mod github;
-mod styles;
-mod tui;
-mod ui;
-mod utils;
-mod version_check;
-mod widgets;
-
-use app::App;
 use clap::Parser;
-use cli::Cli;
+
+// Import from library instead of declaring modules
+use dotstate::{app::App, cli::Cli};
 
 /// Set up panic hook to restore terminal state on panic
 fn setup_panic_hook() {
@@ -98,14 +83,14 @@ fn main() -> Result<()> {
     info!("Log directory: {:?}", log_dir);
 
     // Load config to get theme preference
-    let config_path = crate::utils::get_config_path();
-    let config = config::Config::load_or_create(&config_path)?;
+    let config_path = dotstate::utils::get_config_path();
+    let config = dotstate::Config::load_or_create(&config_path)?;
 
     // Determine whether colors should be disabled (NO_COLOR env var, --no-colors flag, or theme=nocolor)
     let env_no_color = std::env::var_os("NO_COLOR").is_some();
-    let config_theme_type = styles::ThemeType::from_str(&config.theme);
+    let config_theme_type = dotstate::styles::ThemeType::from_str(&config.theme);
     let no_colors =
-        cli.no_colors || env_no_color || config_theme_type == styles::ThemeType::NoColor;
+        cli.no_colors || env_no_color || config_theme_type == dotstate::styles::ThemeType::NoColor;
 
     // If any source disables colors, set NO_COLOR so crossterm/ratatui respects it.
     if no_colors {
@@ -115,11 +100,11 @@ fn main() -> Result<()> {
 
     // Initialize theme based on config, but force NoColor when requested.
     let theme_type = if no_colors {
-        styles::ThemeType::NoColor
+        dotstate::styles::ThemeType::NoColor
     } else {
         config_theme_type
     };
-    styles::init_theme(theme_type);
+    dotstate::styles::init_theme(theme_type);
     info!("Theme initialized: {:?}", theme_type);
 
     let mut app = App::new()?;

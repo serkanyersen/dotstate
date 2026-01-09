@@ -12,6 +12,10 @@ keywords = ["dotfiles", "tui", "sync", "productivity", "cli"]
 categories = ["command-line-utilities", "development-tools"]
 readme = "README.md"
 
+[lib]
+name = "dotstate"
+path = "src/lib.rs"
+
 [dependencies]
 # TUI
 ratatui = "0.30"

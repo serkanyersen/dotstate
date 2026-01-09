@@ -2,4 +2,4 @@
 
 pub mod logo;
 
-pub use logo::DotstateLogo;
+pub use logo::{DotstateLogo, Size};
