@@ -351,6 +351,8 @@ pub struct MainMenuComponent {
     update_info: Option<UpdateInfo>,
     /// Selected index (can be > menu items count if update item is selected)
     selected_index: usize,
+    /// Whether initial selection has been checked based on config
+    initial_selection_set: bool,
 }
 
 impl MainMenuComponent {
@@ -371,6 +373,7 @@ impl MainMenuComponent {
             changed_files: Vec::new(),
             update_info: None,
             selected_index: default_index,
+            initial_selection_set: false,
         }
     }
 
@@ -437,6 +440,19 @@ impl MainMenuComponent {
 
     pub fn update_config(&mut self, config: Config) {
         self.config = Some(config);
+
+        // One-time initialization of default selection based on config
+        if !self.initial_selection_set {
+            if self.is_setup() {
+                // Select ScanDotfiles by default if setup is complete
+                let first_item = MenuItem::ScanDotfiles;
+                self.selected_item = first_item;
+                let index = first_item.to_index();
+                self.selected_index = index;
+                self.list_state.select(Some(index));
+            }
+            self.initial_selection_set = true;
+        }
     }
 
     pub fn update_changed_files(&mut self, changed_files: Vec<String>) {
