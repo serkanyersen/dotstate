@@ -759,29 +759,61 @@ impl App {
         // Let components handle events first (for mouse support)
         match self.ui_state.current_screen {
             Screen::MainMenu => {
-                // Check if Enter was pressed before moving event
-                let is_enter = matches!(event, Event::Key(key) if key.kind == KeyEventKind::Press && key.code == KeyCode::Enter);
-
-                let action = self.main_menu_component.handle_event(event)?;
-                match action {
-                    ComponentAction::Update => {
-                        // Update selected index from component
-                        self.ui_state.selected_index = self.main_menu_component.selected_index();
-                        // Handle Enter key for menu selection
-                        if is_enter {
-                            self.handle_menu_selection()?;
+                // Handle keyboard events with keymap
+                if let Event::Key(key) = &event {
+                    if key.kind == KeyEventKind::Press {
+                        if let Some(action) = self.get_action(key.code, key.modifiers) {
+                            use crate::keymap::Action;
+                            match action {
+                                Action::MoveUp => {
+                                    self.main_menu_component.move_up();
+                                    self.ui_state.selected_index = self.main_menu_component.selected_index();
+                                    return Ok(());
+                                }
+                                Action::MoveDown => {
+                                    self.main_menu_component.move_down();
+                                    self.ui_state.selected_index = self.main_menu_component.selected_index();
+                                    return Ok(());
+                                }
+                                Action::Confirm => {
+                                    // Check for update item selection
+                                    if self.main_menu_component.is_update_item_selected() {
+                                        self.show_update_info_popup();
+                                    } else {
+                                        self.handle_menu_selection()?;
+                                    }
+                                    return Ok(());
+                                }
+                                Action::Quit | Action::Cancel => {
+                                    self.should_quit = true;
+                                    return Ok(());
+                                }
+                                _ => {}
+                            }
                         }
                     }
-                    ComponentAction::Quit => {
-                        self.should_quit = true;
+                }
+
+                // Pass mouse events to component
+                if matches!(event, Event::Mouse(_)) {
+                    let comp_action = self.main_menu_component.handle_event(event)?;
+                    match comp_action {
+                        ComponentAction::Update => {
+                            self.ui_state.selected_index = self.main_menu_component.selected_index();
+                            // Mouse click also triggers selection
+                            if self.main_menu_component.is_update_item_selected() {
+                                self.show_update_info_popup();
+                            } else {
+                                self.handle_menu_selection()?;
+                            }
+                        }
+                        ComponentAction::Custom(ref action_name)
+                            if action_name == "show_update_info" =>
+                        {
+                            self.show_update_info_popup();
+                        }
+                        _ => {}
                     }
-                    ComponentAction::Custom(ref action_name)
-                        if action_name == "show_update_info" =>
-                    {
-                        // Show update info popup
-                        self.show_update_info_popup();
-                    }
-                    _ => {}
                 }
                 return Ok(());
             }
@@ -815,99 +847,94 @@ impl App {
                 return Ok(());
             }
             Screen::SyncWithRemote => {
-                // Handle push changes events
+                // Handle push changes events with keymap
                 if let Event::Key(key) = event {
                     if key.kind == KeyEventKind::Press {
-                        match key.code {
-                            KeyCode::Enter => {
-                                // Start pushing if not already pushing and we have changes
-                                if !self.ui_state.sync_with_remote.is_syncing
-                                    && !self.ui_state.sync_with_remote.changed_files.is_empty()
-                                {
-                                    self.start_sync()?;
+                        if let Some(action) = self.get_action(key.code, key.modifiers) {
+                            use crate::keymap::Action;
+                            match action {
+                                Action::Confirm => {
+                                    // Start pushing if not already pushing and we have changes
+                                    if !self.ui_state.sync_with_remote.is_syncing
+                                        && !self.ui_state.sync_with_remote.changed_files.is_empty()
+                                    {
+                                        self.start_sync()?;
+                                    }
                                 }
-                            }
-                            KeyCode::Char('q') | KeyCode::Esc => {
-                                // Close result popup or go back
-                                if self.ui_state.sync_with_remote.show_result_popup {
-                                    // After sync, go directly to main menu
-                                    self.ui_state.sync_with_remote.show_result_popup = false;
-                                    self.ui_state.sync_with_remote.sync_result = None;
-                                    self.ui_state.sync_with_remote.pulled_changes_count = None;
-                                    self.ui_state.current_screen = Screen::MainMenu;
-                                    // Reset sync state
-                                    self.ui_state.sync_with_remote =
-                                        crate::ui::SyncWithRemoteState::default();
-                                    // Re-check for changes after sync
-                                    self.check_changes_to_push();
-                                } else {
-                                    self.ui_state.current_screen = Screen::MainMenu;
-                                    // Reset sync state
-                                    self.ui_state.sync_with_remote =
-                                        crate::ui::SyncWithRemoteState::default();
+                                Action::Quit | Action::Cancel => {
+                                    // Close result popup or go back
+                                    if self.ui_state.sync_with_remote.show_result_popup {
+                                        self.ui_state.sync_with_remote.show_result_popup = false;
+                                        self.ui_state.sync_with_remote.sync_result = None;
+                                        self.ui_state.sync_with_remote.pulled_changes_count = None;
+                                        self.ui_state.current_screen = Screen::MainMenu;
+                                        self.ui_state.sync_with_remote =
+                                            crate::ui::SyncWithRemoteState::default();
+                                        self.check_changes_to_push();
+                                    } else {
+                                        self.ui_state.current_screen = Screen::MainMenu;
+                                        self.ui_state.sync_with_remote =
+                                            crate::ui::SyncWithRemoteState::default();
+                                    }
                                 }
-                            }
-                            KeyCode::Up => {
-                                if key.modifiers.contains(KeyModifiers::SHIFT) {
-                                    // Scroll preview up
+                                Action::MoveUp => {
+                                    self.ui_state.sync_with_remote.list_state.select_previous();
+                                    self.update_diff_preview();
+                                }
+                                Action::MoveDown => {
+                                    self.ui_state.sync_with_remote.list_state.select_next();
+                                    self.update_diff_preview();
+                                }
+                                Action::ScrollUp => {
                                     self.ui_state.sync_with_remote.preview_scroll = self
                                         .ui_state
                                         .sync_with_remote
                                         .preview_scroll
                                         .saturating_sub(1);
-                                } else {
-                                    self.ui_state.sync_with_remote.list_state.select_previous();
-                                    self.update_diff_preview();
                                 }
-                            }
-                            KeyCode::Down => {
-                                if key.modifiers.contains(KeyModifiers::SHIFT) {
-                                    // Scroll preview down
+                                Action::ScrollDown => {
                                     self.ui_state.sync_with_remote.preview_scroll += 1;
-                                } else {
-                                    self.ui_state.sync_with_remote.list_state.select_next();
-                                    self.update_diff_preview();
                                 }
-                            }
-                            KeyCode::PageUp => {
-                                if let Some(current) =
-                                    self.ui_state.sync_with_remote.list_state.selected()
-                                {
-                                    let new_index = current.saturating_sub(10);
-                                    self.ui_state
-                                        .sync_with_remote
-                                        .list_state
-                                        .select(Some(new_index));
-                                    self.update_diff_preview();
-                                }
-                            }
-                            KeyCode::PageDown => {
-                                if let Some(current) =
-                                    self.ui_state.sync_with_remote.list_state.selected()
-                                {
-                                    let new_index = (current + 10).min(
+                                Action::PageUp => {
+                                    if let Some(current) =
+                                        self.ui_state.sync_with_remote.list_state.selected()
+                                    {
+                                        let new_index = current.saturating_sub(10);
                                         self.ui_state
                                             .sync_with_remote
-                                            .changed_files
-                                            .len()
-                                            .saturating_sub(1),
-                                    );
-                                    self.ui_state
-                                        .sync_with_remote
-                                        .list_state
-                                        .select(Some(new_index));
+                                            .list_state
+                                            .select(Some(new_index));
+                                        self.update_diff_preview();
+                                    }
+                                }
+                                Action::PageDown => {
+                                    if let Some(current) =
+                                        self.ui_state.sync_with_remote.list_state.selected()
+                                    {
+                                        let new_index = (current + 10).min(
+                                            self.ui_state
+                                                .sync_with_remote
+                                                .changed_files
+                                                .len()
+                                                .saturating_sub(1),
+                                        );
+                                        self.ui_state
+                                            .sync_with_remote
+                                            .list_state
+                                            .select(Some(new_index));
+                                        self.update_diff_preview();
+                                    }
+                                }
+                                Action::GoToTop => {
+                                    self.ui_state.sync_with_remote.list_state.select_first();
                                     self.update_diff_preview();
                                 }
+                                Action::GoToEnd => {
+                                    self.ui_state.sync_with_remote.list_state.select_last();
+                                    self.update_diff_preview();
+                                }
+                                _ => {}
                             }
-                            KeyCode::Home => {
-                                self.ui_state.sync_with_remote.list_state.select_first();
-                                self.update_diff_preview();
-                            }
-                            KeyCode::End => {
-                                self.ui_state.sync_with_remote.list_state.select_last();
-                                self.update_diff_preview();
-                            }
-                            _ => {}
                         }
                     }
                 } else if let Event::Mouse(mouse) = event {

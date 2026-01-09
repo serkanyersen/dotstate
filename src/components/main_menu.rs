@@ -388,7 +388,7 @@ impl MainMenuComponent {
     }
 
     /// Check if the update menu item is currently selected
-    fn is_update_item_selected(&self) -> bool {
+    pub fn is_update_item_selected(&self) -> bool {
         self.update_info.is_some() && self.selected_index == MenuItem::all().len()
     }
 
@@ -399,6 +399,35 @@ impl MainMenuComponent {
             base + 1
         } else {
             base
+        }
+    }
+
+    /// Move selection up
+    pub fn move_up(&mut self) {
+        let menu_count = MenuItem::all().len();
+        if self.selected_index > 0 {
+            self.selected_index -= 1;
+            if self.selected_index < menu_count {
+                if let Some(item) = MenuItem::from_index(self.selected_index) {
+                    self.selected_item = item;
+                    self.list_state.select(Some(self.selected_index));
+                }
+            }
+        }
+    }
+
+    /// Move selection down
+    pub fn move_down(&mut self) {
+        let menu_count = MenuItem::all().len();
+        let max_index = self.total_items().saturating_sub(1);
+        if self.selected_index < max_index {
+            self.selected_index += 1;
+            if self.selected_index < menu_count {
+                if let Some(item) = MenuItem::from_index(self.selected_index) {
+                    self.selected_item = item;
+                    self.list_state.select(Some(self.selected_index));
+                }
+            }
         }
     }
 
