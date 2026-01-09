@@ -30,6 +30,8 @@ pub struct GitHubAuthComponent {
     mode_list_state: ListState,
     /// Clickable area for local repo path input
     local_repo_path_area: Option<Rect>,
+    /// Config for keymap lookup
+    config: Option<crate::config::Config>,
 }
 
 impl Default for GitHubAuthComponent {
@@ -52,7 +54,19 @@ impl GitHubAuthComponent {
             mode_selection_areas: Vec::new(),
             mode_list_state,
             local_repo_path_area: None,
+            config: None,
         }
+    }
+
+    pub fn update_config(&mut self, config: crate::config::Config) {
+        self.config = Some(config);
+    }
+
+    fn get_key(&self, action: crate::keymap::Action) -> String {
+        self.config
+            .as_ref()
+            .map(|c| c.keymap.get_key_display_for_action(action))
+            .unwrap_or_else(|| format!("{:?}", action))
     }
 
     pub fn get_auth_state(&self) -> &GitHubAuthState {
@@ -382,11 +396,14 @@ impl GitHubAuthComponent {
         frame.render_widget(explanation_para, main_layout[1]);
 
         // Footer
-        let _ = Footer::render(
-            frame,
-            footer_chunk,
-            "↑↓: Navigate | Enter: Select | Esc: Cancel",
-        )?;
+        let footer_text = format!(
+            "{}/{} : Navigate | {}: Select | {}: Cancel",
+            self.get_key(crate::keymap::Action::MoveUp),
+            self.get_key(crate::keymap::Action::MoveDown),
+            self.get_key(crate::keymap::Action::Confirm),
+            self.get_key(crate::keymap::Action::Quit)
+        );
+        let _ = Footer::render(frame, footer_chunk, &footer_text)?;
 
         Ok(())
     }
@@ -507,11 +524,15 @@ impl GitHubAuthComponent {
 
         // Footer
         let footer_text = if self.auth_state.repo_already_configured {
-            "Esc: Back"
+            format!("{}: Back", self.get_key(crate::keymap::Action::Quit))
         } else {
-            "Ctrl+S: Validate & Save | Esc: Back to mode selection"
+            format!(
+                "{}: Validate & Save | {}: Back to mode selection",
+                self.get_key(crate::keymap::Action::Confirm),
+                self.get_key(crate::keymap::Action::Quit)
+            )
         };
-        let _ = Footer::render(frame, footer_chunk, footer_text)?;
+        let _ = Footer::render(frame, footer_chunk, &footer_text)?;
 
         Ok(())
     }
@@ -822,7 +843,7 @@ impl GitHubAuthComponent {
 
         // Footer
         let footer_text = if self.auth_state.error_message.is_some() {
-            "Press Esc to go back and fix the error"
+            "Press Esc to go back and fix the error".to_string()
         } else if self
             .auth_state
             .status_message
@@ -830,11 +851,11 @@ impl GitHubAuthComponent {
             .map(|s| s.contains("✅"))
             .unwrap_or(false)
         {
-            "Press Enter to continue"
+            format!("Press {} to continue", self.get_key(crate::keymap::Action::Confirm))
         } else {
-            "Please wait..."
+            "Please wait...".to_string()
         };
-        let _ = Footer::render(frame, footer_chunk, footer_text)?;
+        let _ = Footer::render(frame, footer_chunk, &footer_text)?;
 
         Ok(())
     }
@@ -946,14 +967,26 @@ impl Component for GitHubAuthComponent {
         // Footer
         let footer_text = if self.auth_state.repo_already_configured {
             if self.auth_state.is_editing_token {
-                "Ctrl+S: Save Token | Esc: Cancel"
+                format!(
+                    "{}: Save Token | {}: Cancel",
+                    self.get_key(crate::keymap::Action::Confirm),
+                    self.get_key(crate::keymap::Action::Quit)
+                )
             } else {
-                "U: Update Token | Esc: Back"
+                format!(
+                    "{}: Update Token | {}: Back",
+                    self.get_key(crate::keymap::Action::Edit),
+                    self.get_key(crate::keymap::Action::Quit)
+                )
             }
         } else {
-            "Tab: Next Field | Shift+Tab: Previous | Space: Toggle (on visibility) | Ctrl+S: Save & Create | Esc: Cancel"
+            format!(
+                "Tab: Next Field | Shift+Tab: Previous | Space: Toggle | {}: Save & Create | {}: Cancel",
+                self.get_key(crate::keymap::Action::Confirm),
+                self.get_key(crate::keymap::Action::Quit)
+            )
         };
-        let _ = Footer::render(frame, footer_chunk, footer_text)?;
+        let _ = Footer::render(frame, footer_chunk, &footer_text)?;
 
         Ok(())
     }

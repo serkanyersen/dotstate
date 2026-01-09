@@ -37,14 +37,7 @@ impl KeyBinding {
         }
     }
 
-    /// Create a new key binding with a custom description
-    pub fn with_description(key: &str, action: Action, description: &str) -> Self {
-        Self {
-            key: key.to_string(),
-            action,
-            description: Some(description.to_string()),
-        }
-    }
+
 
     /// Check if this binding matches the given key event
     pub fn matches(&self, code: KeyCode, modifiers: KeyModifiers) -> bool {
@@ -276,7 +269,6 @@ mod tests {
         let binding = KeyBinding::new("j", Action::MoveDown);
         assert_eq!(binding.get_description(), "Move down");
 
-        let binding = KeyBinding::with_description("j", Action::MoveDown, "Go down in vim style");
-        assert_eq!(binding.get_description(), "Go down in vim style");
+
     }
 }

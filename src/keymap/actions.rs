@@ -25,6 +25,10 @@ pub enum Action {
     GoToTop,
     /// Go to the last item
     GoToEnd,
+    /// Jump to start of line/input
+    Home,
+    /// Jump to end of line/input
+    End,
 
     // ============ Selection & Confirmation ============
     /// Confirm selection / submit form (Enter)
@@ -99,6 +103,8 @@ impl Action {
             Action::PageDown => "Page down",
             Action::GoToTop => "Go to top",
             Action::GoToEnd => "Go to end",
+            Action::Home => "Home",
+            Action::End => "End",
             Action::Confirm => "Confirm",
             Action::Cancel => "Cancel / Go back",
             Action::ToggleSelect => "Toggle selection",
@@ -135,7 +141,9 @@ impl Action {
             | Action::PageUp
             | Action::PageDown
             | Action::GoToTop
-            | Action::GoToEnd => "Navigation",
+            | Action::GoToEnd
+            | Action::Home
+            | Action::End => "Navigation",
 
             Action::Confirm
             | Action::Cancel

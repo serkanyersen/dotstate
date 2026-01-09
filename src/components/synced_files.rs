@@ -6,7 +6,7 @@ use crate::styles::{theme, LIST_HIGHLIGHT_SYMBOL};
 use crate::ui::Screen;
 use crate::utils::{create_standard_layout, focused_border_style, get_home_dir};
 use anyhow::Result;
-use crossterm::event::{Event, KeyCode, KeyEventKind, MouseButton, MouseEventKind};
+use crossterm::event::{Event, KeyEventKind, MouseButton, MouseEventKind};
 use ratatui::prelude::*;
 use ratatui::widgets::{
     Block, Borders, Clear, List, ListItem, ListState, Paragraph, Scrollbar, ScrollbarOrientation,
@@ -161,27 +161,39 @@ impl Component for SyncedFilesComponent {
     }
 
     fn handle_event(&mut self, event: Event) -> Result<ComponentAction> {
+        if let Event::Key(key) = event {
+            if key.kind == KeyEventKind::Press {
+                if let Some(action) = self.config.keymap.get_action(key.code, key.modifiers) {
+                    use crate::keymap::Action;
+                    match action {
+                        Action::Quit | Action::Cancel => {
+                            return Ok(ComponentAction::Navigate(Screen::MainMenu));
+                        }
+                        Action::MoveUp => {
+                            let synced_files = Self::get_synced_files(&self.config);
+                            if !synced_files.is_empty() {
+                                self.list_state.select_previous();
+                            }
+                            return Ok(ComponentAction::Update);
+                        }
+                        Action::MoveDown => {
+                            let synced_files = Self::get_synced_files(&self.config);
+                            if !synced_files.is_empty() {
+                                self.list_state.select_next();
+                            }
+                            return Ok(ComponentAction::Update);
+                        }
+                         _ => {}
+                    }
+                }
+            }
+        }
+
         match event {
-            Event::Key(key) if key.kind == KeyEventKind::Press => match key.code {
-                KeyCode::Char('q') | KeyCode::Esc => {
-                    Ok(ComponentAction::Navigate(Screen::MainMenu))
-                }
-                KeyCode::Up => {
-                    let synced_files = Self::get_synced_files(&self.config);
-                    if !synced_files.is_empty() {
-                        self.list_state.select_previous();
-                    }
-                    Ok(ComponentAction::Update)
-                }
-                KeyCode::Down => {
-                    let synced_files = Self::get_synced_files(&self.config);
-                    if !synced_files.is_empty() {
-                        self.list_state.select_next();
-                    }
-                    Ok(ComponentAction::Update)
-                }
-                _ => Ok(ComponentAction::None),
-            },
+            // Key events not matched by keymap (fallback or specific component handling?)
+            // The original code only handled q/Esc/Up/Down. Keymap handles those now.
+            // So we just fall through to mouse handling.
+
             Event::Mouse(mouse) => {
                 match mouse.kind {
                     MouseEventKind::Down(MouseButton::Left) => {

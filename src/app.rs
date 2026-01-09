@@ -360,6 +360,7 @@ impl App {
                 }
                 Screen::GitHubAuth => {
                     // Sync state back after render (component may update it)
+                    self.github_auth_component.update_config(config_clone.clone());
                     let _ = self.github_auth_component.render(frame, area);
                     self.ui_state.github_auth = self.github_auth_component.get_auth_state().clone();
                 }
@@ -400,6 +401,7 @@ impl App {
                         frame,
                         area,
                         &mut self.ui_state,
+                        &config_clone,
                         &self.syntax_set,
                         syntax_theme,
                     ) {
@@ -1779,7 +1781,7 @@ impl App {
                                           if let Some(selected_idx) = state.list_state.selected() {
                                               if selected_idx < state.packages.len() {
                                                   // Copy Check Selected Logic
-                                                  let package_name = state.packages[selected_idx].name.clone();
+                                                  let _package_name = state.packages[selected_idx].name.clone();
                                                   if state.package_statuses.len() != state.packages.len() {
                                                       state.package_statuses = vec![PackageStatus::Unknown; state.packages.len()];
                                                   }
@@ -3004,12 +3006,7 @@ impl App {
                                  return Ok(());
                              }
                              Action::Home => {
-                                 let current_input = match auth_state.focused_field {
-                                     GitHubAuthField::Token => &auth_state.token_input,
-                                      // ... simplistic fallback for now since I can't access full struct easily logic here without copy paste
-                                      // Actually I can invoke handle_cursor_movement with Home
-                                      _ => &auth_state.token_input, // Placeholder, need switch
-                                 };
+
                                  // Re-implementing switch to be safe
                                  let text = match auth_state.focused_field {
                                         GitHubAuthField::Token => &auth_state.token_input,
@@ -3147,12 +3144,21 @@ impl App {
     /// Handle keyboard input for local setup screen
     fn handle_local_setup_input(&mut self, key: KeyEvent) -> Result<()> {
         use crate::ui::SetupMode;
+        use crate::keymap::Action;
 
+        let action = self.get_action(key.code, key.modifiers);
         let auth_state = &mut self.ui_state.github_auth;
         auth_state.error_message = None;
 
-        // If already configured, only allow Esc to go back
+        // If already configured, only allow Esc/Cancel to go back
         if auth_state.repo_already_configured {
+            // Check Action::Cancel or Action::Quit
+            if let Some(Action::Cancel | Action::Quit) = action {
+                 self.ui_state.current_screen = Screen::MainMenu;
+                 *auth_state = Default::default();
+                 return Ok(());
+            }
+            // Fallback for raw Esc if not mapped
             if key.code == KeyCode::Esc {
                 self.ui_state.current_screen = Screen::MainMenu;
                 *auth_state = Default::default();
@@ -3160,8 +3166,8 @@ impl App {
             return Ok(());
         }
 
-        // Check for Ctrl+S to validate and save
-        if key.code == KeyCode::Char('s') && key.modifiers.contains(KeyModifiers::CONTROL) {
+        // Check for Action::Confirm or Ctrl+S to validate and save
+        if matches!(action, Some(Action::Confirm)) || (key.code == KeyCode::Char('s') && key.modifiers.contains(KeyModifiers::CONTROL)) {
             // Validate local repo
             let path_str = auth_state.local_repo_path_input.trim();
             if path_str.is_empty() {
@@ -3229,6 +3235,13 @@ impl App {
                 *auth_state = Default::default();
             }
 
+            return Ok(());
+        }
+
+        if let Some(Action::Cancel | Action::Quit) = action {
+            auth_state.setup_mode = SetupMode::Choosing;
+            auth_state.error_message = None;
+            auth_state.status_message = None;
             return Ok(());
         }
 

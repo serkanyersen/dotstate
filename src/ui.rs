@@ -468,21 +468,6 @@ impl UiState {
             show_help_overlay: false,
         }
     }
-
-    /// Enter input mode (text field focused, navigation keys disabled)
-    pub fn enter_input_mode(&mut self) {
-        self.input_mode_active = true;
-    }
-
-    /// Exit input mode (navigation keys enabled)
-    pub fn exit_input_mode(&mut self) {
-        self.input_mode_active = false;
-    }
-
-    /// Check if currently in input mode
-    pub fn is_input_mode(&self) -> bool {
-        self.input_mode_active
-    }
 }
 
 // Legacy render functions removed - replaced by components:

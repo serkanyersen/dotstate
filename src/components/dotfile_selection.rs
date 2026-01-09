@@ -42,6 +42,7 @@ impl DotfileSelectionComponent {
         frame: &mut Frame,
         area: Rect,
         state: &mut UiState,
+        config: &crate::config::Config,
         syntax_set: &SyntaxSet,
         theme: &Theme,
     ) -> Result<()> {
@@ -67,7 +68,7 @@ impl DotfileSelectionComponent {
 
         // Check if confirmation modal is showing
         if selection_state.show_custom_file_confirm {
-            self.render_custom_file_confirm(frame, area, selection_state)?;
+            self.render_custom_file_confirm(frame, area, selection_state, config)?;
         }
         // Check if file browser is active - render as popup
         else if selection_state.file_browser_mode {
@@ -76,17 +77,19 @@ impl DotfileSelectionComponent {
                 area,
                 selection_state,
                 footer_chunk,
+                config,
                 syntax_set,
                 theme,
             )?;
         } else if selection_state.adding_custom_file {
-            self.render_custom_file_input(frame, content_chunk, footer_chunk, selection_state)?;
+            self.render_custom_file_input(frame, content_chunk, footer_chunk, selection_state, config)?;
         } else {
             self.render_dotfile_list(
                 frame,
                 content_chunk,
                 footer_chunk,
                 selection_state,
+                config,
                 syntax_set,
                 theme,
             )?;
@@ -101,6 +104,7 @@ impl DotfileSelectionComponent {
         area: Rect,
         selection_state: &mut crate::ui::DotfileSelectionState,
         footer_chunk: Rect,
+        config: &crate::config::Config,
         syntax_set: &SyntaxSet,
         theme: &Theme,
     ) -> Result<()> {
@@ -314,7 +318,14 @@ impl DotfileSelectionComponent {
                 .border_style(Style::default().fg(t.text_muted))
                 .style(Style::default().bg(Color::Reset));
             let footer_inner = footer_block.inner(browser_chunks[3]);
-            let footer = Paragraph::new("Tab: Switch Focus | ↑↓: Navigate List | u/d: Scroll Preview | Enter: Load Path | Esc: Cancel")
+            let k = |a| config.keymap.get_key_display_for_action(a);
+            let footer_text = format!(
+                "Tab: Switch Focus | {}: Navigate List | u/d: Scroll Preview | {}: Load Path | {}: Cancel",
+                config.keymap.navigation_display(),
+                k(crate::keymap::Action::Confirm),
+                k(crate::keymap::Action::Quit)
+            );
+            let footer = Paragraph::new(footer_text)
                 .style(Style::default().fg(t.text_muted))
                 .alignment(Alignment::Center);
             frame.render_widget(footer_block, browser_chunks[3]);
@@ -322,7 +333,9 @@ impl DotfileSelectionComponent {
         }
 
         // Also render main footer (outside popup, at bottom of screen)
-        let _ = Footer::render(frame, footer_chunk, "File Browser Active - Esc: Cancel")?;
+        let k = |a| config.keymap.get_key_display_for_action(a);
+        let footer_text = format!("File Browser Active - {}: Cancel", k(crate::keymap::Action::Quit));
+        let _ = Footer::render(frame, footer_chunk, &footer_text)?;
 
         Ok(())
     }
@@ -333,6 +346,7 @@ impl DotfileSelectionComponent {
         content_chunk: Rect,
         footer_chunk: Rect,
         selection_state: &mut crate::ui::DotfileSelectionState,
+        config: &crate::config::Config,
     ) -> Result<()> {
         let input_chunks = Layout::default()
             .direction(Direction::Vertical)
@@ -359,10 +373,16 @@ impl DotfileSelectionComponent {
             false, // Not disabled
         )?;
 
+        let k = |a| config.keymap.get_key_display_for_action(a);
+        let footer_text = format!(
+            "{}: Add File | {}: Cancel | Tab: Focus/Unfocus",
+             k(crate::keymap::Action::Confirm),
+             k(crate::keymap::Action::Quit)
+        );
         let _ = Footer::render(
             frame,
             footer_chunk,
-            "Enter: Add File | Esc: Cancel | Tab: Focus/Unfocus",
+            &footer_text,
         )?;
 
         Ok(())
@@ -374,6 +394,7 @@ impl DotfileSelectionComponent {
         content_chunk: Rect,
         footer_chunk: Rect,
         selection_state: &mut crate::ui::DotfileSelectionState,
+        config: &crate::config::Config,
         syntax_set: &SyntaxSet,
         theme: &Theme,
     ) -> Result<()> {
@@ -577,9 +598,17 @@ impl DotfileSelectionComponent {
             "OFF"
         };
         let footer_text = if selection_state.status_message.is_some() {
-            "Enter: Continue".to_string()
+            let k = |a| config.keymap.get_key_display_for_action(a);
+            format!("{}: Continue", k(crate::keymap::Action::Confirm))
         } else {
-            format!("Tab: Switch Focus | ↑↓: Navigate | Space/Enter: Toggle Selection | a: Add Custom File | u/d: Scroll Preview | b: Backup ({}) | q/Esc: Back", backup_status)
+            let k = |a| config.keymap.get_key_display_for_action(a);
+            format!(
+                "Tab: Focus | {}: Navigate | Space/{}: Toggle | A: Add Custom | u/d: Scroll | B: Backup ({}) | {}: Back",
+                 config.keymap.navigation_display(),
+                 k(crate::keymap::Action::Confirm),
+                 backup_status,
+                 k(crate::keymap::Action::Quit)
+            )
         };
 
         let _ = Footer::render(frame, footer_chunk, &footer_text)?;
@@ -592,6 +621,7 @@ impl DotfileSelectionComponent {
         frame: &mut Frame,
         area: Rect,
         selection_state: &crate::ui::DotfileSelectionState,
+        config: &crate::config::Config,
     ) -> Result<()> {
         let t = ui_theme();
         // Dim the background
@@ -656,7 +686,13 @@ impl DotfileSelectionComponent {
         frame.render_widget(warning, chunks[5]);
 
         // Instructions
-        let instructions = Paragraph::new("Press Y/Enter to confirm, N/Esc to cancel")
+        let k = |a| config.keymap.get_key_display_for_action(a);
+        let instruction_text = format!(
+            "Press Y/{} to confirm, N/{} to cancel",
+            k(crate::keymap::Action::Confirm),
+            k(crate::keymap::Action::Quit)
+        );
+        let instructions = Paragraph::new(instruction_text)
             .alignment(Alignment::Center)
             .style(Style::default().fg(t.text_muted));
         frame.render_widget(instructions, chunks[7]);

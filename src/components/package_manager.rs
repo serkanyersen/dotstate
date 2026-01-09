@@ -88,13 +88,18 @@ impl PackageManagerComponent {
 
             // Footer
             let footer_text = if state.is_checking {
-                "Checking packages..."
+                "Checking packages...".to_string()
             } else if !matches!(state.installation_step, InstallationStep::NotStarted) {
-                "Installing packages..."
+                "Installing packages...".to_string()
             } else {
-                "↑↓: Navigate | A: Add | E: Edit | D: Delete | C: Check All | S: Check Selected | I: Install Missing | Esc: Back"
+                let k = |a| config.keymap.get_key_display_for_action(a);
+                format!(
+                    "{}: Navigate | A: Add | E: Edit | D: Delete | C: Check All | S: Check Selected | I: Install Missing | {}: Back",
+                    config.keymap.navigation_display(),
+                    k(crate::keymap::Action::Quit)
+                )
             };
-            footer::Footer::render(frame, layout.2, footer_text)?;
+            footer::Footer::render(frame, layout.2, &footer_text)?;
         }
 
         Ok(())
@@ -258,10 +263,10 @@ impl PackageManagerComponent {
                 self.render_add_edit_popup(frame, area, state, config)?;
             }
             PackagePopupType::Delete => {
-                self.render_delete_popup(frame, area, state)?;
+                self.render_delete_popup(frame, area, state, config)?;
             }
             PackagePopupType::InstallMissing => {
-                self.render_install_missing_popup(frame, area, state)?;
+                self.render_install_missing_popup(frame, area, state, config)?;
             }
             PackagePopupType::None => return Ok(()),
         }
@@ -273,7 +278,7 @@ impl PackageManagerComponent {
         frame: &mut Frame,
         area: Rect,
         state: &mut PackageManagerState,
-        _config: &Config,
+        config: &Config,
     ) -> Result<()> {
         let t = theme();
         // Make popup larger to fit all fields, especially for custom packages
@@ -433,8 +438,14 @@ impl PackageManagerComponent {
         }
 
         // Footer with instructions (always the last chunk)
-        let footer_text = "Tab: Next field | Shift+Tab: Previous | Enter: Save | Esc: Cancel";
-        footer::Footer::render(frame, chunks[chunks.len() - 1], footer_text)?;
+        // Footer with instructions (always the last chunk)
+        let k = |a| config.keymap.get_key_display_for_action(a);
+        let footer_text = format!(
+           "Tab: Next field | Shift+Tab: Previous | {}: Save | {}: Cancel",
+           k(crate::keymap::Action::Confirm),
+           k(crate::keymap::Action::Quit)
+        );
+        footer::Footer::render(frame, chunks[chunks.len() - 1], &footer_text)?;
 
         Ok(())
     }
@@ -546,6 +557,7 @@ impl PackageManagerComponent {
         frame: &mut Frame,
         area: Rect,
         state: &mut PackageManagerState,
+        config: &Config,
     ) -> Result<()> {
         let popup_area = center_popup(area, 50, 15);
         frame.render_widget(Clear, popup_area);
@@ -603,7 +615,14 @@ impl PackageManagerComponent {
         )?;
 
         // Footer
-        footer::Footer::render(frame, chunks[3], "Enter: Confirm | Esc: Cancel")?;
+        // Footer
+        let k = |a| config.keymap.get_key_display_for_action(a);
+        let footer_text = format!(
+            "{}: Confirm | {}: Cancel",
+            k(crate::keymap::Action::Confirm),
+            k(crate::keymap::Action::Quit)
+        );
+        footer::Footer::render(frame, chunks[3], &footer_text)?;
 
         Ok(())
     }
@@ -743,6 +762,7 @@ impl PackageManagerComponent {
         frame: &mut Frame,
         area: Rect,
         state: &mut PackageManagerState,
+        _config: &Config,
     ) -> Result<()> {
         let popup_area = center_popup(area, 60, 25);
         frame.render_widget(Clear, popup_area);

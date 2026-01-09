@@ -2,7 +2,7 @@
 //!
 //! Displays current keybindings when user presses '?' key.
 
-use crate::keymap::{Action, Keymap};
+use crate::keymap::Keymap;
 use crate::styles::theme;
 use anyhow::Result;
 use ratatui::{

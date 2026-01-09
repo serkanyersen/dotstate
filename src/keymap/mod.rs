@@ -7,7 +7,7 @@ mod binding;
 mod presets;
 
 pub use actions::Action;
-pub use binding::{KeyBinding, ParsedKey};
+pub use binding::KeyBinding;
 pub use presets::KeymapPreset;
 
 use crossterm::event::{KeyCode, KeyModifiers};
@@ -101,6 +101,23 @@ impl Keymap {
             KeymapPreset::Vim => "Enter",
             KeymapPreset::Emacs => "Enter",
         }
+    }
+
+    /// Get the display string for a specific action (e.g., Action::Quit -> "q")
+    /// Checks overrides first, then preset. Returns generic fallback if not found.
+    pub fn get_key_display_for_action(&self, action: Action) -> String {
+        // Check overrides
+        if let Some(binding) = self.overrides.iter().find(|b| b.action == action) {
+             return binding.display();
+        }
+
+        // Check preset
+        if let Some(binding) = self.preset.bindings().into_iter().find(|b| b.action == action) {
+            return binding.display();
+        }
+
+        // Fallback for actions not in current map (shouldn't happen for core actions)
+        format!("{:?}", action)
     }
 
     /// Generate footer text for common navigation screens
