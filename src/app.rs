@@ -231,6 +231,8 @@ impl App {
                     error!("Error handling event: {}", e);
                     return Err(e);
                 }
+                // Sync input mode based on current focus states
+                self.sync_input_mode();
             }
         }
 
@@ -624,8 +626,72 @@ impl App {
                     let _ = Footer::render(frame, footer_chunk, footer_text);
                 }
             }
+
+            // Render help overlay on top of everything if active
+            if self.ui_state.show_help_overlay {
+                let config_path = self.config_path.to_string_lossy().to_string();
+                let _ = crate::components::help_overlay::HelpOverlay::render(
+                    frame,
+                    area,
+                    &self.config.keymap,
+                    &config_path,
+                );
+            }
         })?;
         Ok(())
+    }
+
+    /// Sync input_mode_active based on current focus states
+    /// Called after event handling to keep input mode in sync with field focus
+    fn sync_input_mode(&mut self) {
+        use crate::ui::{DotfileSelectionFocus, PackagePopupType, Screen};
+
+        let is_input_focused = match self.ui_state.current_screen {
+            // GitHub Auth - check if editing text fields
+            Screen::GitHubAuth => {
+                self.ui_state.github_auth.input_focused
+                    && matches!(
+                        self.ui_state.github_auth.focused_field,
+                        crate::ui::GitHubAuthField::Token
+                            | crate::ui::GitHubAuthField::RepoName
+                            | crate::ui::GitHubAuthField::RepoLocation
+                    )
+            }
+
+            // Dotfile Selection - file browser path input
+            Screen::DotfileSelection => {
+                self.ui_state.dotfile_selection.file_browser_path_focused
+                    && self.ui_state.dotfile_selection.focus
+                        == DotfileSelectionFocus::FileBrowserInput
+            }
+
+            // Profile Selection - create popup name input
+            Screen::ProfileSelection => {
+                self.ui_state.profile_selection.show_create_popup
+            }
+
+            // Manage Profiles - create/rename/delete popups
+            Screen::ManageProfiles => {
+                use crate::components::profile_manager::ProfilePopupType;
+                matches!(
+                    self.ui_state.profile_manager.popup_type,
+                    ProfilePopupType::Create | ProfilePopupType::Rename | ProfilePopupType::Delete
+                )
+            }
+
+            // Package Manager - add/edit/delete popups with text input
+            Screen::ManagePackages => {
+                matches!(
+                    self.ui_state.package_manager.popup_type,
+                    PackagePopupType::Add | PackagePopupType::Edit | PackagePopupType::Delete
+                )
+            }
+
+            // Other screens don't have text input
+            _ => false,
+        };
+
+        self.ui_state.input_mode_active = is_input_focused;
     }
 
     /// Get the action for a key event using the configured keymap
@@ -653,6 +719,31 @@ impl App {
     }
 
     fn handle_event(&mut self, event: Event) -> Result<()> {
+        // Global keymap-based handlers (help overlay)
+        if let Event::Key(key) = &event {
+            if key.kind == KeyEventKind::Press {
+                if let Some(action) = self.get_action(key.code, key.modifiers) {
+                    use crate::keymap::Action;
+                    match action {
+                        Action::Help => {
+                            // Toggle help overlay
+                            self.ui_state.show_help_overlay = !self.ui_state.show_help_overlay;
+                            return Ok(());
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+
+        // Close help overlay on any key if it's showing
+        if self.ui_state.show_help_overlay {
+            if matches!(event, Event::Key(k) if k.kind == KeyEventKind::Press) {
+                self.ui_state.show_help_overlay = false;
+                return Ok(());
+            }
+        }
+
         // Handle message component events first (e.g., deactivation warning on MainMenu)
         if let Some(ref mut msg_component) = self.message_component {
             if self.ui_state.current_screen == Screen::MainMenu {
