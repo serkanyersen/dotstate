@@ -4548,40 +4548,54 @@ impl App {
         }
 
         info!(
-            "Adding file to sync: {} (profile: {})",
+            "TUI: Adding file to sync: {} (profile: {})",
             relative_str, profile_name
         );
+        debug!("TUI: Source path: {:?}", dotfile.original_path);
+        debug!("TUI: Repo destination: {:?}", repo_file_path);
+        debug!("TUI: Symlink target: {:?}", target_path);
 
         // Copy file to repo
         let file_manager = crate::file_manager::FileManager::new()?;
 
         // Create parent directories
         if let Some(parent) = repo_file_path.parent() {
+            if !parent.exists() {
+                debug!("TUI: Creating repo directory: {:?}", parent);
+            }
             std::fs::create_dir_all(parent).context("Failed to create repo directory")?;
         }
 
         // Handle symlinks: resolve to original file
         let source_path = if file_manager.is_symlink(&dotfile.original_path) {
-            file_manager.resolve_symlink(&dotfile.original_path)?
+            debug!("TUI: Resolving symlink: {:?}", dotfile.original_path);
+            let resolved = file_manager.resolve_symlink(&dotfile.original_path)?;
+            debug!("TUI: Resolved symlink to: {:?}", resolved);
+            resolved
         } else {
             dotfile.original_path.clone()
         };
 
         // Copy to repo FIRST (before deleting original)
         // This ensures we have a backup before any destructive operations
+        info!("TUI: Copying file to repository...");
         file_manager
             .copy_to_repo(&source_path, &repo_file_path)
             .context("Failed to copy file to repo")?;
+        info!("TUI: Successfully copied file to repository");
 
         // Create symlink using SymlinkManager
+        info!("TUI: Creating symlink...");
         let backup_enabled = state.backup_enabled;
         let mut symlink_mgr = SymlinkManager::new_with_backup(repo_path.clone(), backup_enabled)?;
         symlink_mgr
             .activate_profile(&profile_name, std::slice::from_ref(&relative_str))
             .context("Failed to create symlink")?;
+        info!("TUI: Successfully created symlink");
 
         // Update manifest
         let relative_str_clone = relative_str.clone();
+        info!("TUI: Updating profile manifest...");
         let mut manifest = crate::utils::ProfileManifest::load_or_backfill(&repo_path)?;
         let current_files = manifest
             .profiles
@@ -4590,10 +4604,14 @@ impl App {
             .map(|p| p.synced_files.clone())
             .unwrap_or_default();
         if !current_files.contains(&relative_str) {
+            debug!("TUI: Adding {} to manifest for profile {}", relative_str, profile_name);
             let mut new_files = current_files;
             new_files.push(relative_str);
             manifest.update_synced_files(&profile_name, new_files)?;
             manifest.save(&repo_path)?;
+            info!("TUI: Updated manifest with new file: {}", relative_str_clone);
+        } else {
+            debug!("TUI: File already in manifest, skipping update");
         }
 
         // Mark as selected and synced
@@ -4681,40 +4699,54 @@ impl App {
         }
 
         info!(
-            "Adding custom file to sync: {} -> {} (profile: {})",
+            "TUI: Adding custom file to sync: {} -> {} (profile: {})",
             full_path.display(),
             relative_path,
             profile_name
         );
+        debug!("TUI: Source path: {:?}", full_path);
+        debug!("TUI: Repo destination: {:?}", repo_file_path);
+        debug!("TUI: Symlink target: {:?}", target_path);
 
         // Copy file to repo (file_manager already created above for validation)
 
         // Create parent directories
         if let Some(parent) = repo_file_path.parent() {
+            if !parent.exists() {
+                debug!("TUI: Creating repo directory: {:?}", parent);
+            }
             std::fs::create_dir_all(parent).context("Failed to create repo directory")?;
         }
 
         // Handle symlinks: resolve to original file
         let source_path = if file_manager.is_symlink(full_path) {
-            file_manager.resolve_symlink(full_path)?
+            debug!("TUI: Resolving symlink: {:?}", full_path);
+            let resolved = file_manager.resolve_symlink(full_path)?;
+            debug!("TUI: Resolved symlink to: {:?}", resolved);
+            resolved
         } else {
             full_path.to_path_buf()
         };
 
         // Copy to repo FIRST (before deleting original)
         // This ensures we have a backup before any destructive operations
+        info!("TUI: Copying custom file to repository...");
         file_manager
             .copy_to_repo(&source_path, &repo_file_path)
             .context("Failed to copy file to repo")?;
+        info!("TUI: Successfully copied custom file to repository");
 
         // Create symlink using SymlinkManager
+        info!("TUI: Creating symlink for custom file...");
         let backup_enabled = self.ui_state.dotfile_selection.backup_enabled;
         let mut symlink_mgr = SymlinkManager::new_with_backup(repo_path.clone(), backup_enabled)?;
         symlink_mgr
             .activate_profile(&profile_name, &[relative_path.to_string()])
             .context("Failed to create symlink")?;
+        info!("TUI: Successfully created symlink for custom file");
 
         // Update manifest
+        info!("TUI: Updating profile manifest for custom file...");
         let mut manifest = crate::utils::ProfileManifest::load_or_backfill(&repo_path)?;
         let current_files = manifest
             .profiles
@@ -4723,6 +4755,7 @@ impl App {
             .map(|p| p.synced_files.clone())
             .unwrap_or_default();
         if !current_files.contains(&relative_path.to_string()) {
+            debug!("TUI: Adding custom file {} to manifest for profile {}", relative_path, profile_name);
             let mut new_files = current_files;
             new_files.push(relative_path.to_string());
             manifest.update_synced_files(&profile_name, new_files)?;

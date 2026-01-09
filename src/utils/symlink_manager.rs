@@ -375,9 +375,11 @@ impl SymlinkManager {
         relative_name: &str,
     ) -> Result<SymlinkOperation> {
         let timestamp = Utc::now();
+        info!("Creating symlink: {:?} -> {:?}", target, source);
 
         // Check if source exists
         if !source.exists() {
+            warn!("Cannot create symlink: source does not exist: {:?}", source);
             return Ok(SymlinkOperation {
                 source: source.to_path_buf(),
                 target: target.to_path_buf(),
@@ -386,6 +388,8 @@ impl SymlinkManager {
                 timestamp,
             });
         }
+
+        debug!("Source exists: {:?}", source);
 
         let mut backup_path = None;
 
@@ -416,6 +420,7 @@ impl SymlinkManager {
 
                         if existing_normalized == source_normalized {
                             // Already points to the right place, skip
+                            debug!("Symlink already exists and points to correct location: {:?} -> {:?}", target, source);
                             return Ok(SymlinkOperation {
                                 source: source.to_path_buf(),
                                 target: target.to_path_buf(),
@@ -487,12 +492,17 @@ impl SymlinkManager {
 
         // Create parent directories if needed
         if let Some(parent) = target.parent() {
-            fs::create_dir_all(parent).context("Failed to create parent directories")?;
+            if !parent.exists() {
+                debug!("Creating parent directory for symlink: {:?}", parent);
+                fs::create_dir_all(parent).context("Failed to create parent directories")?;
+                info!("Created parent directory: {:?}", parent);
+            }
         }
 
         // Create the symlink
         #[cfg(unix)]
         {
+            debug!("Creating Unix symlink: {:?} -> {:?}", target, source);
             std::os::unix::fs::symlink(source, target).with_context(|| {
                 format!("Failed to create symlink: {:?} -> {:?}", target, source)
             })?;
@@ -500,9 +510,15 @@ impl SymlinkManager {
 
         #[cfg(windows)]
         {
+            debug!("Creating Windows symlink: {:?} -> {:?}", target, source);
             std::os::windows::fs::symlink_file(source, target).with_context(|| {
                 format!("Failed to create symlink: {:?} -> {:?}", target, source)
             })?;
+        }
+
+        info!("Successfully created symlink: {:?} -> {:?}", target, source);
+        if let Some(ref backup) = backup_path {
+            debug!("Backup available at: {:?}", backup);
         }
 
         Ok(SymlinkOperation {
@@ -517,9 +533,11 @@ impl SymlinkManager {
     /// Remove a symlink, restoring backup if it exists, or copying from repo if no backup
     fn remove_symlink_with_restore(&self, tracked: &TrackedSymlink) -> Result<SymlinkOperation> {
         let timestamp = Utc::now();
+        info!("Removing symlink: {:?}", tracked.target);
 
         // Check if the symlink still exists
         if !tracked.target.exists() && tracked.target.symlink_metadata().is_err() {
+            debug!("Symlink does not exist, skipping removal: {:?}", tracked.target);
             return Ok(SymlinkOperation {
                 source: tracked.source.clone(),
                 target: tracked.target.clone(),
@@ -531,6 +549,7 @@ impl SymlinkManager {
 
         // Verify it's still our symlink
         if !self.is_our_symlink(&tracked.target)? {
+            warn!("Target is not our symlink, skipping removal: {:?}", tracked.target);
             return Ok(SymlinkOperation {
                 source: tracked.source.clone(),
                 target: tracked.target.clone(),
@@ -541,15 +560,21 @@ impl SymlinkManager {
         }
 
         // Remove the symlink
+        debug!("Removing symlink: {:?}", tracked.target);
         fs::remove_file(&tracked.target).context("Failed to remove symlink")?;
+        info!("Removed symlink: {:?}", tracked.target);
 
         // Restore from repo source first (source of truth)
         // Only fall back to backup if repo file doesn't exist
         let restored = if tracked.source.exists() {
+            info!("Restoring from repo source: {:?} -> {:?}", tracked.source, tracked.target);
             // Create parent directories if needed
             if let Some(parent) = tracked.target.parent() {
-                fs::create_dir_all(parent)
-                    .context("Failed to create parent directory for restored file")?;
+                if !parent.exists() {
+                    debug!("Creating parent directory for restored file: {:?}", parent);
+                    fs::create_dir_all(parent)
+                        .context("Failed to create parent directory for restored file")?;
+                }
             }
 
             // Copy file or directory from repo (source of truth)
@@ -559,11 +584,16 @@ impl SymlinkManager {
                 .context("Failed to read source metadata")?;
 
             if metadata.is_dir() {
+                debug!("Restoring directory from repo: {:?} -> {:?}", tracked.source, tracked.target);
                 crate::file_manager::copy_dir_all(&tracked.source, &tracked.target)
                     .context("Failed to copy directory from repo")?;
+                info!("Restored directory from repo: {:?}", tracked.target);
             } else {
+                let file_size = metadata.len();
+                debug!("Restoring file from repo ({} bytes): {:?} -> {:?}", file_size, tracked.source, tracked.target);
                 fs::copy(&tracked.source, &tracked.target)
                     .context("Failed to copy file from repo")?;
+                info!("Restored file from repo: {:?}", tracked.target);
             }
             true
         } else {
@@ -575,7 +605,9 @@ impl SymlinkManager {
                         tracked.source, backup
                     );
                     // Restore from backup (last resort)
+                    debug!("Restoring from backup: {:?} -> {:?}", backup, tracked.target);
                     fs::rename(backup, &tracked.target).context("Failed to restore backup")?;
+                    info!("Restored from backup: {:?}", tracked.target);
                     true
                 } else {
                     false

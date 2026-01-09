@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use std::fs;
 // Note: symlink and MetadataExt are used via std::os::unix::fs:: paths
 use std::path::{Path, PathBuf};
+use tracing::{debug, info, warn};
 
 /// Utility for file operations: scanning dotfiles, copying files/directories, and resolving symlinks.
 ///
@@ -61,28 +62,37 @@ impl FileManager {
 
     /// Resolve a symlink to its target, following multiple levels if needed
     pub fn resolve_symlink(&self, path: &Path) -> Result<PathBuf> {
+        debug!("Resolving symlink: {:?}", path);
         let mut current = path.to_path_buf();
         let mut depth = 0;
         const MAX_SYMLINK_DEPTH: usize = 20; // Prevent infinite loops
 
         while current.is_symlink() && depth < MAX_SYMLINK_DEPTH {
-            current = fs::read_link(&current)
+            let target = fs::read_link(&current)
                 .with_context(|| format!("Failed to read symlink: {:?}", current))?;
+            debug!("Symlink at depth {}: {:?} -> {:?}", depth, current, target);
 
             // If the symlink is relative, resolve it relative to the parent
-            if current.is_relative() {
-                if let Some(parent) = path.parent() {
-                    current = parent.join(&current);
+            if target.is_relative() {
+                if let Some(parent) = current.parent() {
+                    current = parent.join(&target);
+                    debug!("Resolved relative symlink: {:?}", current);
+                } else {
+                    current = target;
                 }
+            } else {
+                current = target;
             }
 
             depth += 1;
         }
 
         if depth >= MAX_SYMLINK_DEPTH {
+            warn!("Symlink depth exceeded (max {}) for: {:?}", MAX_SYMLINK_DEPTH, path);
             return Err(anyhow::anyhow!("Symlink depth exceeded for: {:?}", path));
         }
 
+        debug!("Resolved symlink: {:?} -> {:?} (depth: {})", path, current, depth);
         Ok(current)
     }
 
@@ -97,21 +107,31 @@ impl FileManager {
 
     /// Copy file or directory recursively
     pub fn copy_to_repo(&self, source: &Path, dest: &Path) -> Result<()> {
+        info!("Starting copy operation: {:?} -> {:?}", source, dest);
+
         // Remove destination if it exists (to avoid conflicts)
         if dest.exists() {
             if dest.is_dir() {
+                info!("Removing existing directory at destination: {:?}", dest);
                 fs::remove_dir_all(dest)
                     .with_context(|| format!("Failed to remove existing directory: {:?}", dest))?;
+                debug!("Successfully removed existing directory: {:?}", dest);
             } else {
+                info!("Removing existing file at destination: {:?}", dest);
                 fs::remove_file(dest)
                     .with_context(|| format!("Failed to remove existing file: {:?}", dest))?;
+                debug!("Successfully removed existing file: {:?}", dest);
             }
         }
 
         // Create parent directory
         if let Some(parent) = dest.parent() {
-            fs::create_dir_all(parent)
-                .with_context(|| format!("Failed to create parent directory: {:?}", parent))?;
+            if !parent.exists() {
+                debug!("Creating parent directory: {:?}", parent);
+                fs::create_dir_all(parent)
+                    .with_context(|| format!("Failed to create parent directory: {:?}", parent))?;
+                info!("Created parent directory: {:?}", parent);
+            }
         }
 
         // Use metadata to check file type (follows symlinks)
@@ -119,13 +139,20 @@ impl FileManager {
             .with_context(|| format!("Failed to read metadata for source: {:?}", source))?;
 
         if source_metadata.is_file() {
-            fs::copy(source, dest)
+            let file_size = source_metadata.len();
+            info!("Copying file ({} bytes): {:?} -> {:?}", file_size, source, dest);
+            let bytes_copied = fs::copy(source, dest)
                 .with_context(|| format!("Failed to copy file from {:?} to {:?}", source, dest))?;
+            info!("Successfully copied file ({} bytes): {:?}", bytes_copied, dest);
+            debug!("File copy complete: source={:?}, dest={:?}, size={}", source, dest, bytes_copied);
         } else if source_metadata.is_dir() {
+            info!("Copying directory recursively: {:?} -> {:?}", source, dest);
             copy_dir_all(source, dest).with_context(|| {
                 format!("Failed to copy directory from {:?} to {:?}", source, dest)
             })?;
+            info!("Successfully copied directory: {:?} -> {:?}", source, dest);
         } else {
+            warn!("Source path is neither file nor directory: {:?}", source);
             return Err(anyhow::anyhow!(
                 "Source path is neither file nor directory: {:?}",
                 source
@@ -144,8 +171,12 @@ impl FileManager {
 
 /// Recursively copy a directory
 pub fn copy_dir_all(src: &Path, dst: &Path) -> Result<()> {
+    debug!("Creating destination directory: {:?}", dst);
     fs::create_dir_all(dst)
         .with_context(|| format!("Failed to create destination directory: {:?}", dst))?;
+
+    let mut files_copied = 0;
+    let mut dirs_copied = 0;
 
     for entry in
         fs::read_dir(src).with_context(|| format!("Failed to read directory: {:?}", src))?
@@ -156,12 +187,23 @@ pub fn copy_dir_all(src: &Path, dst: &Path) -> Result<()> {
         let dst_path = dst.join(&file_name);
 
         if path.is_dir() {
+            debug!("Copying subdirectory: {:?} -> {:?}", path, dst_path);
             copy_dir_all(&path, &dst_path)?;
+            dirs_copied += 1;
         } else {
+            if let Ok(metadata) = path.metadata() {
+                let file_size = metadata.len();
+                debug!("Copying file ({} bytes): {:?} -> {:?}", file_size, path, dst_path);
+            } else {
+                debug!("Copying file: {:?} -> {:?}", path, dst_path);
+            }
             fs::copy(&path, &dst_path)
                 .with_context(|| format!("Failed to copy file: {:?}", path))?;
+            files_copied += 1;
         }
     }
+
+    debug!("Directory copy complete: {:?} -> {:?} ({} files, {} dirs)", src, dst, files_copied, dirs_copied);
 
     Ok(())
 }
