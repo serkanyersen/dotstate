@@ -81,8 +81,67 @@ pub fn check_for_updates_now() -> Option<UpdateInfo> {
         }
         Ok(None) => None,
         Err(e) => {
-            tracing::warn!("Failed to check for updates: {}", e);
+            // Log full error details for debugging
+            let error_msg = e.to_string();
+            tracing::debug!(
+                "Update check failed - error: '{}', error kind: {:?}, source: {:?}",
+                error_msg,
+                e,
+                e.source()
+            );
             None
+        }
+    }
+}
+
+/// Check for updates and return a Result to distinguish errors from "no updates"
+///
+/// # Returns
+/// * `Ok(Some(UpdateInfo))` if a newer version is available
+/// * `Ok(None)` if already up to date
+/// * `Err(String)` if the check failed
+pub fn check_for_updates_with_result() -> Result<Option<UpdateInfo>, String> {
+    let current_version = env!("CARGO_PKG_VERSION");
+    let repo = format!("{}/{}", REPO_OWNER, REPO_NAME);
+
+    // Use Duration::ZERO to skip cache and force a fresh check every time
+    let informer = update_informer::new(GitHub, &repo, current_version).interval(Duration::ZERO);
+
+    match informer.check_version() {
+        Ok(Some(new_version)) => {
+            let version_str = new_version.to_string();
+            // version_str already includes 'v' prefix from GitHub tags
+            Ok(Some(UpdateInfo {
+                current_version: current_version.to_string(),
+                latest_version: version_str.clone(),
+                release_url: format!(
+                    "https://github.com/{}/{}/releases/tag/{}",
+                    REPO_OWNER, REPO_NAME, version_str
+                ),
+            }))
+        }
+        Ok(None) => Ok(None),
+        Err(e) => {
+            let error_msg = format!("{}", e);
+            let mut error_details = error_msg.clone();
+
+            // Include source error if available
+            if let Some(source) = e.source() {
+                let source_str = source.to_string();
+                error_details.push_str(": ");
+                error_details.push_str(&source_str);
+
+                // Detect if it's a timeout (could be client or server-side)
+                if source_str.contains("timed out") || error_msg.contains("timeout") {
+                    tracing::debug!("Update check timed out (GitHub API may be slow or unavailable)");
+                } else {
+                    tracing::debug!("Update check failed: {}", error_details);
+                }
+            } else {
+                tracing::debug!("Update check failed: {}", error_details);
+            }
+
+            Err(error_details)
         }
     }
 }

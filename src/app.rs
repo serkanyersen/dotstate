@@ -22,9 +22,11 @@ use crossterm::event::{
 };
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::thread;
 use std::time::Duration;
 use syntect::parsing::SyntaxSet;
 use tokio::runtime::Runtime;
+use tokio::sync::oneshot;
 use tracing::{debug, error, info, trace, warn};
 // Frame and Rect are used in function signatures but imported where needed
 
@@ -84,6 +86,9 @@ pub struct App {
     theme_set: syntect::highlighting::ThemeSet,
     /// Track if we've checked for updates yet (deferred until after first render)
     has_checked_updates: bool,
+    /// Receiver for async update check result (if check is in progress)
+    /// Result is Ok(Some(UpdateInfo)) if update available, Ok(None) if no update, Err(String) if error
+    update_check_receiver: Option<oneshot::Receiver<Result<Option<crate::version_check::UpdateInfo>, String>>>,
 }
 
 impl App {
@@ -131,6 +136,7 @@ impl App {
             syntax_set,
             theme_set,
             has_checked_updates: false,
+            update_check_receiver: None,
         };
 
         Ok(app)
@@ -175,38 +181,51 @@ impl App {
         loop {
             self.draw()?;
 
-            // Check for updates after first render (non-blocking for UI)
-            if !self.has_checked_updates && self.config.updates.check_enabled {
-                let update_check_start = std::time::Instant::now();
-                debug!("Checking for updates (deferred until after first render)...");
-                if let Some(update_info) = crate::version_check::check_for_updates(
-                    self.config.updates.check_interval_hours,
-                ) {
-                    let elapsed = update_check_start.elapsed();
-                    if elapsed.as_millis() > 500 {
-                        warn!(
-                            "Update check took {:?}: New version available: {} -> {}",
-                            elapsed, update_info.current_version, update_info.latest_version
-                        );
-                    } else {
+            // Start async update check after first render (non-blocking for UI)
+            if !self.has_checked_updates && self.config.updates.check_enabled && self.update_check_receiver.is_none() {
+                debug!("Spawning async update check (deferred until after first render)...");
+                let (tx, rx) = oneshot::channel();
+                thread::spawn(move || {
+                    let result = crate::version_check::check_for_updates_with_result()
+                        .map_err(|e| format!("{}", e));
+                    // Ignore send error - receiver might be dropped if app quits
+                    let _ = tx.send(result);
+                });
+                self.update_check_receiver = Some(rx);
+            }
+
+            // Check if update check result is ready (non-blocking)
+            if let Some(receiver) = &mut self.update_check_receiver {
+                match receiver.try_recv() {
+                    Ok(Ok(Some(update_info))) => {
                         info!(
                             "New version available: {} -> {}",
                             update_info.current_version, update_info.latest_version
                         );
+                        self.main_menu_component.set_update_info(Some(update_info));
+                        self.has_checked_updates = true;
+                        self.update_check_receiver = None;
                     }
-                    self.main_menu_component.set_update_info(Some(update_info));
-                } else {
-                    let elapsed = update_check_start.elapsed();
-                    if elapsed.as_millis() > 500 {
-                        warn!(
-                            "Update check took {:?} (consider disabling if too slow)",
-                            elapsed
-                        );
-                    } else {
+                    Ok(Ok(None)) => {
                         debug!("Update check completed: No updates available");
+                        self.has_checked_updates = true;
+                        self.update_check_receiver = None;
+                    }
+                    Ok(Err(e)) => {
+                        debug!("Update check failed: {}", e);
+                        self.has_checked_updates = true;
+                        self.update_check_receiver = None;
+                    }
+                    Err(oneshot::error::TryRecvError::Empty) => {
+                        // Still in progress, continue event loop
+                    }
+                    Err(oneshot::error::TryRecvError::Closed) => {
+                        // Sender was dropped (shouldn't happen, but handle gracefully)
+                        warn!("Update check channel closed unexpectedly");
+                        self.has_checked_updates = true;
+                        self.update_check_receiver = None;
                     }
                 }
-                self.has_checked_updates = true;
             }
 
             if self.should_quit {

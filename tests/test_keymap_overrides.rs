@@ -1,7 +1,6 @@
 use crossterm::event::{KeyCode, KeyModifiers};
 use dotstate::config::Config;
-use dotstate::keymap::{Action, KeyBinding, Keymap, KeymapPreset};
-use std::path::PathBuf;
+use dotstate::keymap::{Action, KeyBinding, KeymapPreset};
 use tempfile::TempDir;
 
 #[test]

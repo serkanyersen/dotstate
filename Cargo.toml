@@ -54,7 +54,7 @@ syntect = "5.1"
 chrono = { version = "0.4", features = ["serde"] }
 
 # Version checking
-update-informer = { version = "1.1", default-features = false, features = ["github", "ureq", "rustls-tls"] }
+update-informer = { version = "1.1", default-features = false, features = ["github", "reqwest", "rustls-tls"] }
 
 [dev-dependencies]
 tempfile = "3.10"
