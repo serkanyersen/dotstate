@@ -2,10 +2,12 @@ use crate::components::component::{Component, ComponentAction};
 use crate::components::footer::Footer;
 use crate::components::header::Header;
 use crate::components::message_box::MessageBox;
+use crate::config::Config;
+use crate::keymap::Action;
 use crate::ui::Screen;
 use crate::utils::create_standard_layout;
 use anyhow::Result;
-use crossterm::event::{Event, KeyCode, KeyEventKind, MouseButton, MouseEventKind};
+use crossterm::event::{Event, KeyEventKind, MouseButton, MouseEventKind};
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Clear};
 
@@ -14,6 +16,7 @@ pub struct MessageComponent {
     title: String,
     message: String,
     screen_type: Screen,
+    config: Option<Config>,
 }
 
 impl MessageComponent {
@@ -22,7 +25,13 @@ impl MessageComponent {
             title,
             message,
             screen_type,
+            config: None,
         }
+    }
+
+    pub fn with_config(mut self, config: Config) -> Self {
+        self.config = Some(config);
+        self
     }
 }
 
@@ -67,11 +76,22 @@ impl Component for MessageComponent {
 
     fn handle_event(&mut self, event: Event) -> Result<ComponentAction> {
         match event {
-            Event::Key(key) if key.kind == KeyEventKind::Press => match key.code {
-                KeyCode::Enter | KeyCode::Char(' ') | KeyCode::Char('q') | KeyCode::Esc => {
-                    Ok(ComponentAction::Navigate(Screen::MainMenu))
+            Event::Key(key) if key.kind == KeyEventKind::Press => {
+                // Use keymap if available, otherwise accept any key (as footer says "Press any key")
+                let action = self.config.as_ref()
+                    .map(|c| c.keymap.get_action(key.code, key.modifiers))
+                    .flatten();
+
+                match action {
+                    Some(Action::Confirm) | Some(Action::ToggleSelect) | Some(Action::Quit) | Some(Action::Cancel) => {
+                        Ok(ComponentAction::Navigate(Screen::MainMenu))
+                    }
+                    _ => {
+                        // If no action mapped or keymap not available, accept any key press
+                        // (Footer says "Press any key or click to continue")
+                        Ok(ComponentAction::Navigate(Screen::MainMenu))
+                    }
                 }
-                _ => Ok(ComponentAction::None),
             },
             Event::Mouse(mouse) => {
                 match mouse.kind {

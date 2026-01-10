@@ -155,19 +155,22 @@ impl App {
         if !self.config.profile_activated && self.config.is_repo_configured() {
             warn!("Profile '{}' is deactivated", self.config.active_profile);
             // Profile is deactivated - show warning message
-            self.message_component = Some(MessageComponent::new(
-                "Profile Deactivated".to_string(),
-                format!(
-                    "⚠️  Your profile '{}' is currently deactivated.\n\n\
-                    Your symlinks have been removed and original files restored.\n\n\
-                    To reactivate your profile and restore symlinks, run:\n\
-                    \n\
-                    \x1b[1m  dotstate activate\x1b[0m\n\n\
-                    Or press any key to continue to the main menu.",
-                    self.config.active_profile
-                ),
-                Screen::MainMenu,
-            ));
+            self.message_component = Some(
+                MessageComponent::new(
+                    "Profile Deactivated".to_string(),
+                    format!(
+                        "⚠️  Your profile '{}' is currently deactivated.\n\n\
+                        Your symlinks have been removed and original files restored.\n\n\
+                        To reactivate your profile and restore symlinks, run:\n\
+                        \n\
+                        \x1b[1m  dotstate activate\x1b[0m\n\n\
+                        Or press any key to continue to the main menu.",
+                        self.config.active_profile
+                    ),
+                    Screen::MainMenu,
+                )
+                .with_config(self.config.clone())
+            );
         }
 
         // Always start with main menu (which is now the welcome screen)
@@ -711,8 +714,20 @@ impl App {
                 | Action::Confirm
                 | Action::NextTab
                 | Action::PrevTab
-                | Action::Help => Some(action),
-                // Block navigation and other actions while typing
+                | Action::Help
+                // Text editing actions
+                | Action::Backspace
+                | Action::DeleteChar
+                | Action::Home
+                | Action::End
+                | Action::MoveLeft
+                | Action::MoveRight => Some(action),
+                // Navigation actions allowed when Manager field is focused (handled per-screen)
+                Action::MoveUp | Action::MoveDown => {
+                    // Allow in input mode - individual screens will decide based on context
+                    Some(action)
+                }
+                // Block other actions while typing
                 _ => None,
             }
         } else {
@@ -973,31 +988,29 @@ impl App {
                 // 1. Modal
                 let is_modal = self.ui_state.dotfile_selection.show_custom_file_confirm;
                 if is_modal {
-                    let state = &mut self.ui_state.dotfile_selection;
                     if let Event::Key(key) = event {
                         if key.kind == KeyEventKind::Press {
-                            match key.code {
-                                KeyCode::Char('y') | KeyCode::Char('Y') | KeyCode::Enter => {
-                                    // YES logic
-                                    let full_path = state.custom_file_confirm_path.clone().unwrap();
-                                    let relative_path =
-                                        state.custom_file_confirm_relative.clone().unwrap();
+                            // Get action before borrowing state
+                            let action = self.get_action(key.code, key.modifiers);
+                            use crate::keymap::Action;
 
-                                    // Close confirmation modal
-                                    state.show_custom_file_confirm = false;
-                                    state.custom_file_confirm_path = None;
-                                    state.custom_file_confirm_relative = None;
-
-                                    // Release borrow
-                                    let _ = state;
+                            match action {
+                                Some(Action::Yes) | Some(Action::Confirm) => {
+                                    // YES logic - extract values and close modal in scope
+                                    let (full_path, relative_path) = {
+                                        let state = &mut self.ui_state.dotfile_selection;
+                                        let full_path = state.custom_file_confirm_path.clone().unwrap();
+                                        let relative_path = state.custom_file_confirm_relative.clone().unwrap();
+                                        state.show_custom_file_confirm = false;
+                                        state.custom_file_confirm_path = None;
+                                        state.custom_file_confirm_relative = None;
+                                        (full_path, relative_path)
+                                    };
 
                                     // Sync the file
-                                    if let Err(e) =
-                                        self.add_custom_file_to_sync(&full_path, &relative_path)
-                                    {
+                                    if let Err(e) = self.add_custom_file_to_sync(&full_path, &relative_path) {
                                         let state = &mut self.ui_state.dotfile_selection;
-                                        state.status_message =
-                                            Some(format!("Error: Failed to sync file: {}", e));
+                                        state.status_message = Some(format!("Error: Failed to sync file: {}", e));
                                         return Ok(());
                                     }
 
@@ -1012,12 +1025,15 @@ impl App {
                                         state.dotfile_list_state.select(Some(index));
                                         state.selected_for_sync.insert(index);
                                     }
+                                    return Ok(());
                                 }
-                                KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
+                                Some(Action::No) | Some(Action::Cancel) => {
                                     // NO logic
+                                    let state = &mut self.ui_state.dotfile_selection;
                                     state.show_custom_file_confirm = false;
                                     state.custom_file_confirm_path = None;
                                     state.custom_file_confirm_relative = None;
+                                    return Ok(());
                                 }
                                 _ => {}
                             }
@@ -1027,16 +1043,29 @@ impl App {
                 }
 
                 // 2. Input Mode
-                if self.ui_state.input_mode_active {
+                // Check if we're actually in a text input field (not just file browser mode)
+                let is_actually_typing = if self.ui_state.input_mode_active {
+                    if self.ui_state.dotfile_selection.file_browser_mode {
+                        // In file browser, only block navigation if we're actually in the input field
+                        let state = &self.ui_state.dotfile_selection;
+                        state.file_browser_path_focused && state.focus == crate::ui::DotfileSelectionFocus::FileBrowserInput
+                    } else {
+                        // Other input modes - always block navigation
+                        true
+                    }
+                } else {
+                    false
+                };
+
+                if is_actually_typing {
                     if let Event::Key(key) = event {
                         if key.kind == KeyEventKind::Press {
-                            // Check for Tab/NextTab in file browser mode - allow focus switching even in input mode
                             if self.ui_state.dotfile_selection.file_browser_mode {
+                                // Handle Tab/NextTab for focus switching
                                 if let Some(action) = self.get_action(key.code, key.modifiers) {
                                     use crate::keymap::Action;
+                                    use crate::ui::DotfileSelectionFocus;
                                     if matches!(action, Action::NextTab) {
-                                        // Handle Tab focus switching in file browser
-                                        use crate::ui::DotfileSelectionFocus;
                                         let state = &mut self.ui_state.dotfile_selection;
                                         state.focus = match state.focus {
                                             DotfileSelectionFocus::FileBrowserList => {
@@ -1059,7 +1088,7 @@ impl App {
                                         return Ok(());
                                     }
                                 }
-                                // Other input handling for file browser
+                                // Handle text input for path field
                                 self.handle_file_browser_input(key.code)?;
                             } else if self.ui_state.dotfile_selection.adding_custom_file {
                                 if key.code == KeyCode::Esc {
@@ -1076,6 +1105,7 @@ impl App {
                     }
                     return Ok(());
                 }
+                // If not actually typing, fall through to normal keymap handler
 
                 // 3. Normal / Keymap
                 use crate::ui::DotfileSelectionFocus;
@@ -1103,6 +1133,13 @@ impl App {
                                     {
                                         state.preview_scroll =
                                             state.preview_scroll.saturating_sub(1);
+                                    } else if state.focus == DotfileSelectionFocus::FileBrowserList {
+                                        state.file_browser_list_state.select_previous();
+                                    } else if state.focus == DotfileSelectionFocus::FileBrowserPreview
+                                        && state.file_browser_preview_scroll > 0
+                                    {
+                                        state.file_browser_preview_scroll =
+                                            state.file_browser_preview_scroll.saturating_sub(1);
                                     }
                                 }
                                 Action::MoveDown => {
@@ -1112,10 +1149,179 @@ impl App {
                                     } else if state.focus == DotfileSelectionFocus::Preview {
                                         state.preview_scroll =
                                             state.preview_scroll.saturating_add(1);
+                                    } else if state.focus == DotfileSelectionFocus::FileBrowserList {
+                                        state.file_browser_list_state.select_next();
+                                    } else if state.focus == DotfileSelectionFocus::FileBrowserPreview {
+                                        state.file_browser_preview_scroll =
+                                            state.file_browser_preview_scroll.saturating_add(1);
                                     }
                                 }
                                 Action::Confirm => {
-                                    if state.status_message.is_some() {
+                                    if state.file_browser_mode {
+                                        // File browser mode: Enter on list item
+                                        if state.focus == DotfileSelectionFocus::FileBrowserList {
+                                            if let Some(idx) = state.file_browser_list_state.selected() {
+                                                if idx < state.file_browser_entries.len() {
+                                                    let entry = &state.file_browser_entries[idx];
+
+                                                    // Handle special entries: ".." (parent) and "." (current folder)
+                                                    if entry == Path::new("..") {
+                                                        // Go to parent directory
+                                                        if let Some(parent) = state.file_browser_path.parent() {
+                                                            let parent_path = parent.to_path_buf();
+                                                            state.file_browser_path = parent_path.clone();
+                                                            state.file_browser_path_input = state.file_browser_path.to_string_lossy().to_string();
+                                                            state.file_browser_path_cursor = state.file_browser_path_input.chars().count();
+                                                            state.file_browser_list_state.select(Some(0));
+                                                            self.ui_state.dotfile_selection.file_browser_path = state.file_browser_path.clone();
+                                                            self.refresh_file_browser()?;
+                                                        }
+                                                        return Ok(());
+                                                    } else if entry == Path::new(".") {
+                                                        // Add current folder
+                                                        let current_folder = state.file_browser_path.clone();
+                                                        let home_dir = crate::utils::get_home_dir();
+                                                        let relative_path = current_folder
+                                                            .strip_prefix(&home_dir)
+                                                            .map(|p| p.to_string_lossy().to_string())
+                                                            .unwrap_or_else(|_| current_folder.to_string_lossy().to_string());
+
+                                                        // Sanity checks
+                                                        let repo_path = &self.config.repo_path;
+                                                        let (is_safe, reason) = crate::utils::is_safe_to_add(&current_folder, repo_path);
+                                                        if !is_safe {
+                                                            state.status_message = Some(format!(
+                                                                "Error: {}. Path: {}",
+                                                                reason.unwrap_or_else(|| "Cannot add this folder".to_string()),
+                                                                current_folder.display()
+                                                            ));
+                                                            return Ok(());
+                                                        }
+
+                                                        // Check if it's a git repo
+                                                        if crate::utils::is_git_repo(&current_folder) {
+                                                            state.status_message = Some(format!(
+                                                                "Error: Cannot sync a git repository. Path contains a .git directory: {}",
+                                                                current_folder.display()
+                                                            ));
+                                                            return Ok(());
+                                                        }
+
+                                                        // Show confirmation modal
+                                                        state.show_custom_file_confirm = true;
+                                                        state.custom_file_confirm_path = Some(current_folder.clone());
+                                                        state.custom_file_confirm_relative = Some(relative_path.clone());
+                                                        state.file_browser_mode = false;
+                                                        state.adding_custom_file = false;
+                                                        state.file_browser_path_input.clear();
+                                                        state.file_browser_path_cursor = 0;
+                                                        state.focus = DotfileSelectionFocus::FilesList;
+                                                        return Ok(());
+                                                    }
+
+                                                    // Regular entry: file or directory
+                                                    let full_path = if entry.is_absolute() {
+                                                        entry.clone()
+                                                    } else {
+                                                        state.file_browser_path.join(entry)
+                                                    };
+
+                                                    if full_path.is_dir() {
+                                                        // Navigate into directory
+                                                        state.file_browser_path = full_path.clone();
+                                                        state.file_browser_path_input = full_path.to_string_lossy().to_string();
+                                                        state.file_browser_path_cursor = state.file_browser_path_input.chars().count();
+                                                        state.file_browser_list_state.select(Some(0));
+                                                        self.ui_state.dotfile_selection.file_browser_path = state.file_browser_path.clone();
+                                                        self.refresh_file_browser()?;
+                                                    } else if full_path.is_file() {
+                                                        // It's a file - directly sync it
+                                                        let home_dir = crate::utils::get_home_dir();
+                                                        let relative_path = full_path
+                                                            .strip_prefix(&home_dir)
+                                                            .map(|p| p.to_string_lossy().to_string())
+                                                            .unwrap_or_else(|_| full_path.to_string_lossy().to_string());
+
+                                                        // Close browser first
+                                                        let relative_path_clone = relative_path.clone();
+                                                        let full_path_clone = full_path.clone();
+                                                        state.file_browser_mode = false;
+                                                        state.adding_custom_file = false;
+                                                        state.file_browser_path_input.clear();
+                                                        state.file_browser_path_cursor = 0;
+                                                        state.focus = DotfileSelectionFocus::FilesList;
+                                                        let _ = state; // Release borrow
+
+                                                        // Add the file directly to the dotfiles list and sync it
+                                                        self.add_custom_file_to_sync(&full_path_clone, &relative_path_clone)?;
+
+                                                        // Re-scan to refresh the list
+                                                        self.scan_dotfiles()?;
+
+                                                        // Find and select the file in the list
+                                                        let file_index_opt = {
+                                                            let state = &self.ui_state.dotfile_selection;
+                                                            state.dotfiles.iter().position(|d| {
+                                                                d.relative_path.to_string_lossy() == relative_path_clone
+                                                            })
+                                                        };
+                                                        if let Some(index) = file_index_opt {
+                                                            let _ = self.add_file_to_sync(index);
+                                                            let state = &mut self.ui_state.dotfile_selection;
+                                                            state.dotfile_list_state.select(Some(index));
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                            return Ok(());
+                                        } else if state.focus == DotfileSelectionFocus::FileBrowserInput {
+                                            // Enter in input field - load path
+                                            let path_str = state.file_browser_path_input.trim();
+                                            if !path_str.is_empty() {
+                                                let full_path = crate::utils::expand_path(path_str);
+
+                                                if full_path.exists() {
+                                                    if full_path.is_dir() {
+                                                        state.file_browser_path = full_path.clone();
+                                                        state.file_browser_path_input = state.file_browser_path.to_string_lossy().to_string();
+                                                        state.file_browser_path_cursor = state.file_browser_path_input.chars().count();
+                                                        state.file_browser_list_state.select(Some(0));
+                                                        state.focus = DotfileSelectionFocus::FileBrowserList;
+                                                        self.ui_state.dotfile_selection.file_browser_path = state.file_browser_path.clone();
+                                                        self.refresh_file_browser()?;
+                                                    } else {
+                                                        // It's a file - directly sync it
+                                                        let home_dir = crate::utils::get_home_dir();
+                                                        let relative_path = full_path
+                                                            .strip_prefix(&home_dir)
+                                                            .map(|p| p.to_string_lossy().to_string())
+                                                            .unwrap_or_else(|_| full_path.to_string_lossy().to_string());
+
+                                                        state.file_browser_mode = false;
+                                                        state.adding_custom_file = false;
+                                                        state.file_browser_path_input.clear();
+                                                        state.file_browser_path_cursor = 0;
+                                                        state.focus = DotfileSelectionFocus::FilesList;
+
+                                                        self.scan_dotfiles()?;
+
+                                                        let file_index = {
+                                                            let state = &self.ui_state.dotfile_selection;
+                                                            state.dotfiles.iter().position(|d| {
+                                                                d.relative_path.to_string_lossy() == relative_path
+                                                            })
+                                                        };
+
+                                                        if let Some(index) = file_index {
+                                                            let _ = self.add_file_to_sync(index);
+                                                            let state = &mut self.ui_state.dotfile_selection;
+                                                            state.dotfile_list_state.select(Some(index));
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    } else if state.status_message.is_some() {
                                         state.status_message = None;
                                     } else if let Some(idx) = state.dotfile_list_state.selected() {
                                         intent = DotfileIntent::ToggleSelection(idx);
@@ -1167,6 +1373,16 @@ impl App {
                                     {
                                         state.preview_scroll =
                                             state.preview_scroll.saturating_sub(20);
+                                    } else if state.focus == DotfileSelectionFocus::FileBrowserList {
+                                        if let Some(current) = state.file_browser_list_state.selected() {
+                                            let new_index = current.saturating_sub(10);
+                                            state.file_browser_list_state.select(Some(new_index));
+                                        }
+                                    } else if state.focus == DotfileSelectionFocus::FileBrowserPreview
+                                        && state.file_browser_preview_scroll > 0
+                                    {
+                                        state.file_browser_preview_scroll =
+                                            state.file_browser_preview_scroll.saturating_sub(20);
                                     }
                                 }
                                 Action::PageDown => {
@@ -1185,6 +1401,15 @@ impl App {
                                     } else if state.focus == DotfileSelectionFocus::Preview {
                                         state.preview_scroll =
                                             state.preview_scroll.saturating_add(20);
+                                    } else if state.focus == DotfileSelectionFocus::FileBrowserList {
+                                        if let Some(current) = state.file_browser_list_state.selected() {
+                                            let new_index = (current + 10)
+                                                .min(state.file_browser_entries.len().saturating_sub(1));
+                                            state.file_browser_list_state.select(Some(new_index));
+                                        }
+                                    } else if state.focus == DotfileSelectionFocus::FileBrowserPreview {
+                                        state.file_browser_preview_scroll =
+                                            state.file_browser_preview_scroll.saturating_add(20);
                                     }
                                 }
                                 Action::ScrollUp => {
@@ -1193,13 +1418,23 @@ impl App {
                                     {
                                         state.preview_scroll =
                                             state.preview_scroll.saturating_sub(10);
+                                    } else if state.focus == DotfileSelectionFocus::FileBrowserPreview
+                                        && state.file_browser_preview_scroll > 0
+                                    {
+                                        state.file_browser_preview_scroll =
+                                            state.file_browser_preview_scroll.saturating_sub(10);
                                     }
+                                    return Ok(());
                                 }
                                 Action::ScrollDown => {
                                     if state.focus == DotfileSelectionFocus::Preview {
                                         state.preview_scroll =
                                             state.preview_scroll.saturating_add(10);
+                                    } else if state.focus == DotfileSelectionFocus::FileBrowserPreview {
+                                        state.file_browser_preview_scroll =
+                                            state.file_browser_preview_scroll.saturating_add(10);
                                     }
+                                    return Ok(());
                                 }
                                 Action::GoToTop => {
                                     if state.focus == DotfileSelectionFocus::FilesList {
@@ -1207,12 +1442,18 @@ impl App {
                                         state.preview_scroll = 0;
                                     } else if state.focus == DotfileSelectionFocus::Preview {
                                         state.preview_scroll = 0;
+                                    } else if state.focus == DotfileSelectionFocus::FileBrowserList {
+                                        state.file_browser_list_state.select_first();
+                                    } else if state.focus == DotfileSelectionFocus::FileBrowserPreview {
+                                        state.file_browser_preview_scroll = 0;
                                     }
                                 }
                                 Action::GoToEnd => {
                                     if state.focus == DotfileSelectionFocus::FilesList {
                                         state.dotfile_list_state.select_last();
                                         state.preview_scroll = 0;
+                                    } else if state.focus == DotfileSelectionFocus::FileBrowserList {
+                                        state.file_browser_list_state.select_last();
                                     }
                                 }
                                 Action::Create => {
@@ -1455,21 +1696,65 @@ impl App {
 
                 // Handle popup events FIRST - popups capture all events (like profile manager does)
                 if self.ui_state.package_manager.popup_type != PackagePopupType::None {
-                    let state = &mut self.ui_state.package_manager;
                     // Handle popup events inline
                     match event {
                         Event::Key(key) if key.kind == KeyEventKind::Press => {
+                            // Get action before borrowing state
+                            let action = self.get_action(key.code, key.modifiers);
+                            let state = &mut self.ui_state.package_manager;
+                            use crate::keymap::Action;
+                            use crate::ui::AddPackageField;
+
                             match state.popup_type {
                                 PackagePopupType::Add | PackagePopupType::Edit => {
-                                    use crate::ui::AddPackageField;
-                                    match key.code {
-                                        KeyCode::Esc => {
-                                            state.popup_type = PackagePopupType::None;
-                                        }
-                                        KeyCode::Tab => {
-                                            // Switch to next/previous field
-                                            if key.modifiers.contains(KeyModifiers::SHIFT) {
-                                                // Shift+Tab: previous field (go backwards)
+                                    // Handle keymap actions first
+                                    if let Some(action) = action {
+                                        match action {
+                                            Action::Cancel => {
+                                                state.popup_type = PackagePopupType::None;
+                                                return Ok(());
+                                            }
+                                            Action::NextTab => {
+                                                // Switch to next field
+                                                state.add_focused_field =
+                                                    match state.add_focused_field {
+                                                        AddPackageField::Name => {
+                                                            AddPackageField::Description
+                                                        }
+                                                        AddPackageField::Description => {
+                                                            AddPackageField::Manager
+                                                        }
+                                                        AddPackageField::Manager => {
+                                                            if state.add_is_custom {
+                                                                AddPackageField::BinaryName
+                                                            } else {
+                                                                AddPackageField::PackageName
+                                                            }
+                                                        }
+                                                        AddPackageField::PackageName => {
+                                                            AddPackageField::BinaryName
+                                                        }
+                                                        AddPackageField::BinaryName => {
+                                                            if state.add_is_custom {
+                                                                AddPackageField::InstallCommand
+                                                            } else {
+                                                                AddPackageField::Name // Wrap around
+                                                            }
+                                                        }
+                                                        AddPackageField::InstallCommand => {
+                                                            AddPackageField::ExistenceCheck
+                                                        }
+                                                        AddPackageField::ExistenceCheck => {
+                                                            AddPackageField::Name // Wrap around
+                                                        }
+                                                        AddPackageField::ManagerCheck => {
+                                                            AddPackageField::Name
+                                                        }
+                                                    };
+                                                return Ok(());
+                                            }
+                                            Action::PrevTab => {
+                                                // Switch to previous field
                                                 state.add_focused_field =
                                                     match state.add_focused_field {
                                                         AddPackageField::Name => {
@@ -1503,7 +1788,6 @@ impl App {
                                                             AddPackageField::InstallCommand
                                                         }
                                                         AddPackageField::ManagerCheck => {
-                                                            // ManagerCheck is not shown in UI, but exists in enum
                                                             if state.add_is_custom {
                                                                 AddPackageField::ExistenceCheck
                                                             } else {
@@ -1511,219 +1795,191 @@ impl App {
                                                             }
                                                         }
                                                     };
-                                            } else {
-                                                // Tab: next field (go forwards)
-                                                state.add_focused_field =
-                                                    match state.add_focused_field {
-                                                        AddPackageField::Name => {
-                                                            AddPackageField::Description
-                                                        }
-                                                        AddPackageField::Description => {
-                                                            AddPackageField::Manager
-                                                        }
-                                                        AddPackageField::Manager => {
-                                                            if state.add_is_custom {
-                                                                AddPackageField::BinaryName
-                                                            } else {
-                                                                AddPackageField::PackageName
-                                                            }
-                                                        }
-                                                        AddPackageField::PackageName => {
-                                                            AddPackageField::BinaryName
-                                                        }
-                                                        AddPackageField::BinaryName => {
-                                                            if state.add_is_custom {
-                                                                AddPackageField::InstallCommand
-                                                            } else {
-                                                                AddPackageField::Name
-                                                                // Wrap around for managed packages
-                                                            }
-                                                        }
-                                                        AddPackageField::InstallCommand => {
-                                                            AddPackageField::ExistenceCheck
-                                                        }
-                                                        AddPackageField::ExistenceCheck => {
-                                                            AddPackageField::Name
-                                                        } // Wrap around
-                                                        AddPackageField::ManagerCheck => {
-                                                            // ManagerCheck is not shown in UI, but exists in enum
-                                                            AddPackageField::Name
-                                                        }
-                                                    };
+                                                return Ok(());
                                             }
-                                        }
-                                        KeyCode::Up
-                                        | KeyCode::Down
-                                        | KeyCode::Left
-                                        | KeyCode::Right => {
-                                            if state.add_focused_field == AddPackageField::Manager {
-                                                // Navigate through managers with arrow keys
-                                                let manager_count = state.available_managers.len();
-                                                if manager_count > 0 {
-                                                    match key.code {
-                                                        KeyCode::Right | KeyCode::Down => {
-                                                            state.add_manager_selected =
-                                                                (state.add_manager_selected + 1)
-                                                                    % manager_count;
-                                                        }
-                                                        KeyCode::Left | KeyCode::Up => {
-                                                            state.add_manager_selected = if state
-                                                                .add_manager_selected
-                                                                == 0
-                                                            {
-                                                                manager_count - 1
-                                                            } else {
-                                                                state.add_manager_selected - 1
-                                                            };
-                                                        }
-                                                        _ => {}
+                                            Action::Confirm => {
+                                                if state.add_focused_field == AddPackageField::Manager {
+                                                    // Enter selects the current manager
+                                                    let manager_count = state.available_managers.len();
+                                                    if manager_count > 0 {
+                                                        state.add_manager = Some(
+                                                            state.available_managers
+                                                                [state.add_manager_selected]
+                                                                .clone(),
+                                                        );
+                                                        state.add_is_custom = matches!(
+                                                            state.available_managers
+                                                                [state.add_manager_selected],
+                                                            PackageManager::Custom
+                                                        );
                                                     }
-                                                    state.add_manager = Some(
-                                                        state.available_managers
-                                                            [state.add_manager_selected]
-                                                            .clone(),
-                                                    );
-                                                    state.add_is_custom = matches!(
-                                                        state.available_managers
-                                                            [state.add_manager_selected],
-                                                        PackageManager::Custom
-                                                    );
+                                                } else {
+                                                    // Save package
+                                                    let _ = state;
+                                                    if self.validate_and_save_package()? {
+                                                        self.ui_state.package_manager.popup_type =
+                                                            PackagePopupType::None;
+                                                    }
                                                 }
+                                                return Ok(());
                                             }
-                                        }
-                                        KeyCode::Char(' ') => {
-                                            if state.add_focused_field == AddPackageField::Manager {
+                                            Action::ToggleSelect => {
                                                 // Space toggles/selects the current manager
-                                                let manager_count = state.available_managers.len();
-                                                if manager_count > 0 {
-                                                    state.add_manager = Some(
-                                                        state.available_managers
-                                                            [state.add_manager_selected]
-                                                            .clone(),
-                                                    );
-                                                    state.add_is_custom = matches!(
-                                                        state.available_managers
-                                                            [state.add_manager_selected],
-                                                        PackageManager::Custom
-                                                    );
+                                                if state.add_focused_field == AddPackageField::Manager {
+                                                    let manager_count = state.available_managers.len();
+                                                    if manager_count > 0 {
+                                                        state.add_manager = Some(
+                                                            state.available_managers
+                                                                [state.add_manager_selected]
+                                                                .clone(),
+                                                        );
+                                                        state.add_is_custom = matches!(
+                                                            state.available_managers
+                                                                [state.add_manager_selected],
+                                                            PackageManager::Custom
+                                                        );
+                                                    }
+                                                    return Ok(());
                                                 }
-                                            } else {
-                                                // Space in text fields - pass through to handle_package_popup_event
-                                                self.handle_package_popup_event(event)?;
+                                                // Otherwise treat space as character input in text fields
+                                                // Fall through to handle_package_popup_event
                                             }
-                                        }
-                                        KeyCode::Enter => {
-                                            if state.add_focused_field == AddPackageField::Manager {
-                                                // Enter selects the current manager
-                                                let manager_count = state.available_managers.len();
-                                                if manager_count > 0 {
-                                                    state.add_manager = Some(
-                                                        state.available_managers
-                                                            [state.add_manager_selected]
-                                                            .clone(),
-                                                    );
-                                                    state.add_is_custom = matches!(
-                                                        state.available_managers
-                                                            [state.add_manager_selected],
-                                                        PackageManager::Custom
-                                                    );
+                                            Action::MoveUp | Action::MoveDown => {
+                                                if state.add_focused_field == AddPackageField::Manager {
+                                                    // Navigate through managers
+                                                    let manager_count = state.available_managers.len();
+                                                    if manager_count > 0 {
+                                                        match action {
+                                                            Action::MoveDown => {
+                                                                state.add_manager_selected =
+                                                                    (state.add_manager_selected + 1)
+                                                                        % manager_count;
+                                                            }
+                                                            Action::MoveUp => {
+                                                                state.add_manager_selected = if state
+                                                                    .add_manager_selected
+                                                                    == 0
+                                                                {
+                                                                    manager_count - 1
+                                                                } else {
+                                                                    state.add_manager_selected - 1
+                                                                };
+                                                            }
+                                                            _ => {}
+                                                        }
+                                                        state.add_manager = Some(
+                                                            state.available_managers
+                                                                [state.add_manager_selected]
+                                                                .clone(),
+                                                        );
+                                                        state.add_is_custom = matches!(
+                                                            state.available_managers
+                                                                [state.add_manager_selected],
+                                                            PackageManager::Custom
+                                                        );
+                                                    }
+                                                    return Ok(());
                                                 }
-                                            } else {
-                                                // Save package
-                                                // Release borrow before calling method
-                                                let _ = state;
-                                                if self.validate_and_save_package()? {
-                                                    self.ui_state.package_manager.popup_type =
-                                                        PackagePopupType::None;
-                                                }
+                                                // For text fields, fall through to handle_package_popup_event for cursor movement
                                             }
-                                        }
-                                        _ => {
-                                            // Delegate text input to handle_package_popup_event
-                                            self.handle_package_popup_event(event)?;
+                                            Action::MoveLeft | Action::MoveRight => {
+                                                // Cursor movement in text fields - handled by handle_package_popup_event
+                                                // Fall through
+                                            }
+                                            Action::Backspace | Action::DeleteChar | Action::Home | Action::End => {
+                                                // Text editing actions - handled by handle_package_popup_event
+                                                // Fall through
+                                            }
+                                            _ => {
+                                                // Other actions - fall through to text input
+                                            }
                                         }
                                     }
+                                    // Delegate text input and cursor movement to handle_package_popup_event
+                                    self.handle_package_popup_event(event)?;
                                 }
                                 PackagePopupType::Delete => {
-                                    match key.code {
-                                        KeyCode::Esc => {
-                                            state.popup_type = PackagePopupType::None;
-                                            state.delete_index = None;
-                                            state.delete_confirm_input.clear();
-                                            state.delete_confirm_cursor = 0;
-                                        }
-                                        KeyCode::Enter => {
-                                            if state.delete_confirm_input.trim() == "DELETE" {
-                                                if let Some(idx) = state.delete_index {
-                                                    // Release borrow before calling method
-                                                    let _ = state;
-                                                    self.delete_package(idx)?;
-                                                    // Re-borrow after method returns
-                                                    let state = &mut self.ui_state.package_manager;
-                                                    state.popup_type = PackagePopupType::None;
-                                                    state.delete_index = None;
-                                                    state.delete_confirm_input.clear();
-                                                    state.delete_confirm_cursor = 0;
-                                                }
+                                    if let Some(action) = action {
+                                        match action {
+                                            Action::Cancel => {
+                                                state.popup_type = PackagePopupType::None;
+                                                state.delete_index = None;
+                                                state.delete_confirm_input.clear();
+                                                state.delete_confirm_cursor = 0;
+                                                return Ok(());
                                             }
-                                        }
-                                        _ => {
-                                            // Delegate text input to handle_package_popup_event
-                                            self.handle_package_popup_event(event)?;
+                                            Action::Confirm => {
+                                                if state.delete_confirm_input.trim() == "DELETE" {
+                                                    if let Some(idx) = state.delete_index {
+                                                        let _ = state;
+                                                        self.delete_package(idx)?;
+                                                        let state = &mut self.ui_state.package_manager;
+                                                        state.popup_type = PackagePopupType::None;
+                                                        state.delete_index = None;
+                                                        state.delete_confirm_input.clear();
+                                                        state.delete_confirm_cursor = 0;
+                                                    }
+                                                }
+                                                return Ok(());
+                                            }
+                                            _ => {
+                                                // Text editing actions - fall through to handle_package_popup_event
+                                            }
                                         }
                                     }
+                                    // Delegate text input to handle_package_popup_event
+                                    self.handle_package_popup_event(event)?;
                                 }
                                 PackagePopupType::InstallMissing => {
-                                    match key.code {
-                                        KeyCode::Char('y')
-                                        | KeyCode::Char('Y')
-                                        | KeyCode::Enter => {
-                                            // User confirmed - start installation
-                                            let mut packages_to_install = Vec::new();
-                                            for (idx, status) in
-                                                state.package_statuses.iter().enumerate()
-                                            {
-                                                if matches!(status, PackageStatus::NotInstalled) {
-                                                    packages_to_install.push(idx);
-                                                }
-                                            }
-
-                                            if !packages_to_install.is_empty() {
-                                                // Start installation
-                                                if let Some(&first_idx) =
-                                                    packages_to_install.first()
+                                    if let Some(action) = action {
+                                        match action {
+                                            Action::Confirm | Action::Yes => {
+                                                // User confirmed - start installation
+                                                let mut packages_to_install = Vec::new();
+                                                for (idx, status) in
+                                                    state.package_statuses.iter().enumerate()
                                                 {
-                                                    let package_name =
-                                                        state.packages[first_idx].name.clone();
-                                                    let total = packages_to_install.len();
-                                                    let mut install_list =
-                                                        packages_to_install.clone();
-                                                    install_list.remove(0);
-
-                                                    state.installation_step =
-                                                        InstallationStep::Installing {
-                                                            package_index: first_idx,
-                                                            package_name,
-                                                            total_packages: total,
-                                                            packages_to_install: install_list,
-                                                            installed: Vec::new(),
-                                                            failed: Vec::new(),
-                                                            status_rx: None,
-                                                        };
-                                                    state.installation_output.clear();
-                                                    state.installation_delay_until = Some(
-                                                        std::time::Instant::now()
-                                                            + Duration::from_millis(100),
-                                                    );
+                                                    if matches!(status, PackageStatus::NotInstalled) {
+                                                        packages_to_install.push(idx);
+                                                    }
                                                 }
+                                                if !packages_to_install.is_empty() {
+                                                    if let Some(&first_idx) =
+                                                        packages_to_install.first()
+                                                    {
+                                                        let package_name =
+                                                            state.packages[first_idx].name.clone();
+                                                        let total = packages_to_install.len();
+                                                        let mut install_list =
+                                                            packages_to_install.clone();
+                                                        install_list.remove(0);
+                                                        state.installation_step =
+                                                            InstallationStep::Installing {
+                                                                package_index: first_idx,
+                                                                package_name,
+                                                                total_packages: total,
+                                                                packages_to_install: install_list,
+                                                                installed: Vec::new(),
+                                                                failed: Vec::new(),
+                                                                status_rx: None,
+                                                            };
+                                                        state.installation_output.clear();
+                                                        state.installation_delay_until = Some(
+                                                            std::time::Instant::now()
+                                                                + Duration::from_millis(100),
+                                                        );
+                                                    }
+                                                }
+                                                state.popup_type = PackagePopupType::None;
+                                                return Ok(());
                                             }
-                                            state.popup_type = PackagePopupType::None;
+                                            Action::Cancel | Action::No => {
+                                                // User cancelled
+                                                state.popup_type = PackagePopupType::None;
+                                                return Ok(());
+                                            }
+                                            _ => {}
                                         }
-                                        KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
-                                            // User cancelled
-                                            state.popup_type = PackagePopupType::None;
-                                        }
-                                        _ => {}
                                     }
                                 }
                                 _ => {}
@@ -1914,63 +2170,6 @@ impl App {
                                 }
                                 _ => {}
                             }
-                        } else {
-                            // Raw Fallback
-                            let state = &mut self.ui_state.package_manager;
-                            match key.code {
-                                // Fallback for 's' if not mapped to Sync/Confirm (though Enter handles Confirm)
-                                KeyCode::Char('s') | KeyCode::Char('S') => {
-                                    if state.popup_type == PackagePopupType::None
-                                        && !state.is_checking
-                                    {
-                                        if let Some(selected_idx) = state.list_state.selected() {
-                                            if selected_idx < state.packages.len() {
-                                                // Copy Check Selected Logic
-                                                let _package_name =
-                                                    state.packages[selected_idx].name.clone();
-                                                if state.package_statuses.len()
-                                                    != state.packages.len()
-                                                {
-                                                    state.package_statuses =
-                                                        vec![
-                                                            PackageStatus::Unknown;
-                                                            state.packages.len()
-                                                        ];
-                                                }
-                                                state.package_statuses[selected_idx] =
-                                                    PackageStatus::Unknown;
-                                                state.is_checking = true;
-                                                state.checking_index = Some(selected_idx);
-                                                state.checking_delay_until = Some(
-                                                    std::time::Instant::now()
-                                                        + Duration::from_millis(100),
-                                                );
-                                            }
-                                        }
-                                    }
-                                }
-                                // Fallback for 'c' if not mapped to Refresh/Create
-                                KeyCode::Char('c') | KeyCode::Char('C') => {
-                                    // If actions didn't catch it, maybe it's Check All fallback?
-                                    if state.popup_type == PackagePopupType::None
-                                        && !state.is_checking
-                                        && !state.packages.is_empty()
-                                    {
-                                        if state.package_statuses.len() != state.packages.len() {
-                                            state.package_statuses =
-                                                vec![PackageStatus::Unknown; state.packages.len()];
-                                        }
-                                        state.package_statuses =
-                                            vec![PackageStatus::Unknown; state.packages.len()];
-                                        state.is_checking = true;
-                                        state.checking_index = None;
-                                        state.checking_delay_until = Some(
-                                            std::time::Instant::now() + Duration::from_millis(100),
-                                        );
-                                    }
-                                }
-                                _ => {}
-                            }
                         }
                     }
                     _ => {}
@@ -1984,33 +2183,27 @@ impl App {
 
                 // Handle popup events first
                 if self.ui_state.profile_manager.popup_type != ProfilePopupType::None {
-                    let state = &mut self.ui_state.profile_manager;
                     // Handle popup events inline
                     match event {
                         Event::Key(key) if key.kind == KeyEventKind::Press => {
+                            // Get action before borrowing state
+                            let action = self.get_action(key.code, key.modifiers);
+                            let state = &mut self.ui_state.profile_manager;
+                            use crate::keymap::Action;
+
                             match state.popup_type {
                                 ProfilePopupType::Create => {
                                     use crate::components::profile_manager::CreateField;
 
-                                    match key.code {
-                                        KeyCode::Esc => {
-                                            state.popup_type = ProfilePopupType::None;
-                                        }
-                                        KeyCode::Tab => {
-                                            // Switch to next field
-                                            if key.modifiers.contains(KeyModifiers::SHIFT) {
-                                                // Shift+Tab: go to previous field
-                                                state.create_focused_field = match state
-                                                    .create_focused_field
-                                                {
-                                                    CreateField::Name => CreateField::CopyFrom,
-                                                    CreateField::Description => CreateField::Name,
-                                                    CreateField::CopyFrom => {
-                                                        CreateField::Description
-                                                    }
-                                                };
-                                            } else {
-                                                // Tab: go to next field
+                                    // Handle keymap actions first
+                                    if let Some(action) = action {
+                                        match action {
+                                            Action::Cancel => {
+                                                state.popup_type = ProfilePopupType::None;
+                                                return Ok(());
+                                            }
+                                            Action::NextTab => {
+                                                // Switch to next field
                                                 state.create_focused_field = match state
                                                     .create_focused_field
                                                 {
@@ -2020,342 +2213,91 @@ impl App {
                                                     }
                                                     CreateField::CopyFrom => CreateField::Name,
                                                 };
-                                            }
-                                        }
-                                        KeyCode::BackTab => {
-                                            // Shift+Tab: go to previous field
-                                            state.create_focused_field = match state
-                                                .create_focused_field
-                                            {
-                                                CreateField::Name => CreateField::CopyFrom,
-                                                CreateField::Description => CreateField::Name,
-                                                CreateField::CopyFrom => CreateField::Description,
-                                            };
-                                        }
-                                        KeyCode::Up => {
-                                            // Navigate Copy From list (index 0 = "Start Blank", 1+ = profiles)
-                                            if state.create_focused_field == CreateField::CopyFrom {
-                                                // Convert to UI index: None = 0, Some(idx) = idx + 1
-                                                let ui_current =
-                                                    if let Some(idx) = state.create_copy_from {
-                                                        idx + 1
-                                                    } else {
-                                                        0
-                                                    };
-
-                                                if ui_current > 0 {
-                                                    // Move up: if at profile, go to previous profile or "Start Blank"
-                                                    if ui_current == 1 {
-                                                        state.create_copy_from = None;
-                                                    // Go to "Start Blank"
-                                                    } else {
-                                                        state.create_copy_from =
-                                                            Some(ui_current - 2);
-                                                        // Previous profile
-                                                    }
-                                                } else {
-                                                    // At "Start Blank", wrap to last profile
-                                                    if !profiles.is_empty() {
-                                                        state.create_copy_from =
-                                                            Some(profiles.len() - 1);
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        KeyCode::Down => {
-                                            // Navigate Copy From list (index 0 = "Start Blank", 1+ = profiles)
-                                            if state.create_focused_field == CreateField::CopyFrom {
-                                                // Convert to UI index: None = 0, Some(idx) = idx + 1
-                                                let ui_current =
-                                                    if let Some(idx) = state.create_copy_from {
-                                                        idx + 1
-                                                    } else {
-                                                        0
-                                                    };
-
-                                                let max_ui_idx = profiles.len(); // Last UI index (profiles.len() because "Start Blank" is at 0)
-
-                                                if ui_current < max_ui_idx {
-                                                    // Move down: if at "Start Blank", go to first profile, otherwise next profile
-                                                    if ui_current == 0 {
-                                                        state.create_copy_from = Some(0);
-                                                    // First profile
-                                                    } else {
-                                                        state.create_copy_from = Some(ui_current);
-                                                        // Next profile
-                                                    }
-                                                } else {
-                                                    // At last profile, wrap to "Start Blank"
-                                                    state.create_copy_from = None;
-                                                }
-                                            }
-                                        }
-                                        KeyCode::Char(' ') => {
-                                            // Toggle Copy From selection when space is pressed (only if Copy From is focused)
-                                            if state.create_focused_field == CreateField::CopyFrom {
-                                                // Get current UI index (0 = "Start Blank", 1+ = profiles)
-                                                let ui_current =
-                                                    if let Some(idx) = state.create_copy_from {
-                                                        idx + 1
-                                                    } else {
-                                                        0
-                                                    };
-
-                                                if ui_current == 0 {
-                                                    // "Start Blank" is already selected, keep it selected
-                                                    state.create_copy_from = None;
-                                                } else {
-                                                    // Toggle profile selection
-                                                    let profile_idx = ui_current - 1;
-                                                    if state.create_copy_from == Some(profile_idx) {
-                                                        state.create_copy_from = None;
-                                                    // Deselect, go to "Start Blank"
-                                                    } else {
-                                                        state.create_copy_from = Some(profile_idx);
-                                                        // Select this profile
-                                                    }
-                                                }
-                                            } else {
-                                                // Space is a regular character for Name and Description fields
-                                                match state.create_focused_field {
-                                                    CreateField::Name => {
-                                                        crate::utils::text_input::handle_char_insertion(&mut state.create_name_input, &mut state.create_name_cursor, ' ');
-                                                    }
-                                                    CreateField::Description => {
-                                                        crate::utils::text_input::handle_char_insertion(&mut state.create_description_input, &mut state.create_description_cursor, ' ');
-                                                    }
-                                                    CreateField::CopyFrom => {
-                                                        // Already handled above
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        KeyCode::Enter => {
-                                            // Enter always creates the profile (if name is filled)
-                                            // If Copy From is focused, select the current item first, then create
-                                            if state.create_focused_field == CreateField::CopyFrom {
-                                                // Get current UI index (0 = "Start Blank", 1+ = profiles)
-                                                let ui_current =
-                                                    if let Some(idx) = state.create_copy_from {
-                                                        idx + 1
-                                                    } else {
-                                                        0
-                                                    };
-
-                                                if ui_current == 0 {
-                                                    // "Start Blank" is selected, keep it
-                                                    state.create_copy_from = None;
-                                                } else {
-                                                    // Select the current profile
-                                                    let profile_idx = ui_current - 1;
-                                                    state.create_copy_from = Some(profile_idx);
-                                                }
-                                            }
-
-                                            // Create profile (Enter always creates, regardless of focus)
-                                            if !state.create_name_input.is_empty() {
-                                                let name = state.create_name_input.clone();
-                                                let description =
-                                                    if state.create_description_input.is_empty() {
-                                                        None
-                                                    } else {
-                                                        Some(state.create_description_input.clone())
-                                                    };
-                                                let copy_from = state.create_copy_from;
-                                                // Clone values before releasing borrow
-                                                let name_clone = name.clone();
-                                                let description_clone = description.clone();
-                                                // Release borrow by ending scope
-                                                {
-                                                    let _ = state;
-                                                }
-                                                match self.create_profile(
-                                                    &name_clone,
-                                                    description_clone,
-                                                    copy_from,
-                                                ) {
-                                                    Ok(_) => {
-                                                        // Refresh config
-                                                        self.config = Config::load_or_create(
-                                                            &self.config_path,
-                                                        )?;
-                                                        self.ui_state.profile_manager.popup_type =
-                                                            ProfilePopupType::None;
-                                                        self.ui_state
-                                                            .profile_manager
-                                                            .create_name_input
-                                                            .clear();
-                                                        self.ui_state
-                                                            .profile_manager
-                                                            .create_description_input
-                                                            .clear();
-                                                        self.ui_state
-                                                            .profile_manager
-                                                            .create_focused_field =
-                                                            CreateField::Name;
-                                                        // Refresh list
-                                                        if let Ok(profiles) = self.get_profiles() {
-                                                            if !profiles.is_empty() {
-                                                                let new_idx = profiles
-                                                                    .iter()
-                                                                    .position(|p| p.name == name)
-                                                                    .unwrap_or(
-                                                                        profiles
-                                                                            .len()
-                                                                            .saturating_sub(1),
-                                                                    );
-                                                                self.ui_state
-                                                                    .profile_manager
-                                                                    .list_state
-                                                                    .select(Some(new_idx));
-                                                            }
-                                                        }
-                                                    }
-                                                    Err(e) => {
-                                                        error!("Failed to create profile: {}", e);
-                                                        // Show error message in UI
-                                                        self.message_component = Some(MessageComponent::new(
-                                                            "Profile Creation Failed".to_string(),
-                                                            format!("Failed to create profile '{}':\n{}", name, e),
-                                                            Screen::ManageProfiles,
-                                                        ));
-                                                    }
-                                                }
                                                 return Ok(());
                                             }
-                                        }
-                                        KeyCode::Backspace => {
-                                            match state.create_focused_field {
-                                                CreateField::Name => {
-                                                    if !state.create_name_input.is_empty() {
-                                                        crate::utils::text_input::handle_backspace(
-                                                            &mut state.create_name_input,
-                                                            &mut state.create_name_cursor,
-                                                        );
+                                            Action::PrevTab => {
+                                                // Switch to previous field
+                                                state.create_focused_field = match state
+                                                    .create_focused_field
+                                                {
+                                                    CreateField::Name => CreateField::CopyFrom,
+                                                    CreateField::Description => CreateField::Name,
+                                                    CreateField::CopyFrom => {
+                                                        CreateField::Description
+                                                    }
+                                                };
+                                                return Ok(());
+                                            }
+                                            Action::Confirm => {
+                                                // Enter always creates the profile (if name is filled)
+                                                // If Copy From is focused, select the current item first, then create
+                                                if state.create_focused_field == CreateField::CopyFrom {
+                                                    // Get current UI index (0 = "Start Blank", 1+ = profiles)
+                                                    let ui_current =
+                                                        if let Some(idx) = state.create_copy_from {
+                                                            idx + 1
+                                                        } else {
+                                                            0
+                                                        };
+
+                                                    if ui_current == 0 {
+                                                        // "Start Blank" is selected, keep it
+                                                        state.create_copy_from = None;
+                                                    } else {
+                                                        // Select the current profile
+                                                        let profile_idx = ui_current - 1;
+                                                        state.create_copy_from = Some(profile_idx);
                                                     }
                                                 }
-                                                CreateField::Description => {
-                                                    if !state.create_description_input.is_empty() {
-                                                        crate::utils::text_input::handle_backspace(
-                                                            &mut state.create_description_input,
-                                                            &mut state.create_description_cursor,
-                                                        );
-                                                    }
-                                                }
-                                                CreateField::CopyFrom => {
-                                                    // No-op for Copy From field
-                                                }
-                                            }
-                                        }
-                                        KeyCode::Delete => {
-                                            match state.create_focused_field {
-                                                CreateField::Name => {
-                                                    if !state.create_name_input.is_empty() {
-                                                        crate::utils::text_input::handle_delete(
-                                                            &mut state.create_name_input,
-                                                            &mut state.create_name_cursor,
-                                                        );
-                                                    }
-                                                }
-                                                CreateField::Description => {
-                                                    if !state.create_description_input.is_empty() {
-                                                        crate::utils::text_input::handle_delete(
-                                                            &mut state.create_description_input,
-                                                            &mut state.create_description_cursor,
-                                                        );
-                                                    }
-                                                }
-                                                CreateField::CopyFrom => {
-                                                    // No-op for Copy From field
-                                                }
-                                            }
-                                        }
-                                        KeyCode::Left => {
-                                            match state.create_focused_field {
-                                                CreateField::Name => {
-                                                    crate::utils::text_input::handle_cursor_movement(&state.create_name_input, &mut state.create_name_cursor, KeyCode::Left);
-                                                }
-                                                CreateField::Description => {
-                                                    crate::utils::text_input::handle_cursor_movement(&state.create_description_input, &mut state.create_description_cursor, KeyCode::Left);
-                                                }
-                                                CreateField::CopyFrom => {
-                                                    // No-op for Copy From field
-                                                }
-                                            }
-                                        }
-                                        KeyCode::Right => {
-                                            match state.create_focused_field {
-                                                CreateField::Name => {
-                                                    crate::utils::text_input::handle_cursor_movement(&state.create_name_input, &mut state.create_name_cursor, KeyCode::Right);
-                                                }
-                                                CreateField::Description => {
-                                                    crate::utils::text_input::handle_cursor_movement(&state.create_description_input, &mut state.create_description_cursor, KeyCode::Right);
-                                                }
-                                                CreateField::CopyFrom => {
-                                                    // No-op for Copy From field
-                                                }
-                                            }
-                                        }
-                                        KeyCode::Char(c) => {
-                                            match state.create_focused_field {
-                                                CreateField::Name => {
-                                                    crate::utils::text_input::handle_char_insertion(
-                                                        &mut state.create_name_input,
-                                                        &mut state.create_name_cursor,
-                                                        c,
-                                                    );
-                                                }
-                                                CreateField::Description => {
-                                                    crate::utils::text_input::handle_char_insertion(
-                                                        &mut state.create_description_input,
-                                                        &mut state.create_description_cursor,
-                                                        c,
-                                                    );
-                                                }
-                                                CreateField::CopyFrom => {
-                                                    // No-op for Copy From field (navigation handled by Up/Down)
-                                                }
-                                            }
-                                        }
-                                        _ => {}
-                                    }
-                                }
-                                ProfilePopupType::Switch => {
-                                    match key.code {
-                                        KeyCode::Esc => {
-                                            state.popup_type = ProfilePopupType::None;
-                                        }
-                                        KeyCode::Enter => {
-                                            // Switch profile
-                                            if let Some(idx) = state.list_state.selected() {
-                                                if let Some(profile) = profiles.get(idx) {
-                                                    let profile_name = profile.name.clone();
-                                                    // Release borrows by ending scope
+
+                                                // Create profile (Enter always creates, regardless of focus)
+                                                if !state.create_name_input.is_empty() {
+                                                    let name = state.create_name_input.clone();
+                                                    let description =
+                                                        if state.create_description_input.is_empty() {
+                                                            None
+                                                        } else {
+                                                            Some(state.create_description_input.clone())
+                                                        };
+                                                    let copy_from = state.create_copy_from;
+                                                    let name_clone = name.clone();
+                                                    let description_clone = description.clone();
                                                     {
                                                         let _ = state;
-                                                        let _ = profiles;
                                                     }
-                                                    match self.switch_profile(&profile_name) {
+                                                    match self.create_profile(
+                                                        &name_clone,
+                                                        description_clone,
+                                                        copy_from,
+                                                    ) {
                                                         Ok(_) => {
-                                                            // Refresh config
                                                             self.config = Config::load_or_create(
                                                                 &self.config_path,
                                                             )?;
+                                                            self.ui_state.profile_manager.popup_type =
+                                                                ProfilePopupType::None;
                                                             self.ui_state
                                                                 .profile_manager
-                                                                .popup_type =
-                                                                ProfilePopupType::None;
-                                                            // Update list selection
-                                                            if let Ok(profiles) =
-                                                                self.get_profiles()
-                                                            {
+                                                                .create_name_input
+                                                                .clear();
+                                                            self.ui_state
+                                                                .profile_manager
+                                                                .create_description_input
+                                                                .clear();
+                                                            self.ui_state
+                                                                .profile_manager
+                                                                .create_focused_field =
+                                                                CreateField::Name;
+                                                            if let Ok(profiles) = self.get_profiles() {
                                                                 if !profiles.is_empty() {
                                                                     let new_idx = profiles
                                                                         .iter()
-                                                                        .position(|p| {
-                                                                            p.name == profile_name
-                                                                        })
-                                                                        .unwrap_or(0);
+                                                                        .position(|p| p.name == name)
+                                                                        .unwrap_or(
+                                                                            profiles
+                                                                                .len()
+                                                                                .saturating_sub(1),
+                                                                        );
                                                                     self.ui_state
                                                                         .profile_manager
                                                                         .list_state
@@ -2364,64 +2306,261 @@ impl App {
                                                             }
                                                         }
                                                         Err(e) => {
-                                                            error!(
-                                                                "Failed to switch profile: {}",
-                                                                e
-                                                            );
-                                                            // Show error message in UI
-                                                            self.ui_state
-                                                                .profile_manager
-                                                                .popup_type =
-                                                                ProfilePopupType::None;
+                                                            error!("Failed to create profile: {}", e);
                                                             self.message_component = Some(MessageComponent::new(
-                                                                "Error".to_string(),
-                                                                format!("Failed to switch profile: {}", e),
+                                                                "Profile Creation Failed".to_string(),
+                                                                format!("Failed to create profile '{}':\n{}", name, e),
                                                                 Screen::ManageProfiles,
                                                             ));
                                                         }
                                                     }
+                                                }
+                                                return Ok(());
+                                            }
+                                            Action::ToggleSelect => {
+                                                // Space toggles Copy From selection when Copy From is focused
+                                                if state.create_focused_field == CreateField::CopyFrom {
+                                                    let ui_current =
+                                                        if let Some(idx) = state.create_copy_from {
+                                                            idx + 1
+                                                        } else {
+                                                            0
+                                                        };
+
+                                                    if ui_current == 0 {
+                                                        state.create_copy_from = None;
+                                                    } else {
+                                                        let profile_idx = ui_current - 1;
+                                                        if state.create_copy_from == Some(profile_idx) {
+                                                            state.create_copy_from = None;
+                                                        } else {
+                                                            state.create_copy_from = Some(profile_idx);
+                                                        }
+                                                    }
                                                     return Ok(());
+                                                }
+                                                // Otherwise treat space as character input in text fields
+                                                // Fall through to character handling
+                                            }
+                                            Action::MoveUp => {
+                                                // Navigate Copy From list
+                                                if state.create_focused_field == CreateField::CopyFrom {
+                                                    let ui_current =
+                                                        if let Some(idx) = state.create_copy_from {
+                                                            idx + 1
+                                                        } else {
+                                                            0
+                                                        };
+
+                                                    if ui_current > 0 {
+                                                        if ui_current == 1 {
+                                                            state.create_copy_from = None;
+                                                        } else {
+                                                            state.create_copy_from =
+                                                                Some(ui_current - 2);
+                                                        }
+                                                    } else {
+                                                        if !profiles.is_empty() {
+                                                            state.create_copy_from =
+                                                                Some(profiles.len() - 1);
+                                                        }
+                                                    }
+                                                    return Ok(());
+                                                }
+                                                // For text fields, fall through to cursor movement
+                                            }
+                                            Action::MoveDown => {
+                                                // Navigate Copy From list
+                                                if state.create_focused_field == CreateField::CopyFrom {
+                                                    let ui_current =
+                                                        if let Some(idx) = state.create_copy_from {
+                                                            idx + 1
+                                                        } else {
+                                                            0
+                                                        };
+
+                                                    let max_ui_idx = profiles.len();
+                                                    if ui_current < max_ui_idx {
+                                                        if ui_current == 0 {
+                                                            state.create_copy_from = Some(0);
+                                                        } else {
+                                                            state.create_copy_from = Some(ui_current);
+                                                        }
+                                                    } else {
+                                                        state.create_copy_from = None;
+                                                    }
+                                                    return Ok(());
+                                                }
+                                                // For text fields, fall through to cursor movement
+                                            }
+                                            Action::MoveLeft | Action::MoveRight | Action::Home | Action::End => {
+                                                // Cursor movement in text fields - handled below
+                                                // Fall through
+                                            }
+                                            Action::Backspace | Action::DeleteChar => {
+                                                // Text editing - handled below
+                                                // Fall through
+                                            }
+                                            _ => {}
+                                        }
+                                    }
+
+                                    // Handle text editing and character input (only if action wasn't handled above)
+                                    // Check if we need to handle text editing actions or character input
+                                    let handled_by_action = if let Some(action) = action {
+                                        matches!(action, Action::MoveLeft | Action::MoveRight | Action::Home | Action::End | Action::Backspace | Action::DeleteChar | Action::ToggleSelect)
+                                    } else {
+                                        false
+                                    };
+
+                                    if !handled_by_action {
+                                        // Handle text editing actions that fell through
+                                        if let Some(action) = action {
+                                            match action {
+                                                Action::MoveLeft | Action::MoveRight => {
+                                                    let key_code = match action {
+                                                        Action::MoveLeft => KeyCode::Left,
+                                                        Action::MoveRight => KeyCode::Right,
+                                                        _ => return Ok(()),
+                                                    };
+                                                    match state.create_focused_field {
+                                                        CreateField::Name => {
+                                                            crate::utils::text_input::handle_cursor_movement(&state.create_name_input, &mut state.create_name_cursor, key_code);
+                                                        }
+                                                        CreateField::Description => {
+                                                            crate::utils::text_input::handle_cursor_movement(&state.create_description_input, &mut state.create_description_cursor, key_code);
+                                                        }
+                                                        CreateField::CopyFrom => {}
+                                                    }
+                                                    return Ok(());
+                                                }
+                                                Action::Home | Action::End => {
+                                                    let key_code = match action {
+                                                        Action::Home => KeyCode::Home,
+                                                        Action::End => KeyCode::End,
+                                                        _ => return Ok(()),
+                                                    };
+                                                    match state.create_focused_field {
+                                                        CreateField::Name => {
+                                                            crate::utils::text_input::handle_cursor_movement(&state.create_name_input, &mut state.create_name_cursor, key_code);
+                                                        }
+                                                        CreateField::Description => {
+                                                            crate::utils::text_input::handle_cursor_movement(&state.create_description_input, &mut state.create_description_cursor, key_code);
+                                                        }
+                                                        CreateField::CopyFrom => {}
+                                                    }
+                                                    return Ok(());
+                                                }
+                                                Action::Backspace => {
+                                                    match state.create_focused_field {
+                                                        CreateField::Name => {
+                                                            if !state.create_name_input.is_empty() {
+                                                                crate::utils::text_input::handle_backspace(
+                                                                    &mut state.create_name_input,
+                                                                    &mut state.create_name_cursor,
+                                                                );
+                                                            }
+                                                        }
+                                                        CreateField::Description => {
+                                                            if !state.create_description_input.is_empty() {
+                                                                crate::utils::text_input::handle_backspace(
+                                                                    &mut state.create_description_input,
+                                                                    &mut state.create_description_cursor,
+                                                                );
+                                                            }
+                                                        }
+                                                        CreateField::CopyFrom => {}
+                                                    }
+                                                    return Ok(());
+                                                }
+                                                Action::DeleteChar => {
+                                                    match state.create_focused_field {
+                                                        CreateField::Name => {
+                                                            if !state.create_name_input.is_empty() {
+                                                                crate::utils::text_input::handle_delete(
+                                                                    &mut state.create_name_input,
+                                                                    &mut state.create_name_cursor,
+                                                                );
+                                                            }
+                                                        }
+                                                        CreateField::Description => {
+                                                            if !state.create_description_input.is_empty() {
+                                                                crate::utils::text_input::handle_delete(
+                                                                    &mut state.create_description_input,
+                                                                    &mut state.create_description_cursor,
+                                                                );
+                                                            }
+                                                        }
+                                                        CreateField::CopyFrom => {}
+                                                    }
+                                                    return Ok(());
+                                                }
+                                                Action::ToggleSelect => {
+                                                    // Space in text fields - treat as character
+                                                    match state.create_focused_field {
+                                                        CreateField::Name => {
+                                                            crate::utils::text_input::handle_char_insertion(&mut state.create_name_input, &mut state.create_name_cursor, ' ');
+                                                        }
+                                                        CreateField::Description => {
+                                                            crate::utils::text_input::handle_char_insertion(&mut state.create_description_input, &mut state.create_description_cursor, ' ');
+                                                        }
+                                                        CreateField::CopyFrom => {}
+                                                    }
+                                                    return Ok(());
+                                                }
+                                                _ => {}
+                                            }
+                                        }
+
+                                        // Handle character input
+                                        if let KeyCode::Char(c) = key.code {
+                                            if !key.modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SUPER) {
+                                                match state.create_focused_field {
+                                                    CreateField::Name => {
+                                                        crate::utils::text_input::handle_char_insertion(
+                                                            &mut state.create_name_input,
+                                                            &mut state.create_name_cursor,
+                                                            c,
+                                                        );
+                                                    }
+                                                    CreateField::Description => {
+                                                        crate::utils::text_input::handle_char_insertion(
+                                                            &mut state.create_description_input,
+                                                            &mut state.create_description_cursor,
+                                                            c,
+                                                        );
+                                                    }
+                                                    CreateField::CopyFrom => {}
                                                 }
                                             }
                                         }
-                                        _ => {}
                                     }
                                 }
-                                ProfilePopupType::Rename => {
-                                    match key.code {
-                                        KeyCode::Esc => {
-                                            state.popup_type = ProfilePopupType::None;
-                                        }
-                                        KeyCode::Enter => {
-                                            // Rename profile
-                                            if !state.rename_input.is_empty() {
+                                ProfilePopupType::Switch => {
+                                    if let Some(action) = action {
+                                        match action {
+                                            Action::Cancel => {
+                                                state.popup_type = ProfilePopupType::None;
+                                                return Ok(());
+                                            }
+                                            Action::Confirm => {
+                                                // Switch profile
                                                 if let Some(idx) = state.list_state.selected() {
                                                     if let Some(profile) = profiles.get(idx) {
-                                                        let old_name = profile.name.clone();
-                                                        let new_name = state.rename_input.clone();
-                                                        // Clone values before releasing borrows
-                                                        let old_name_clone = old_name.clone();
-                                                        let new_name_clone = new_name.clone();
-                                                        // Release borrows by ending scope
+                                                        let profile_name = profile.name.clone();
                                                         {
                                                             let _ = state;
                                                             let _ = profiles;
                                                         }
-                                                        match self.rename_profile(
-                                                            &old_name_clone,
-                                                            &new_name_clone,
-                                                        ) {
+                                                        match self.switch_profile(&profile_name) {
                                                             Ok(_) => {
-                                                                // Refresh config
-                                                                self.config =
-                                                                    Config::load_or_create(
-                                                                        &self.config_path,
-                                                                    )?;
+                                                                self.config = Config::load_or_create(
+                                                                    &self.config_path,
+                                                                )?;
                                                                 self.ui_state
                                                                     .profile_manager
                                                                     .popup_type =
                                                                     ProfilePopupType::None;
-                                                                // Update list selection
                                                                 if let Ok(profiles) =
                                                                     self.get_profiles()
                                                                 {
@@ -2429,7 +2568,7 @@ impl App {
                                                                         let new_idx = profiles
                                                                             .iter()
                                                                             .position(|p| {
-                                                                                p.name == new_name
+                                                                                p.name == profile_name
                                                                             })
                                                                             .unwrap_or(0);
                                                                         self.ui_state
@@ -2440,134 +2579,14 @@ impl App {
                                                                 }
                                                             }
                                                             Err(e) => {
-                                                                error!(
-                                                                    "Failed to rename profile: {}",
-                                                                    e
-                                                                );
-                                                                // Show error message in UI
-                                                                self.message_component = Some(MessageComponent::new(
-                                                                    "Profile Rename Failed".to_string(),
-                                                                    format!("Failed to rename profile '{}' to '{}':\n{}", old_name, new_name, e),
-                                                                    Screen::ManageProfiles,
-                                                                ));
-                                                            }
-                                                        }
-                                                        return Ok(());
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        KeyCode::Backspace => {
-                                            if !state.rename_input.is_empty() {
-                                                crate::utils::text_input::handle_backspace(
-                                                    &mut state.rename_input,
-                                                    &mut state.rename_cursor,
-                                                );
-                                            }
-                                        }
-                                        KeyCode::Delete => {
-                                            if !state.rename_input.is_empty() {
-                                                crate::utils::text_input::handle_delete(
-                                                    &mut state.rename_input,
-                                                    &mut state.rename_cursor,
-                                                );
-                                            }
-                                        }
-                                        KeyCode::Left => {
-                                            crate::utils::text_input::handle_cursor_movement(
-                                                &state.rename_input,
-                                                &mut state.rename_cursor,
-                                                KeyCode::Left,
-                                            );
-                                        }
-                                        KeyCode::Right => {
-                                            crate::utils::text_input::handle_cursor_movement(
-                                                &state.rename_input,
-                                                &mut state.rename_cursor,
-                                                KeyCode::Right,
-                                            );
-                                        }
-                                        KeyCode::Char(c) => {
-                                            crate::utils::text_input::handle_char_insertion(
-                                                &mut state.rename_input,
-                                                &mut state.rename_cursor,
-                                                c,
-                                            );
-                                        }
-                                        _ => {}
-                                    }
-                                }
-                                ProfilePopupType::Delete => {
-                                    match key.code {
-                                        KeyCode::Esc => {
-                                            state.popup_type = ProfilePopupType::None;
-                                        }
-                                        KeyCode::Enter => {
-                                            // Delete profile
-                                            if let Some(idx) = state.list_state.selected() {
-                                                if let Some(profile) = profiles.get(idx) {
-                                                    if state.delete_confirm_input == profile.name {
-                                                        let profile_name = profile.name.clone();
-                                                        let idx_clone = idx;
-                                                        // Clone values before releasing borrows
-                                                        let profile_name_clone =
-                                                            profile_name.clone();
-                                                        // Release borrows by ending scope
-                                                        {
-                                                            let _ = state;
-                                                            let _ = profiles;
-                                                        }
-                                                        match self
-                                                            .delete_profile(&profile_name_clone)
-                                                        {
-                                                            Ok(_) => {
-                                                                // Refresh config
-                                                                self.config =
-                                                                    Config::load_or_create(
-                                                                        &self.config_path,
-                                                                    )?;
-                                                                self.ui_state
-                                                                    .profile_manager
-                                                                    .popup_type =
-                                                                    ProfilePopupType::None;
-                                                                // Update list selection
-                                                                if let Ok(profiles) =
-                                                                    self.get_profiles()
-                                                                {
-                                                                    if !profiles.is_empty() {
-                                                                        let new_idx = idx_clone
-                                                                            .min(
-                                                                                profiles
-                                                                                    .len()
-                                                                                    .saturating_sub(
-                                                                                        1,
-                                                                                    ),
-                                                                            );
-                                                                        self.ui_state
-                                                                            .profile_manager
-                                                                            .list_state
-                                                                            .select(Some(new_idx));
-                                                                    } else {
-                                                                        self.ui_state
-                                                                            .profile_manager
-                                                                            .list_state
-                                                                            .select(None);
-                                                                    }
-                                                                }
-                                                            }
-                                                            Err(e) => {
-                                                                error!(
-                                                                    "Failed to delete profile: {}",
-                                                                    e
-                                                                );
-                                                                // Show error message in UI
+                                                                error!("Failed to switch profile: {}", e);
                                                                 self.ui_state
                                                                     .profile_manager
                                                                     .popup_type =
                                                                     ProfilePopupType::None;
                                                                 self.message_component = Some(MessageComponent::new(
                                                                     "Error".to_string(),
-                                                                    format!("Failed to delete profile: {}", e),
+                                                                    format!("Failed to switch profile: {}", e),
                                                                     Screen::ManageProfiles,
                                                                 ));
                                                             }
@@ -2575,46 +2594,242 @@ impl App {
                                                         return Ok(());
                                                     }
                                                 }
+                                                return Ok(());
                                             }
+                                            _ => {}
                                         }
-                                        KeyCode::Backspace => {
-                                            if !state.delete_confirm_input.is_empty() {
-                                                crate::utils::text_input::handle_backspace(
-                                                    &mut state.delete_confirm_input,
-                                                    &mut state.delete_confirm_cursor,
+                                    }
+                                }
+                                ProfilePopupType::Rename => {
+                                    if let Some(action) = action {
+                                        match action {
+                                            Action::Cancel => {
+                                                state.popup_type = ProfilePopupType::None;
+                                                return Ok(());
+                                            }
+                                            Action::Confirm => {
+                                                // Rename profile
+                                                if !state.rename_input.is_empty() {
+                                                    if let Some(idx) = state.list_state.selected() {
+                                                        if let Some(profile) = profiles.get(idx) {
+                                                            let old_name = profile.name.clone();
+                                                            let new_name = state.rename_input.clone();
+                                                            let old_name_clone = old_name.clone();
+                                                            let new_name_clone = new_name.clone();
+                                                            {
+                                                                let _ = state;
+                                                                let _ = profiles;
+                                                            }
+                                                            match self.rename_profile(
+                                                                &old_name_clone,
+                                                                &new_name_clone,
+                                                            ) {
+                                                                Ok(_) => {
+                                                                    self.config =
+                                                                        Config::load_or_create(
+                                                                            &self.config_path,
+                                                                        )?;
+                                                                    self.ui_state
+                                                                        .profile_manager
+                                                                        .popup_type =
+                                                                        ProfilePopupType::None;
+                                                                    if let Ok(profiles) =
+                                                                        self.get_profiles()
+                                                                    {
+                                                                        if !profiles.is_empty() {
+                                                                            let new_idx = profiles
+                                                                                .iter()
+                                                                                .position(|p| {
+                                                                                    p.name == new_name
+                                                                                })
+                                                                                .unwrap_or(0);
+                                                                            self.ui_state
+                                                                                .profile_manager
+                                                                                .list_state
+                                                                                .select(Some(new_idx));
+                                                                        }
+                                                                    }
+                                                                }
+                                                                Err(e) => {
+                                                                    error!("Failed to rename profile: {}", e);
+                                                                    self.message_component = Some(MessageComponent::new(
+                                                                        "Profile Rename Failed".to_string(),
+                                                                        format!("Failed to rename profile '{}' to '{}':\n{}", old_name, new_name, e),
+                                                                        Screen::ManageProfiles,
+                                                                    ));
+                                                                }
+                                                            }
+                                                            return Ok(());
+                                                        }
+                                                    }
+                                                }
+                                                return Ok(());
+                                            }
+                                            Action::MoveLeft | Action::MoveRight => {
+                                                let key_code = match action {
+                                                    Action::MoveLeft => KeyCode::Left,
+                                                    Action::MoveRight => KeyCode::Right,
+                                                    _ => return Ok(()),
+                                                };
+                                                crate::utils::text_input::handle_cursor_movement(
+                                                    &state.rename_input,
+                                                    &mut state.rename_cursor,
+                                                    key_code,
                                                 );
+                                                return Ok(());
                                             }
-                                        }
-                                        KeyCode::Delete => {
-                                            if !state.delete_confirm_input.is_empty() {
-                                                crate::utils::text_input::handle_delete(
-                                                    &mut state.delete_confirm_input,
-                                                    &mut state.delete_confirm_cursor,
-                                                );
+                                            Action::Backspace => {
+                                                if !state.rename_input.is_empty() {
+                                                    crate::utils::text_input::handle_backspace(
+                                                        &mut state.rename_input,
+                                                        &mut state.rename_cursor,
+                                                    );
+                                                }
+                                                return Ok(());
                                             }
+                                            Action::DeleteChar => {
+                                                if !state.rename_input.is_empty() {
+                                                    crate::utils::text_input::handle_delete(
+                                                        &mut state.rename_input,
+                                                        &mut state.rename_cursor,
+                                                    );
+                                                }
+                                                return Ok(());
+                                            }
+                                            _ => {}
                                         }
-                                        KeyCode::Left => {
-                                            crate::utils::text_input::handle_cursor_movement(
-                                                &state.delete_confirm_input,
-                                                &mut state.delete_confirm_cursor,
-                                                KeyCode::Left,
+                                    }
+
+                                    // Handle character input
+                                    if let KeyCode::Char(c) = key.code {
+                                        if !key.modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SUPER) {
+                                            crate::utils::text_input::handle_char_insertion(
+                                                &mut state.rename_input,
+                                                &mut state.rename_cursor,
+                                                c,
                                             );
                                         }
-                                        KeyCode::Right => {
-                                            crate::utils::text_input::handle_cursor_movement(
-                                                &state.delete_confirm_input,
-                                                &mut state.delete_confirm_cursor,
-                                                KeyCode::Right,
-                                            );
+                                    }
+                                }
+                                ProfilePopupType::Delete => {
+                                    if let Some(action) = action {
+                                        match action {
+                                            Action::Cancel => {
+                                                state.popup_type = ProfilePopupType::None;
+                                                return Ok(());
+                                            }
+                                            Action::Confirm => {
+                                                // Delete profile
+                                                if let Some(idx) = state.list_state.selected() {
+                                                    if let Some(profile) = profiles.get(idx) {
+                                                        if state.delete_confirm_input == profile.name {
+                                                            let profile_name = profile.name.clone();
+                                                            let idx_clone = idx;
+                                                            let profile_name_clone =
+                                                                profile_name.clone();
+                                                            {
+                                                                let _ = state;
+                                                                let _ = profiles;
+                                                            }
+                                                            match self
+                                                                .delete_profile(&profile_name_clone)
+                                                            {
+                                                                Ok(_) => {
+                                                                    self.config =
+                                                                        Config::load_or_create(
+                                                                            &self.config_path,
+                                                                        )?;
+                                                                    self.ui_state
+                                                                        .profile_manager
+                                                                        .popup_type =
+                                                                        ProfilePopupType::None;
+                                                                    if let Ok(profiles) =
+                                                                        self.get_profiles()
+                                                                    {
+                                                                        if !profiles.is_empty() {
+                                                                            let new_idx = idx_clone
+                                                                                .min(
+                                                                                    profiles
+                                                                                        .len()
+                                                                                        .saturating_sub(
+                                                                                            1,
+                                                                                        ),
+                                                                                );
+                                                                            self.ui_state
+                                                                                .profile_manager
+                                                                                .list_state
+                                                                                .select(Some(new_idx));
+                                                                        } else {
+                                                                            self.ui_state
+                                                                                .profile_manager
+                                                                                .list_state
+                                                                                .select(None);
+                                                                        }
+                                                                    }
+                                                                }
+                                                                Err(e) => {
+                                                                    error!("Failed to delete profile: {}", e);
+                                                                    self.ui_state
+                                                                        .profile_manager
+                                                                        .popup_type =
+                                                                        ProfilePopupType::None;
+                                                                    self.message_component = Some(MessageComponent::new(
+                                                                        "Error".to_string(),
+                                                                        format!("Failed to delete profile: {}", e),
+                                                                        Screen::ManageProfiles,
+                                                                    ));
+                                                                }
+                                                            }
+                                                            return Ok(());
+                                                        }
+                                                    }
+                                                }
+                                                return Ok(());
+                                            }
+                                            Action::MoveLeft | Action::MoveRight => {
+                                                let key_code = match action {
+                                                    Action::MoveLeft => KeyCode::Left,
+                                                    Action::MoveRight => KeyCode::Right,
+                                                    _ => return Ok(()),
+                                                };
+                                                crate::utils::text_input::handle_cursor_movement(
+                                                    &state.delete_confirm_input,
+                                                    &mut state.delete_confirm_cursor,
+                                                    key_code,
+                                                );
+                                                return Ok(());
+                                            }
+                                            Action::Backspace => {
+                                                if !state.delete_confirm_input.is_empty() {
+                                                    crate::utils::text_input::handle_backspace(
+                                                        &mut state.delete_confirm_input,
+                                                        &mut state.delete_confirm_cursor,
+                                                    );
+                                                }
+                                                return Ok(());
+                                            }
+                                            Action::DeleteChar => {
+                                                if !state.delete_confirm_input.is_empty() {
+                                                    crate::utils::text_input::handle_delete(
+                                                        &mut state.delete_confirm_input,
+                                                        &mut state.delete_confirm_cursor,
+                                                    );
+                                                }
+                                                return Ok(());
+                                            }
+                                            _ => {}
                                         }
-                                        KeyCode::Char(c) => {
+                                    }
+
+                                    // Handle character input
+                                    if let KeyCode::Char(c) = key.code {
+                                        if !key.modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SUPER) {
                                             crate::utils::text_input::handle_char_insertion(
                                                 &mut state.delete_confirm_input,
                                                 &mut state.delete_confirm_cursor,
                                                 c,
                                             );
                                         }
-                                        _ => {}
                                     }
                                 }
                                 ProfilePopupType::None => {}
@@ -3035,10 +3250,6 @@ impl App {
                         _ => {}
                     }
                 }
-
-                // Fallback for Raw Enter/Esc if not mapped?
-                // Standard maps Enter->Confirm, Esc->Cancel.
-                // So should be covered.
             }
             SetupMode::Local => {
                 // Handle local setup screen
@@ -3062,23 +3273,7 @@ impl App {
                         auth_state.focused_field = GitHubAuthField::Token;
                         return Ok(());
                     }
-                    // Fallback for raw 'u' if Edit is mapped to something else but 'u' is legacy
-                    if key.code == KeyCode::Char('u') || key.code == KeyCode::Char('U') {
-                        auth_state.is_editing_token = true;
-                        auth_state.token_input = String::new();
-                        auth_state.cursor_position = 0;
-                        auth_state.focused_field = GitHubAuthField::Token;
-                        return Ok(());
-                    }
-
                     if let Some(Action::Cancel | Action::Quit) = action {
-                        self.ui_state.current_screen = Screen::MainMenu;
-                        *auth_state = Default::default();
-                        return Ok(());
-                    }
-
-                    if matches!(key.code, KeyCode::Esc) {
-                        // Fallback raw escape
                         self.ui_state.current_screen = Screen::MainMenu;
                         *auth_state = Default::default();
                         return Ok(());
@@ -3349,27 +3544,11 @@ impl App {
                         self.ui_state.current_screen = Screen::MainMenu;
                         *auth_state = Default::default();
                     }
-                    _ => {
-                        // Fallback Raw
-                        if matches!(key.code, KeyCode::Enter | KeyCode::Char(' ')) {
-                            if !self.ui_state.profile_selection.profiles.is_empty() {
-                                self.ui_state.current_screen = Screen::ProfileSelection;
-                            } else {
-                                self.ui_state.current_screen = Screen::MainMenu;
-                                *auth_state = Default::default();
-                            }
-                        } else if matches!(key.code, KeyCode::Esc) {
-                            self.ui_state.current_screen = Screen::MainMenu;
-                            *auth_state = Default::default();
-                        }
-                    }
+                    _ => {}
                 }
             }
             GitHubAuthStep::SetupStep(_) => {
                 if let Some(Action::Cancel | Action::Quit) = action {
-                    *auth_state = Default::default();
-                    self.ui_state.current_screen = Screen::MainMenu;
-                } else if key.code == KeyCode::Esc {
                     *auth_state = Default::default();
                     self.ui_state.current_screen = Screen::MainMenu;
                 }
@@ -3391,12 +3570,6 @@ impl App {
         if auth_state.repo_already_configured {
             // Check Action::Cancel or Action::Quit
             if let Some(Action::Cancel | Action::Quit) = action {
-                self.ui_state.current_screen = Screen::MainMenu;
-                *auth_state = Default::default();
-                return Ok(());
-            }
-            // Fallback for raw Esc if not mapped
-            if key.code == KeyCode::Esc {
                 self.ui_state.current_screen = Screen::MainMenu;
                 *auth_state = Default::default();
             }
@@ -6018,207 +6191,8 @@ impl App {
             }
         }
 
-        // Handle other file browser input
-        match key_code {
-            KeyCode::Char('q') | KeyCode::Esc => {
-                state.adding_custom_file = false;
-                state.file_browser_mode = false;
-                state.file_browser_path_input.clear();
-                state.file_browser_path_cursor = 0;
-                state.file_browser_path_focused = false;
-                state.focus = DotfileSelectionFocus::FilesList;
-            }
-            // Tab handling is now done via Action::NextTab in the main event handler
-            // This section only handles non-keymap keys for file browser
-            KeyCode::Up => {
-                if state.focus == DotfileSelectionFocus::FileBrowserList {
-                    state.file_browser_list_state.select_previous();
-                } else if state.focus == DotfileSelectionFocus::FileBrowserPreview
-                    && state.file_browser_preview_scroll > 0
-                {
-                    state.file_browser_preview_scroll =
-                        state.file_browser_preview_scroll.saturating_sub(1);
-                }
-            }
-            KeyCode::Down => {
-                if state.focus == DotfileSelectionFocus::FileBrowserList {
-                    state.file_browser_list_state.select_next();
-                } else if state.focus == DotfileSelectionFocus::FileBrowserPreview {
-                    state.file_browser_preview_scroll =
-                        state.file_browser_preview_scroll.saturating_add(1);
-                }
-            }
-            KeyCode::Char('u') => {
-                if state.focus == DotfileSelectionFocus::FileBrowserPreview
-                    && state.file_browser_preview_scroll > 0
-                {
-                    state.file_browser_preview_scroll =
-                        state.file_browser_preview_scroll.saturating_sub(10);
-                }
-            }
-            KeyCode::Char('d') => {
-                if state.focus == DotfileSelectionFocus::FileBrowserPreview {
-                    state.file_browser_preview_scroll =
-                        state.file_browser_preview_scroll.saturating_add(10);
-                }
-            }
-            KeyCode::PageUp => {
-                if state.focus == DotfileSelectionFocus::FileBrowserList {
-                    if let Some(current) = state.file_browser_list_state.selected() {
-                        let new_index = current.saturating_sub(10);
-                        state.file_browser_list_state.select(Some(new_index));
-                    }
-                } else if state.focus == DotfileSelectionFocus::FileBrowserPreview
-                    && state.file_browser_preview_scroll > 0
-                {
-                    state.file_browser_preview_scroll =
-                        state.file_browser_preview_scroll.saturating_sub(20);
-                }
-            }
-            KeyCode::PageDown => {
-                if state.focus == DotfileSelectionFocus::FileBrowserList {
-                    if let Some(current) = state.file_browser_list_state.selected() {
-                        let new_index =
-                            (current + 10).min(state.file_browser_entries.len().saturating_sub(1));
-                        state.file_browser_list_state.select(Some(new_index));
-                    } else if !state.file_browser_entries.is_empty() {
-                        state
-                            .file_browser_list_state
-                            .select(Some(10.min(state.file_browser_entries.len() - 1)));
-                    }
-                } else if state.focus == DotfileSelectionFocus::FileBrowserPreview {
-                    state.file_browser_preview_scroll =
-                        state.file_browser_preview_scroll.saturating_add(20);
-                }
-            }
-            KeyCode::Enter => {
-                // Enter loads the selected path into custom file input
-                if let Some(selected_index) = state.file_browser_list_state.selected() {
-                    if selected_index < state.file_browser_entries.len() {
-                        let selected = &state.file_browser_entries[selected_index];
-
-                        if selected == Path::new("..") {
-                            // Go to parent directory
-                            if let Some(parent) = state.file_browser_path.parent() {
-                                let parent_path = parent.to_path_buf();
-                                state.file_browser_path = parent_path.clone();
-                                // Update path input to show the new directory
-                                state.file_browser_path_input =
-                                    state.file_browser_path.to_string_lossy().to_string();
-                                state.file_browser_path_cursor =
-                                    state.file_browser_path_input.chars().count();
-                                state.file_browser_list_state.select(Some(0));
-                                // Refresh after updating path
-                                self.ui_state.dotfile_selection.file_browser_path =
-                                    state.file_browser_path.clone();
-                                self.refresh_file_browser()?;
-                                return Ok(());
-                            }
-                        } else if selected == Path::new(".") {
-                            // Add current folder
-                            let current_folder = state.file_browser_path.clone();
-                            let home_dir = crate::utils::get_home_dir();
-                            let relative_path = current_folder
-                                .strip_prefix(&home_dir)
-                                .map(|p| p.to_string_lossy().to_string())
-                                .unwrap_or_else(|_| current_folder.to_string_lossy().to_string());
-
-                            // Sanity checks
-                            let repo_path = &self.config.repo_path;
-                            let (is_safe, reason) =
-                                crate::utils::is_safe_to_add(&current_folder, repo_path);
-                            if !is_safe {
-                                let state = &mut self.ui_state.dotfile_selection;
-                                state.status_message = Some(format!(
-                                    "Error: {}. Path: {}",
-                                    reason.unwrap_or_else(|| "Cannot add this folder".to_string()),
-                                    current_folder.display()
-                                ));
-                                return Ok(());
-                            }
-
-                            // Check if it's a git repo
-                            if crate::utils::is_git_repo(&current_folder) {
-                                let state = &mut self.ui_state.dotfile_selection;
-                                state.status_message = Some(format!(
-                                    "Error: Cannot sync a git repository. Path contains a .git directory: {}",
-                                    current_folder.display()
-                                ));
-                                return Ok(());
-                            }
-
-                            // Show confirmation modal
-                            let state = &mut self.ui_state.dotfile_selection;
-                            state.show_custom_file_confirm = true;
-                            state.custom_file_confirm_path = Some(current_folder.clone());
-                            state.custom_file_confirm_relative = Some(relative_path.clone());
-                            state.file_browser_mode = false;
-                            state.adding_custom_file = false;
-                            state.file_browser_path_input.clear();
-                            state.file_browser_path_cursor = 0;
-                            state.focus = DotfileSelectionFocus::FilesList;
-                            return Ok(());
-                        } else {
-                            let full_path = if selected.is_absolute() {
-                                selected.clone()
-                            } else {
-                                state.file_browser_path.join(selected)
-                            };
-
-                            if full_path.is_dir() {
-                                // Enter directory
-                                state.file_browser_path = full_path.clone();
-                                state.file_browser_list_state.select(Some(0));
-                                // Refresh after updating path
-                                self.ui_state.dotfile_selection.file_browser_path =
-                                    state.file_browser_path.clone();
-                                self.refresh_file_browser()?;
-                                return Ok(());
-                            } else if full_path.is_file() {
-                                // It's a file - directly sync it
-                                let home_dir = crate::utils::get_home_dir();
-                                let relative_path = full_path
-                                    .strip_prefix(&home_dir)
-                                    .map(|p| p.to_string_lossy().to_string())
-                                    .unwrap_or_else(|_| full_path.to_string_lossy().to_string());
-
-                                // Close browser first
-                                state.file_browser_mode = false;
-                                state.adding_custom_file = false;
-                                state.file_browser_path_input.clear();
-                                state.file_browser_path_cursor = 0;
-                                state.focus = DotfileSelectionFocus::FilesList;
-
-                                // Store paths before releasing borrow
-                                let relative_path_clone = relative_path.clone();
-                                let full_path_clone = full_path.clone();
-
-                                // Release borrow
-                                let _ = state;
-
-                                // Add the file directly to the dotfiles list and sync it
-                                self.add_custom_file_to_sync(
-                                    &full_path_clone,
-                                    &relative_path_clone,
-                                )?;
-
-                                // Re-scan to refresh the list (will include the file if it's in default paths)
-                                self.scan_dotfiles()?;
-
-                                // Find and select the file in the list
-                                let state = &mut self.ui_state.dotfile_selection;
-                                if let Some(index) = state.dotfiles.iter().position(|d| {
-                                    d.relative_path.to_string_lossy() == relative_path_clone
-                                }) {
-                                    state.dotfile_list_state.select(Some(index));
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            _ => {}
-        }
+        // Navigation is now handled by keymap actions in the main event handler
+        // This function only handles text input for the path field when in input mode
 
         Ok(())
     }
@@ -6940,176 +6914,208 @@ impl App {
     /// Handle popup events for package manager (text input and cursor movement only)
     /// Tab/Esc/Enter are handled inline in the main event handler
     fn handle_package_popup_event(&mut self, event: Event) -> Result<()> {
-        let state = &mut self.ui_state.package_manager;
         use crate::utils::package_manager::PackageManagerImpl;
         use crate::utils::text_input::{
             handle_backspace, handle_char_insertion, handle_cursor_movement, handle_delete,
         };
-        use crossterm::event::{KeyCode, KeyEventKind};
+        use crate::keymap::Action;
+        use crossterm::event::{KeyCode, KeyEventKind, KeyModifiers};
+
+        // Get action before borrowing state
+        let action_opt = if let Event::Key(key) = &event {
+            if key.kind == KeyEventKind::Press {
+                Some(self.get_action(key.code, key.modifiers))
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        let state = &mut self.ui_state.package_manager;
 
         match state.popup_type {
             PackagePopupType::Add | PackagePopupType::Edit => {
                 match event {
                     Event::Key(key) if key.kind == KeyEventKind::Press => {
-                        match key.code {
-                            KeyCode::Left | KeyCode::Right | KeyCode::Home | KeyCode::End => {
-                                // Handle cursor movement in focused field
-                                match state.add_focused_field {
-                                    AddPackageField::Name => {
-                                        handle_cursor_movement(
-                                            &state.add_name_input,
-                                            &mut state.add_name_cursor,
-                                            key.code,
-                                        );
-                                    }
-                                    AddPackageField::Description => {
-                                        handle_cursor_movement(
-                                            &state.add_description_input,
-                                            &mut state.add_description_cursor,
-                                            key.code,
-                                        );
-                                    }
-                                    AddPackageField::PackageName => {
-                                        handle_cursor_movement(
-                                            &state.add_package_name_input,
-                                            &mut state.add_package_name_cursor,
-                                            key.code,
-                                        );
-                                    }
-                                    AddPackageField::BinaryName => {
-                                        handle_cursor_movement(
-                                            &state.add_binary_name_input,
-                                            &mut state.add_binary_name_cursor,
-                                            key.code,
-                                        );
-                                    }
-                                    AddPackageField::InstallCommand => {
-                                        handle_cursor_movement(
-                                            &state.add_install_command_input,
-                                            &mut state.add_install_command_cursor,
-                                            key.code,
-                                        );
-                                    }
-                                    AddPackageField::ExistenceCheck => {
-                                        handle_cursor_movement(
-                                            &state.add_existence_check_input,
-                                            &mut state.add_existence_check_cursor,
-                                            key.code,
-                                        );
-                                    }
-                                    AddPackageField::ManagerCheck => {
-                                        // ManagerCheck is not shown in UI, but exists in enum
-                                    }
-                                    AddPackageField::Manager => {
-                                        // Manager selection handled by Up/Down
-                                    }
-                                }
-                            }
-                            KeyCode::Backspace => {
-                                match state.add_focused_field {
-                                    AddPackageField::Name => {
-                                        handle_backspace(
-                                            &mut state.add_name_input,
-                                            &mut state.add_name_cursor,
-                                        );
-                                    }
-                                    AddPackageField::Description => {
-                                        handle_backspace(
-                                            &mut state.add_description_input,
-                                            &mut state.add_description_cursor,
-                                        );
-                                    }
-                                    AddPackageField::PackageName => {
-                                        let old_package_name = state.add_package_name_input.clone();
-                                        handle_backspace(
-                                            &mut state.add_package_name_input,
-                                            &mut state.add_package_name_cursor,
-                                        );
-                                        // Update binary name suggestion when package name is edited
-                                        let new_suggestion =
-                                            PackageManagerImpl::suggest_binary_name(
-                                                &state.add_package_name_input,
+                        if let Some(action) = action_opt.flatten() {
+                            match action {
+                                Action::MoveLeft | Action::MoveRight | Action::Home | Action::End => {
+                                    // Handle cursor movement in focused field
+                                    let key_code = match action {
+                                        Action::MoveLeft => KeyCode::Left,
+                                        Action::MoveRight => KeyCode::Right,
+                                        Action::Home => KeyCode::Home,
+                                        Action::End => KeyCode::End,
+                                        _ => return Ok(()), // Should not happen
+                                    };
+                                    match state.add_focused_field {
+                                        AddPackageField::Name => {
+                                            handle_cursor_movement(
+                                                &state.add_name_input,
+                                                &mut state.add_name_cursor,
+                                                key_code,
                                             );
-                                        if state.add_binary_name_input.is_empty()
-                                            || state.add_binary_name_input
-                                                == PackageManagerImpl::suggest_binary_name(
-                                                    &old_package_name,
-                                                )
-                                        {
-                                            state.add_binary_name_input = new_suggestion;
-                                            state.add_binary_name_cursor =
-                                                state.add_binary_name_input.chars().count();
+                                        }
+                                        AddPackageField::Description => {
+                                            handle_cursor_movement(
+                                                &state.add_description_input,
+                                                &mut state.add_description_cursor,
+                                                key_code,
+                                            );
+                                        }
+                                        AddPackageField::PackageName => {
+                                            handle_cursor_movement(
+                                                &state.add_package_name_input,
+                                                &mut state.add_package_name_cursor,
+                                                key_code,
+                                            );
+                                        }
+                                        AddPackageField::BinaryName => {
+                                            handle_cursor_movement(
+                                                &state.add_binary_name_input,
+                                                &mut state.add_binary_name_cursor,
+                                                key_code,
+                                            );
+                                        }
+                                        AddPackageField::InstallCommand => {
+                                            handle_cursor_movement(
+                                                &state.add_install_command_input,
+                                                &mut state.add_install_command_cursor,
+                                                key_code,
+                                            );
+                                        }
+                                        AddPackageField::ExistenceCheck => {
+                                            handle_cursor_movement(
+                                                &state.add_existence_check_input,
+                                                &mut state.add_existence_check_cursor,
+                                                key_code,
+                                            );
+                                        }
+                                        AddPackageField::ManagerCheck => {
+                                            // ManagerCheck is not shown in UI, but exists in enum
+                                        }
+                                        AddPackageField::Manager => {
+                                            // Manager selection handled by Up/Down
                                         }
                                     }
-                                    AddPackageField::BinaryName => {
-                                        handle_backspace(
-                                            &mut state.add_binary_name_input,
-                                            &mut state.add_binary_name_cursor,
-                                        );
+                                    return Ok(());
+                                }
+                                Action::Backspace => {
+                                    match state.add_focused_field {
+                                        AddPackageField::Name => {
+                                            handle_backspace(
+                                                &mut state.add_name_input,
+                                                &mut state.add_name_cursor,
+                                            );
+                                        }
+                                        AddPackageField::Description => {
+                                            handle_backspace(
+                                                &mut state.add_description_input,
+                                                &mut state.add_description_cursor,
+                                            );
+                                        }
+                                        AddPackageField::PackageName => {
+                                            let old_package_name = state.add_package_name_input.clone();
+                                            handle_backspace(
+                                                &mut state.add_package_name_input,
+                                                &mut state.add_package_name_cursor,
+                                            );
+                                            // Update binary name suggestion when package name is edited
+                                            let new_suggestion =
+                                                PackageManagerImpl::suggest_binary_name(
+                                                    &state.add_package_name_input,
+                                                );
+                                            if state.add_binary_name_input.is_empty()
+                                                || state.add_binary_name_input
+                                                    == PackageManagerImpl::suggest_binary_name(
+                                                        &old_package_name,
+                                                    )
+                                            {
+                                                state.add_binary_name_input = new_suggestion;
+                                                state.add_binary_name_cursor =
+                                                    state.add_binary_name_input.chars().count();
+                                            }
+                                        }
+                                        AddPackageField::BinaryName => {
+                                            handle_backspace(
+                                                &mut state.add_binary_name_input,
+                                                &mut state.add_binary_name_cursor,
+                                            );
+                                        }
+                                        AddPackageField::InstallCommand => {
+                                            handle_backspace(
+                                                &mut state.add_install_command_input,
+                                                &mut state.add_install_command_cursor,
+                                            );
+                                        }
+                                        AddPackageField::ExistenceCheck => {
+                                            handle_backspace(
+                                                &mut state.add_existence_check_input,
+                                                &mut state.add_existence_check_cursor,
+                                            );
+                                        }
+                                        AddPackageField::ManagerCheck => {
+                                            // ManagerCheck is not shown in UI, but exists in enum
+                                        }
+                                        AddPackageField::Manager => {}
                                     }
-                                    AddPackageField::InstallCommand => {
-                                        handle_backspace(
-                                            &mut state.add_install_command_input,
-                                            &mut state.add_install_command_cursor,
-                                        );
+                                    return Ok(());
+                                }
+                                Action::DeleteChar => {
+                                    match state.add_focused_field {
+                                        AddPackageField::Name => {
+                                            handle_delete(
+                                                &mut state.add_name_input,
+                                                &mut state.add_name_cursor,
+                                            );
+                                        }
+                                        AddPackageField::Description => {
+                                            handle_delete(
+                                                &mut state.add_description_input,
+                                                &mut state.add_description_cursor,
+                                            );
+                                        }
+                                        AddPackageField::PackageName => {
+                                            handle_delete(
+                                                &mut state.add_package_name_input,
+                                                &mut state.add_package_name_cursor,
+                                            );
+                                        }
+                                        AddPackageField::BinaryName => {
+                                            handle_delete(
+                                                &mut state.add_binary_name_input,
+                                                &mut state.add_binary_name_cursor,
+                                            );
+                                        }
+                                        AddPackageField::InstallCommand => {
+                                            handle_delete(
+                                                &mut state.add_install_command_input,
+                                                &mut state.add_install_command_cursor,
+                                            );
+                                        }
+                                        AddPackageField::ExistenceCheck => {
+                                            handle_delete(
+                                                &mut state.add_existence_check_input,
+                                                &mut state.add_existence_check_cursor,
+                                            );
+                                        }
+                                        AddPackageField::ManagerCheck => {
+                                            // ManagerCheck is not shown in UI, but exists in enum
+                                        }
+                                        AddPackageField::Manager => {}
                                     }
-                                    AddPackageField::ExistenceCheck => {
-                                        handle_backspace(
-                                            &mut state.add_existence_check_input,
-                                            &mut state.add_existence_check_cursor,
-                                        );
-                                    }
-                                    AddPackageField::ManagerCheck => {
-                                        // ManagerCheck is not shown in UI, but exists in enum
-                                    }
-                                    AddPackageField::Manager => {}
+                                    return Ok(());
+                                }
+                                _ => {
+                                    // Other actions not handled here - fall through to character input
                                 }
                             }
-                            KeyCode::Delete => {
-                                match state.add_focused_field {
-                                    AddPackageField::Name => {
-                                        handle_delete(
-                                            &mut state.add_name_input,
-                                            &mut state.add_name_cursor,
-                                        );
-                                    }
-                                    AddPackageField::Description => {
-                                        handle_delete(
-                                            &mut state.add_description_input,
-                                            &mut state.add_description_cursor,
-                                        );
-                                    }
-                                    AddPackageField::PackageName => {
-                                        handle_delete(
-                                            &mut state.add_package_name_input,
-                                            &mut state.add_package_name_cursor,
-                                        );
-                                    }
-                                    AddPackageField::BinaryName => {
-                                        handle_delete(
-                                            &mut state.add_binary_name_input,
-                                            &mut state.add_binary_name_cursor,
-                                        );
-                                    }
-                                    AddPackageField::InstallCommand => {
-                                        handle_delete(
-                                            &mut state.add_install_command_input,
-                                            &mut state.add_install_command_cursor,
-                                        );
-                                    }
-                                    AddPackageField::ExistenceCheck => {
-                                        handle_delete(
-                                            &mut state.add_existence_check_input,
-                                            &mut state.add_existence_check_cursor,
-                                        );
-                                    }
-                                    AddPackageField::ManagerCheck => {
-                                        // ManagerCheck is not shown in UI, but exists in enum
-                                    }
-                                    AddPackageField::Manager => {}
-                                }
-                            }
-                            KeyCode::Char(c) => {
+                        }
+
+                        // Handle character input (only if not already handled by action and no modifiers)
+                        if let KeyCode::Char(c) = key.code {
+                            if !key.modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SUPER) {
                                 match state.add_focused_field {
                                     AddPackageField::Name => {
                                         handle_char_insertion(
@@ -7185,44 +7191,63 @@ impl App {
                                     AddPackageField::Manager => {}
                                 }
                             }
-                            _ => {}
                         }
                     }
                     _ => {}
                 }
             }
-            PackagePopupType::Delete => match event {
-                Event::Key(key) if key.kind == KeyEventKind::Press => match key.code {
-                    KeyCode::Left | KeyCode::Right | KeyCode::Home | KeyCode::End => {
-                        handle_cursor_movement(
-                            &state.delete_confirm_input,
-                            &mut state.delete_confirm_cursor,
-                            key.code,
-                        );
-                    }
-                    KeyCode::Backspace => {
-                        handle_backspace(
-                            &mut state.delete_confirm_input,
-                            &mut state.delete_confirm_cursor,
-                        );
-                    }
-                    KeyCode::Delete => {
-                        handle_delete(
-                            &mut state.delete_confirm_input,
-                            &mut state.delete_confirm_cursor,
-                        );
-                    }
-                    KeyCode::Char(c) => {
-                        handle_char_insertion(
-                            &mut state.delete_confirm_input,
-                            &mut state.delete_confirm_cursor,
-                            c,
-                        );
+            PackagePopupType::Delete => {
+                match event {
+                    Event::Key(key) if key.kind == KeyEventKind::Press => {
+                        if let Some(action) = action_opt.flatten() {
+                            match action {
+                                Action::MoveLeft | Action::MoveRight | Action::Home | Action::End => {
+                                    let key_code = match action {
+                                        Action::MoveLeft => KeyCode::Left,
+                                        Action::MoveRight => KeyCode::Right,
+                                        Action::Home => KeyCode::Home,
+                                        Action::End => KeyCode::End,
+                                        _ => return Ok(()),
+                                    };
+                                    handle_cursor_movement(
+                                        &state.delete_confirm_input,
+                                        &mut state.delete_confirm_cursor,
+                                        key_code,
+                                    );
+                                    return Ok(());
+                                }
+                                Action::Backspace => {
+                                    handle_backspace(
+                                        &mut state.delete_confirm_input,
+                                        &mut state.delete_confirm_cursor,
+                                    );
+                                    return Ok(());
+                                }
+                                Action::DeleteChar => {
+                                    handle_delete(
+                                        &mut state.delete_confirm_input,
+                                        &mut state.delete_confirm_cursor,
+                                    );
+                                    return Ok(());
+                                }
+                                _ => {}
+                            }
+                        }
+
+                        // Handle character input
+                        if let KeyCode::Char(c) = key.code {
+                            if !key.modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SUPER) {
+                                handle_char_insertion(
+                                    &mut state.delete_confirm_input,
+                                    &mut state.delete_confirm_cursor,
+                                    c,
+                                );
+                            }
+                        }
                     }
                     _ => {}
-                },
-                _ => {}
-            },
+                }
+            }
             _ => {}
         }
 

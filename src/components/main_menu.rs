@@ -2,11 +2,12 @@ use crate::components::component::{Component, ComponentAction};
 use crate::components::footer::Footer;
 use crate::components::header::Header;
 use crate::config::Config;
+use crate::keymap::Action;
 use crate::styles::{theme, LIST_HIGHLIGHT_SYMBOL};
 use crate::utils::create_standard_layout;
 use crate::version_check::UpdateInfo;
 use anyhow::Result;
-use crossterm::event::{Event, KeyCode, KeyEventKind, MouseButton, MouseEventKind};
+use crossterm::event::{Event, KeyEventKind, MouseButton, MouseEventKind};
 use ratatui::prelude::*;
 use ratatui::widgets::{
     Block, Borders, Clear, HighlightSpacing, List, ListItem, ListState, Paragraph, StatefulWidget,
@@ -891,8 +892,13 @@ impl Component for MainMenuComponent {
 
         match event {
             Event::Key(key) if key.kind == KeyEventKind::Press => {
-                match key.code {
-                    KeyCode::Up => {
+                // Use keymap if available, otherwise fall back to standard keys
+                let action = self.config.as_ref()
+                    .map(|c| c.keymap.get_action(key.code, key.modifiers))
+                    .flatten();
+
+                match action {
+                    Some(Action::MoveUp) => {
                         if self.selected_index > 0 {
                             self.selected_index -= 1;
                             // Update selected_item if within menu items range
@@ -906,7 +912,7 @@ impl Component for MainMenuComponent {
                             Ok(ComponentAction::None)
                         }
                     }
-                    KeyCode::Down => {
+                    Some(Action::MoveDown) => {
                         if self.selected_index < max_index {
                             self.selected_index += 1;
                             // Update selected_item if within menu items range
@@ -920,7 +926,7 @@ impl Component for MainMenuComponent {
                             Ok(ComponentAction::None)
                         }
                     }
-                    KeyCode::Enter => {
+                    Some(Action::Confirm) => {
                         if self.is_update_item_selected() {
                             // Trigger update action
                             Ok(ComponentAction::Custom("show_update_info".to_string()))
@@ -930,8 +936,12 @@ impl Component for MainMenuComponent {
                             Ok(ComponentAction::None) // Ignore Enter on disabled items
                         }
                     }
-                    KeyCode::Char('q') | KeyCode::Esc => Ok(ComponentAction::Quit),
-                    _ => Ok(ComponentAction::None),
+                    Some(Action::Quit) | Some(Action::Cancel) => Ok(ComponentAction::Quit),
+                    _ => {
+                        // Fallback for unmapped keys (shouldn't happen in normal usage)
+                        // This is only called for mouse events in practice, but kept for completeness
+                        Ok(ComponentAction::None)
+                    }
                 }
             }
             Event::Mouse(mouse) => {

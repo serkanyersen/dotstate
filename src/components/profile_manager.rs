@@ -8,7 +8,7 @@ use crate::utils::{
     center_popup, create_standard_layout, focused_border_style, unfocused_border_style,
 };
 use anyhow::Result;
-use crossterm::event::{Event, KeyCode, KeyEventKind, MouseButton, MouseEventKind};
+use crossterm::event::{Event, MouseButton, MouseEventKind};
 use ratatui::prelude::*;
 use ratatui::widgets::{
     Block, Borders, Clear, List, ListItem, ListState, Paragraph, Scrollbar, ScrollbarOrientation,
@@ -106,16 +106,13 @@ impl Component for ProfileManagerComponent {
     }
 
     fn handle_event(&mut self, event: Event) -> Result<ComponentAction> {
+        // Note: This method is not actually called - event handling is done in app.rs
+        // This is kept to satisfy the Component trait interface
+        // All keyboard events are handled in app.rs using the keymap system
         match event {
-            Event::Key(key) if key.kind == KeyEventKind::Press => match key.code {
-                KeyCode::Up => Ok(ComponentAction::Update),
-                KeyCode::Down => Ok(ComponentAction::Update),
-                KeyCode::Enter => Ok(ComponentAction::Update),
-                KeyCode::Char('c') | KeyCode::Char('C') => Ok(ComponentAction::Update),
-                KeyCode::Char('r') | KeyCode::Char('R') => Ok(ComponentAction::Update),
-                KeyCode::Char('d') | KeyCode::Char('D') => Ok(ComponentAction::Update),
-                KeyCode::Esc => Ok(ComponentAction::Quit),
-                _ => Ok(ComponentAction::None),
+            Event::Key(_) => {
+                // Keyboard events are handled in app.rs, not here
+                Ok(ComponentAction::None)
             },
             Event::Mouse(mouse) => {
                 match mouse.kind {
