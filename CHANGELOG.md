@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Configurable Keymap System**: Complete refactor of keyboard command handling to use a configurable keymap system
+  - Three preset keymaps: Standard (arrow keys), Vim (hjkl), and Emacs (Ctrl+N/P)
+  - Custom key binding overrides - override any action with any key combination
+  - Override shadowing - when an action is overridden, preset bindings for that action are automatically removed
+  - Dynamic footer display - UI footers automatically reflect actual key bindings including overrides
+  - Help overlay (press `?`) shows all current key bindings based on your configuration
+  - Keymap configuration stored in `~/.config/dotstate/config.toml` with TOML format
+  - Example configuration file: `examples/keymap_override_example.toml`
+  - All screens and components migrated to use keymap actions instead of hardcoded keys
+  - Support for modifier keys in overrides (e.g., `ctrl+h`, `ctrl+shift+j`)
+  - Support for special keys in overrides (e.g., `f1`, `enter`, `esc`, `tab`)
+
+### Changed
+- **Keyboard Event Handling**: All keyboard commands now use the configurable keymap system instead of hardcoded key checks
+- **Component Event Handling**: Components now use keymap actions instead of hardcoded key codes
+- **Footer Display**: Footers dynamically show actual key bindings based on current keymap configuration
+- **Help Overlay**: Help overlay now displays all bindings from keymap (preset + overrides) instead of hardcoded values
+
+### Fixed
+- Removed redundant hardcoded key fallbacks that were no longer needed after keymap migration
+- Fixed component event handling to properly use keymap system
+- Fixed display functions to reflect actual key bindings instead of preset-only values
+
 ---
 ## [0.2.2] - 2026-01-09
 

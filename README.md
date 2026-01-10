@@ -62,6 +62,7 @@ Managing dotfiles can be a pain. You want your `.zshrc`, `.vimrc`, and other con
 - **Real-time Feedback**: See what's happening as it happens
 - **Error Recovery**: Clear error messages with actionable guidance
 - **CLI & TUI**: Full-featured CLI for automation, beautiful TUI for interactive use
+- **Customizable Keymaps**: Configurable keyboard shortcuts with preset support (Standard, Vim, Emacs) and custom overrides
 
 ### 🔒 Security
 
@@ -247,6 +248,81 @@ theme = "nocolor" # Disable all UI colors (same as NO_COLOR=1 / --no-colors)
 - Highlight colors (selection indicators, focused elements)
 - Syntax highlighting themes in file previews
 - Status colors (success, warning, error indicators)
+
+### Keymap Configuration
+
+DotState supports customizable keyboard shortcuts with preset keymaps (Standard, Vim, Emacs) and custom key binding overrides. The keymap system allows you to use your preferred keyboard layout and override any action with any key combination.
+
+**Available Presets:**
+
+- **Standard**: Arrow keys (↑↓), Enter, Esc, standard navigation
+- **Vim**: Vim-style navigation (hjkl for movement, q to quit, etc.)
+- **Emacs**: Emacs-style navigation (Ctrl+N/P for up/down, Ctrl+G to quit, etc.)
+
+**Changing the Preset:**
+
+Edit `~/.config/dotstate/config.toml` and set the `preset` option in the `[keymap]` section:
+
+```toml
+[keymap]
+preset = "vim"  # Options: "standard", "vim", "emacs"
+```
+
+**Custom Key Binding Overrides:**
+
+You can override any key binding with custom keys. Overrides take precedence over preset bindings and shadow preset bindings for the same action.
+
+Example configuration:
+
+```toml
+[keymap]
+preset = "vim"
+
+# Override 'x' to quit instead of 'q'
+[[keymap.overrides]]
+key = "x"
+action = "quit"
+
+# Override 'w' to move up instead of 'k'
+[[keymap.overrides]]
+key = "w"
+action = "move_up"
+
+# Use Ctrl+H for help
+[[keymap.overrides]]
+key = "ctrl+h"
+action = "help"
+```
+
+**Available Actions (all in snake_case):**
+
+- **Navigation**: `move_up`, `move_down`, `move_left`, `move_right`, `page_up`, `page_down`, `go_to_top`, `go_to_end`, `home`, `end`
+- **Selection**: `confirm`, `cancel`, `toggle_select`, `select_all`, `deselect_all`
+- **Global**: `quit`, `help`
+- **Actions**: `delete`, `edit`, `create`, `search`, `refresh`, `sync`, `check_status`, `install`
+- **Text editing**: `backspace`, `delete_char`
+- **Navigation**: `next_tab`, `prev_tab`
+- **Scroll**: `scroll_up`, `scroll_down`
+- **Prompts**: `yes`, `no`
+- **Forms**: `save`, `toggle_backup`
+
+**Key Format Examples:**
+
+- Single keys: `"j"`, `"k"`, `"q"`, `"x"`
+- Special keys: `"up"`, `"down"`, `"enter"`, `"esc"`, `"tab"`, `"space"`
+- Function keys: `"f1"`, `"f2"`, etc.
+- Modifier combinations: `"ctrl+n"`, `"ctrl+shift+j"`, `"ctrl+h"`
+
+**How Overrides Work:**
+
+- Overrides take precedence over preset bindings
+- When you override an action (e.g., `move_up`), all preset bindings for that action are shadowed/removed
+- If you override `move_up` with `"w"`, the original preset key (e.g., `"k"` in vim preset) will no longer work for that action
+- Display functions (footer hints) automatically reflect your actual key bindings, including overrides
+
+**Example:**
+
+See `examples/keymap_override_example.toml` for a complete example configuration file.
 
 ## Security Considerations
 

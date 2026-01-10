@@ -400,6 +400,11 @@ brew install dotstate" aria-label="Copy install command">📋</button>
                                 <h4>CLI & TUI</h4>
                                 <p>Full-featured CLI for automation, beautiful TUI for interactive use. Best of both worlds.</p>
                             </div>
+                            <div class="feature-card">
+                                <div class="feature-icon" aria-hidden="true">🎹</div>
+                                <h4>Customizable Keymaps</h4>
+                                <p>Configurable keyboard shortcuts with preset support (Standard, Vim, Emacs) and custom overrides. Use your preferred keyboard layout.</p>
+                            </div>
                         </div>
                     </div>
                 </article>
@@ -778,10 +783,96 @@ check_interval_hours = 48" aria-label="Copy config">📋</button>
                             </div>
                         </div>
 
+                        <h3>Keymap Configuration</h3>
+                        <p>DotState supports customizable keyboard shortcuts with preset keymaps (Standard, Vim, Emacs) and custom key binding overrides. The keymap system allows you to use your preferred keyboard layout and override any action with any key combination.</p>
+
+                        <div class="example-card">
+                            <h4>Available Presets</h4>
+                            <ul>
+                                <li><strong>Standard:</strong> Arrow keys (↑↓), Enter, Esc, standard navigation</li>
+                                <li><strong>Vim:</strong> Vim-style navigation (hjkl for movement, q to quit, etc.)</li>
+                                <li><strong>Emacs:</strong> Emacs-style navigation (Ctrl+N/P for up/down, Ctrl+G to quit, etc.)</li>
+                            </ul>
+                        </div>
+
+                        <div class="example-card">
+                            <h4>Changing the Preset</h4>
+                            <p>Edit <code>~/.config/dotstate/config.toml</code> and set the <code>preset</code> option:</p>
+                            <div class="code-block">
+                                <code>[keymap]<br>preset = "vim"  # Options: "standard", "vim", "emacs"</code>
+                                <button class="copy-btn" data-copy='[keymap]
+preset = "vim"' aria-label="Copy config">📋</button>
+                            </div>
+                        </div>
+
+                        <div class="example-card">
+                            <h4>Custom Key Binding Overrides</h4>
+                            <p>You can override any key binding with custom keys. Overrides take precedence over preset bindings and shadow preset bindings for the same action.</p>
+                            <div class="code-block">
+                                <code>[keymap]<br>preset = "vim"<br><br># Override 'x' to quit instead of 'q'<br>[[keymap.overrides]]<br>key = "x"<br>action = "quit"<br><br># Override 'w' to move up instead of 'k'<br>[[keymap.overrides]]<br>key = "w"<br>action = "move_up"<br><br># Use Ctrl+H for help<br>[[keymap.overrides]]<br>key = "ctrl+h"<br>action = "help"</code>
+                                <button class="copy-btn" data-copy='[keymap]
+preset = "vim"
+
+[[keymap.overrides]]
+key = "x"
+action = "quit"
+
+[[keymap.overrides]]
+key = "w"
+action = "move_up"
+
+[[keymap.overrides]]
+key = "ctrl+h"
+action = "help"' aria-label="Copy config">📋</button>
+                            </div>
+                            <p><strong>Available Actions (all in snake_case):</strong></p>
+                            <ul>
+                                <li><strong>Navigation:</strong> <code>move_up</code>, <code>move_down</code>, <code>move_left</code>, <code>move_right</code>, <code>page_up</code>, <code>page_down</code>, <code>go_to_top</code>, <code>go_to_end</code>, <code>home</code>, <code>end</code></li>
+                                <li><strong>Selection:</strong> <code>confirm</code>, <code>cancel</code>, <code>toggle_select</code>, <code>select_all</code>, <code>deselect_all</code></li>
+                                <li><strong>Global:</strong> <code>quit</code>, <code>help</code></li>
+                                <li><strong>Actions:</strong> <code>delete</code>, <code>edit</code>, <code>create</code>, <code>search</code>, <code>refresh</code>, <code>sync</code>, <code>check_status</code>, <code>install</code></li>
+                                <li><strong>Text editing:</strong> <code>backspace</code>, <code>delete_char</code></li>
+                                <li><strong>Navigation:</strong> <code>next_tab</code>, <code>prev_tab</code></li>
+                                <li><strong>Scroll:</strong> <code>scroll_up</code>, <code>scroll_down</code></li>
+                                <li><strong>Prompts:</strong> <code>yes</code>, <code>no</code></li>
+                                <li><strong>Forms:</strong> <code>save</code>, <code>toggle_backup</code></li>
+                            </ul>
+                            <p><strong>Key Format Examples:</strong></p>
+                            <ul>
+                                <li>Single keys: <code>"j"</code>, <code>"k"</code>, <code>"q"</code>, <code>"x"</code></li>
+                                <li>Special keys: <code>"up"</code>, <code>"down"</code>, <code>"enter"</code>, <code>"esc"</code>, <code>"tab"</code>, <code>"space"</code></li>
+                                <li>Function keys: <code>"f1"</code>, <code>"f2"</code>, etc.</li>
+                                <li>Modifier combinations: <code>"ctrl+n"</code>, <code>"ctrl+shift+j"</code>, <code>"ctrl+h"</code></li>
+                            </ul>
+                        </div>
+
+                        <div class="example-card">
+                            <h4>How Overrides Work</h4>
+                            <ul>
+                                <li>Overrides take precedence over preset bindings</li>
+                                <li>When you override an action (e.g., <code>move_up</code>), all preset bindings for that action are shadowed/removed</li>
+                                <li>If you override <code>move_up</code> with <code>"w"</code>, the original preset key (e.g., <code>"k"</code> in vim preset) will no longer work for that action</li>
+                                <li>Display functions (footer hints) automatically reflect your actual key bindings, including overrides</li>
+                                <li>Press <code>?</code> in the TUI to see all current key bindings in the help overlay</li>
+                            </ul>
+                        </div>
+
+                        <h3>Theme Configuration</h3>
+                        <p>DotState supports both light and dark themes that automatically adapt to your terminal background.</p>
+
+                        <div class="example-card">
+                            <h4>Changing the Theme</h4>
+                            <p>Edit <code>~/.config/dotstate/config.toml</code> and set the <code>theme</code> option:</p>
+                            <div class="code-block">
+                                <code>theme = "dark"   # For dark terminal backgrounds (default)<br>theme = "light"  # For light terminal backgrounds<br>theme = "nocolor" # Disable all UI colors (same as NO_COLOR=1 / --no-colors)</code>
+                                <button class="copy-btn" data-copy='theme = "dark"' aria-label="Copy config">📋</button>
+                            </div>
+                        </div>
+
                         <div class="tip">
                             <span class="tip-icon" aria-hidden="true">💡</span>
                             <div>
-                                <strong>Tip:</strong> For CI/CD and automation with GitHub mode, use the <code>DOTSTATE_GITHUB_TOKEN</code> environment variable. For Local mode, ensure your git credentials are properly configured.
+                                <strong>Tip:</strong> For CI/CD and automation with GitHub mode, use the <code>DOTSTATE_GITHUB_TOKEN</code> environment variable. For Local mode, ensure your git credentials are properly configured. Press <code>?</code> in the TUI to see all current key bindings based on your configuration.
                             </div>
                         </div>
                     </div>
