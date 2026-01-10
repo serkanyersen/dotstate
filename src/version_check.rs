@@ -133,7 +133,9 @@ pub fn check_for_updates_with_result() -> Result<Option<UpdateInfo>, String> {
 
                 // Detect if it's a timeout (could be client or server-side)
                 if source_str.contains("timed out") || error_msg.contains("timeout") {
-                    tracing::debug!("Update check timed out (GitHub API may be slow or unavailable)");
+                    tracing::debug!(
+                        "Update check timed out (GitHub API may be slow or unavailable)"
+                    );
                 } else {
                     tracing::debug!("Update check failed: {}", error_details);
                 }

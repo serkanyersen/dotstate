@@ -88,7 +88,8 @@ pub struct App {
     has_checked_updates: bool,
     /// Receiver for async update check result (if check is in progress)
     /// Result is Ok(Some(UpdateInfo)) if update available, Ok(None) if no update, Err(String) if error
-    update_check_receiver: Option<oneshot::Receiver<Result<Option<crate::version_check::UpdateInfo>, String>>>,
+    update_check_receiver:
+        Option<oneshot::Receiver<Result<Option<crate::version_check::UpdateInfo>, String>>>,
 }
 
 impl App {
@@ -182,12 +183,15 @@ impl App {
             self.draw()?;
 
             // Start async update check after first render (non-blocking for UI)
-            if !self.has_checked_updates && self.config.updates.check_enabled && self.update_check_receiver.is_none() {
+            if !self.has_checked_updates
+                && self.config.updates.check_enabled
+                && self.update_check_receiver.is_none()
+            {
                 debug!("Spawning async update check (deferred until after first render)...");
                 let (tx, rx) = oneshot::channel();
                 thread::spawn(move || {
                     let result = crate::version_check::check_for_updates_with_result()
-                        .map_err(|e| format!("{}", e));
+                        .map_err(|e| e.to_string());
                     // Ignore send error - receiver might be dropped if app quits
                     let _ = tx.send(result);
                 });
@@ -800,36 +804,36 @@ impl App {
             && matches!(event, Event::Key(k) if k.kind == KeyEventKind::Press)
         {
             use crossterm::event::KeyCode;
-            match event {
-                Event::Key(key) => {
-                    // Allow preset switching with 1/2/3 keys
-                    let new_preset = match key.code {
-                        KeyCode::Char('1') => Some(crate::keymap::KeymapPreset::Standard),
-                        KeyCode::Char('2') => Some(crate::keymap::KeymapPreset::Vim),
-                        KeyCode::Char('3') => Some(crate::keymap::KeymapPreset::Emacs),
-                        _ => None,
-                    };
+            if let Event::Key(key) = event {
+                // Allow preset switching with 1/2/3 keys
+                let new_preset = match key.code {
+                    KeyCode::Char('1') => Some(crate::keymap::KeymapPreset::Standard),
+                    KeyCode::Char('2') => Some(crate::keymap::KeymapPreset::Vim),
+                    KeyCode::Char('3') => Some(crate::keymap::KeymapPreset::Emacs),
+                    _ => None,
+                };
 
-                    if let Some(preset) = new_preset {
-                        if self.config.keymap.preset != preset {
-                            info!("Switching keymap preset from {:?} to {:?}", self.config.keymap.preset, preset);
-                            self.config.keymap.preset = preset;
-                            // Save config immediately
-                            if let Err(e) = self.config.save(&self.config_path) {
-                                warn!("Failed to save preset change: {}", e);
-                            } else {
-                                info!("Keymap preset changed to {:?}", preset);
-                            }
+                if let Some(preset) = new_preset {
+                    if self.config.keymap.preset != preset {
+                        info!(
+                            "Switching keymap preset from {:?} to {:?}",
+                            self.config.keymap.preset, preset
+                        );
+                        self.config.keymap.preset = preset;
+                        // Save config immediately
+                        if let Err(e) = self.config.save(&self.config_path) {
+                            warn!("Failed to save preset change: {}", e);
+                        } else {
+                            info!("Keymap preset changed to {:?}", preset);
                         }
-                        // Don't close overlay when switching preset
-                        return Ok(());
                     }
-
-                    // Any other key closes the overlay
-                    self.ui_state.show_help_overlay = false;
+                    // Don't close overlay when switching preset
                     return Ok(());
                 }
-                _ => {}
+
+                // Any other key closes the overlay
+                self.ui_state.show_help_overlay = false;
+                return Ok(());
             }
         }
 

@@ -131,7 +131,10 @@ impl HelpOverlay {
                 Span::styled("2", Style::default().fg(theme.text_emphasis)),
                 Span::styled(" / ", Style::default().fg(theme.text_muted)),
                 Span::styled("3", Style::default().fg(theme.text_emphasis)),
-                Span::styled(" to switch, or any other key to close", Style::default().fg(theme.text_muted)),
+                Span::styled(
+                    " to switch, or any other key to close",
+                    Style::default().fg(theme.text_muted),
+                ),
             ]),
         ];
         let preset_paragraph = Paragraph::new(preset_lines)
