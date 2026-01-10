@@ -82,6 +82,8 @@ pub struct App {
     // Syntax highlighting assets
     syntax_set: SyntaxSet,
     theme_set: syntect::highlighting::ThemeSet,
+    /// Track if we've checked for updates yet (deferred until after first render)
+    has_checked_updates: bool,
 }
 
 impl App {
@@ -91,7 +93,7 @@ impl App {
 
         let config =
             Config::load_or_create(&config_path).context("Failed to load or create config")?;
-        info!(
+        debug!(
             "Configuration loaded: active_profile={}, repo_path={:?}",
             config.active_profile, config.repo_path
         );
@@ -108,7 +110,7 @@ impl App {
 
         let has_changes = false; // Will be checked on first draw
         let config_clone = config.clone();
-        Ok(Self {
+        let app = Self {
             config_path,
             config,
             file_manager,
@@ -128,28 +130,18 @@ impl App {
             message_component: None,
             syntax_set,
             theme_set,
-        })
+            has_checked_updates: false,
+        };
+
+        Ok(app)
     }
 
     pub fn run(&mut self) -> Result<()> {
         info!("Entering TUI mode");
         self.tui.enter()?;
 
-        // Check for updates if enabled in config
-        if self.config.updates.check_enabled {
-            info!("Checking for updates...");
-            if let Some(update_info) =
-                crate::version_check::check_for_updates(self.config.updates.check_interval_hours)
-            {
-                info!(
-                    "New version available: {} -> {}",
-                    update_info.current_version, update_info.latest_version
-                );
-                self.main_menu_component.set_update_info(Some(update_info));
-            } else {
-                info!("No updates available or check skipped (cached)");
-            }
-        }
+        // Update check is deferred until after first render to avoid blocking startup
+        // This allows the UI to appear immediately
 
         // Check if profile is deactivated and show warning
         if !self.config.profile_activated && self.config.is_repo_configured() {
@@ -182,6 +174,40 @@ impl App {
         // Main event loop
         loop {
             self.draw()?;
+
+            // Check for updates after first render (non-blocking for UI)
+            if !self.has_checked_updates && self.config.updates.check_enabled {
+                let update_check_start = std::time::Instant::now();
+                debug!("Checking for updates (deferred until after first render)...");
+                if let Some(update_info) = crate::version_check::check_for_updates(
+                    self.config.updates.check_interval_hours,
+                ) {
+                    let elapsed = update_check_start.elapsed();
+                    if elapsed.as_millis() > 500 {
+                        warn!(
+                            "Update check took {:?}: New version available: {} -> {}",
+                            elapsed, update_info.current_version, update_info.latest_version
+                        );
+                    } else {
+                        info!(
+                            "New version available: {} -> {}",
+                            update_info.current_version, update_info.latest_version
+                        );
+                    }
+                    self.main_menu_component.set_update_info(Some(update_info));
+                } else {
+                    let elapsed = update_check_start.elapsed();
+                    if elapsed.as_millis() > 500 {
+                        warn!(
+                            "Update check took {:?} (consider disabling if too slow)",
+                            elapsed
+                        );
+                    } else {
+                        debug!("Update check completed: No updates available");
+                    }
+                }
+                self.has_checked_updates = true;
+            }
 
             if self.should_quit {
                 break;

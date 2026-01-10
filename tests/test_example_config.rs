@@ -1,10 +1,10 @@
 #[test]
 fn test_example_config_loads() {
+    use crossterm::event::{KeyCode, KeyModifiers};
     use dotstate::config::Config;
     use dotstate::keymap::{Action, KeymapPreset};
-    use crossterm::event::{KeyCode, KeyModifiers};
-    use tempfile::TempDir;
     use std::fs;
+    use tempfile::TempDir;
 
     let temp_dir = TempDir::new().unwrap();
     let config_path = temp_dir.path().join("config.toml");
@@ -45,12 +45,18 @@ action = "help"
     assert_eq!(config.keymap.preset, KeymapPreset::Vim);
 
     // Verify overrides work
-    let action = config.keymap.get_action(KeyCode::Char('x'), KeyModifiers::NONE);
+    let action = config
+        .keymap
+        .get_action(KeyCode::Char('x'), KeyModifiers::NONE);
     assert_eq!(action, Some(Action::Quit));
 
-    let action = config.keymap.get_action(KeyCode::Char('w'), KeyModifiers::NONE);
+    let action = config
+        .keymap
+        .get_action(KeyCode::Char('w'), KeyModifiers::NONE);
     assert_eq!(action, Some(Action::MoveUp));
 
-    let action = config.keymap.get_action(KeyCode::Char('h'), KeyModifiers::CONTROL);
+    let action = config
+        .keymap
+        .get_action(KeyCode::Char('h'), KeyModifiers::CONTROL);
     assert_eq!(action, Some(Action::Help));
 }
