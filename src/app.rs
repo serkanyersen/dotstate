@@ -293,6 +293,54 @@ impl App {
         Ok(())
     }
 
+    /// Cycle through themes: dark -> light -> nocolor -> dark
+    fn cycle_theme(&mut self) -> Result<()> {
+        use crate::styles::ThemeType;
+
+        let current_theme = self.config.theme.parse::<ThemeType>().unwrap_or(ThemeType::Dark);
+        let next_theme = match current_theme {
+            ThemeType::Dark => ThemeType::Light,
+            ThemeType::Light => ThemeType::NoColor,
+            ThemeType::NoColor => ThemeType::Dark,
+        };
+
+        // Update config
+        self.config.theme = match next_theme {
+            ThemeType::Dark => "dark".to_string(),
+            ThemeType::Light => "light".to_string(),
+            ThemeType::NoColor => "nocolor".to_string(),
+        };
+
+        // Update NO_COLOR environment variable based on theme
+        // This allows colors to be restored when cycling from nocolor to a color theme
+        match next_theme {
+            ThemeType::NoColor => {
+                std::env::set_var("NO_COLOR", "1");
+                info!("NO_COLOR environment variable set");
+            }
+            ThemeType::Dark | ThemeType::Light => {
+                // Unset NO_COLOR to allow colors
+                // Note: Some libraries may have already checked NO_COLOR at startup,
+                // but unsetting it allows future checks to see colors are enabled
+                std::env::remove_var("NO_COLOR");
+                info!("NO_COLOR environment variable removed");
+            }
+        }
+
+        // Re-initialize theme
+        crate::styles::init_theme(next_theme);
+        info!("Theme changed to: {:?}", next_theme);
+
+        // Save config
+        if let Err(e) = self.config.save(&self.config_path) {
+            warn!("Failed to save theme change: {}", e);
+        } else {
+            info!("Theme saved to config: {}", self.config.theme);
+        }
+
+        Ok(())
+    }
+
     fn draw(&mut self) -> Result<()> {
         // Check for screen transitions and update state accordingly
         let current_screen = self.ui_state.current_screen;
@@ -785,11 +833,19 @@ impl App {
     }
 
     fn handle_event(&mut self, event: Event) -> Result<()> {
-        // Global keymap-based handlers (help overlay)
+        // Global keymap-based handlers (help overlay, theme cycling)
         if let Event::Key(key) = &event {
             if key.kind == KeyEventKind::Press {
+                use crate::keymap::Action;
+                use crossterm::event::KeyCode;
+
+                // Theme cycling with 't' key (global, works everywhere)
+                if key.code == KeyCode::Char('t') && key.modifiers.is_empty() {
+                    self.cycle_theme()?;
+                    return Ok(());
+                }
+
                 if let Some(action) = self.get_action(key.code, key.modifiers) {
-                    use crate::keymap::Action;
                     if action == Action::Help {
                         // Toggle help overlay
                         self.ui_state.show_help_overlay = !self.ui_state.show_help_overlay;

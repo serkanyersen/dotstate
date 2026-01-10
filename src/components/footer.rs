@@ -18,6 +18,14 @@ impl Footer {
     /// The height used (2 lines: 1 for border, 1 for text)
     pub fn render(frame: &mut Frame, area: Rect, text: &str) -> Result<u16> {
         let t = theme();
+
+        // Get theme name for indicator
+        let theme_name = match t.theme_type {
+            crate::styles::ThemeType::Dark => "dark",
+            crate::styles::ThemeType::Light => "light",
+            crate::styles::ThemeType::NoColor => "nocolor",
+        };
+
         // Parse footer text and add colors to key hints
         let parts: Vec<&str> = text.split(" | ").collect();
         let mut spans = Vec::new();
@@ -35,6 +43,15 @@ impl Footer {
                 spans.push(Span::styled(*part, t.text_style()));
             }
         }
+
+        // Add theme indicator at the end (using default color so it's always visible)
+        if !parts.is_empty() {
+            spans.push(Span::styled(" | ", t.muted_style()));
+        }
+        // Use default/reset color for theme indicator so it's always visible
+        spans.push(Span::styled("Theme: ", Style::default()));
+        spans.push(Span::styled(theme_name, Style::default()));
+        spans.push(Span::styled(" (t)", Style::default()));
 
         let footer_block = Block::default()
             .borders(Borders::TOP)

@@ -5,22 +5,38 @@
 
 use ratatui::style::{Color, Modifier, Style};
 use std::str::FromStr;
-use std::sync::OnceLock;
+use std::sync::RwLock;
 
 /// List selection indicator shown next to the selected item
 pub const LIST_HIGHLIGHT_SYMBOL: &str = "» ";
 
-/// Global theme instance
-static THEME: OnceLock<Theme> = OnceLock::new();
+/// Global theme instance (supports runtime updates)
+static THEME: RwLock<Theme> = RwLock::new(Theme {
+    theme_type: ThemeType::Dark,
+    primary: Color::Cyan,
+    secondary: Color::Magenta,
+    tertiary: Color::Blue,
+    success: Color::Green,
+    warning: Color::Yellow,
+    error: Color::Red,
+    text: Color::White,
+    text_muted: Color::DarkGray,
+    text_emphasis: Color::Yellow,
+    border: Color::DarkGray,
+    border_focused: Color::Cyan,
+    highlight_bg: Color::DarkGray,
+    background: Color::Reset,
+});
 
-/// Initialize the global theme (call once at startup)
+/// Initialize the global theme (call once at startup, or to update at runtime)
 pub fn init_theme(theme_type: ThemeType) {
-    let _ = THEME.set(Theme::new(theme_type));
+    let mut theme = THEME.write().unwrap();
+    *theme = Theme::new(theme_type);
 }
 
 /// Get the current theme
-pub fn theme() -> &'static Theme {
-    THEME.get_or_init(|| Theme::new(ThemeType::Dark))
+pub fn theme() -> Theme {
+    THEME.read().unwrap().clone()
 }
 
 /// Theme type selector
