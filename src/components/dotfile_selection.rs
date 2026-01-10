@@ -82,7 +82,13 @@ impl DotfileSelectionComponent {
                 theme,
             )?;
         } else if selection_state.adding_custom_file {
-            self.render_custom_file_input(frame, content_chunk, footer_chunk, selection_state, config)?;
+            self.render_custom_file_input(
+                frame,
+                content_chunk,
+                footer_chunk,
+                selection_state,
+                config,
+            )?;
         } else {
             self.render_dotfile_list(
                 frame,
@@ -98,6 +104,7 @@ impl DotfileSelectionComponent {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)] // Render function needs all these parameters
     fn render_file_browser(
         &mut self,
         frame: &mut Frame,
@@ -331,7 +338,10 @@ impl DotfileSelectionComponent {
 
         // Also render main footer (outside popup, at bottom of screen)
         let k = |a| config.keymap.get_key_display_for_action(a);
-        let footer_text = format!("File Browser Active - {}: Cancel", k(crate::keymap::Action::Quit));
+        let footer_text = format!(
+            "File Browser Active - {}: Cancel",
+            k(crate::keymap::Action::Quit)
+        );
         let _ = Footer::render(frame, footer_chunk, &footer_text)?;
 
         Ok(())
@@ -373,18 +383,15 @@ impl DotfileSelectionComponent {
         let k = |a| config.keymap.get_key_display_for_action(a);
         let footer_text = format!(
             "{}: Add File | {}: Cancel | Tab: Focus/Unfocus",
-             k(crate::keymap::Action::Confirm),
-             k(crate::keymap::Action::Quit)
+            k(crate::keymap::Action::Confirm),
+            k(crate::keymap::Action::Quit)
         );
-        let _ = Footer::render(
-            frame,
-            footer_chunk,
-            &footer_text,
-        )?;
+        let _ = Footer::render(frame, footer_chunk, &footer_text)?;
 
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)] // Render function needs all these parameters
     fn render_dotfile_list(
         &mut self,
         frame: &mut Frame,
@@ -528,10 +535,8 @@ impl DotfileSelectionComponent {
                 if selected_index < selection_state.dotfiles.len() {
                     let dotfile = &selection_state.dotfiles[selected_index];
                     let is_focused = selection_state.focus == DotfileSelectionFocus::Preview;
-                    let preview_title = format!(
-                        "Preview: {}",
-                        dotfile.relative_path.to_string_lossy()
-                    );
+                    let preview_title =
+                        format!("Preview: {}", dotfile.relative_path.to_string_lossy());
 
                     FilePreview::render(
                         frame,

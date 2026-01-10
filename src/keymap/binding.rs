@@ -37,8 +37,6 @@ impl KeyBinding {
         }
     }
 
-
-
     /// Check if this binding matches the given key event
     pub fn matches(&self, code: KeyCode, modifiers: KeyModifiers) -> bool {
         if let Ok(parsed) = self.parse() {
@@ -268,7 +266,5 @@ mod tests {
     fn test_key_binding_description() {
         let binding = KeyBinding::new("j", Action::MoveDown);
         assert_eq!(binding.get_description(), "Move down");
-
-
     }
 }

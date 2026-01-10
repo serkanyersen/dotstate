@@ -183,7 +183,7 @@ impl Component for SyncedFilesComponent {
                             }
                             return Ok(ComponentAction::Update);
                         }
-                         _ => {}
+                        _ => {}
                     }
                 }
             }
@@ -193,7 +193,6 @@ impl Component for SyncedFilesComponent {
             // Key events not matched by keymap (fallback or specific component handling?)
             // The original code only handled q/Esc/Up/Down. Keymap handles those now.
             // So we just fall through to mouse handling.
-
             Event::Mouse(mouse) => {
                 match mouse.kind {
                     MouseEventKind::Down(MouseButton::Left) => {

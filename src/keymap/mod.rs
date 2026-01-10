@@ -110,11 +110,16 @@ impl Keymap {
     pub fn get_key_display_for_action(&self, action: Action) -> String {
         // Check overrides
         if let Some(binding) = self.overrides.iter().find(|b| b.action == action) {
-             return binding.display();
+            return binding.display();
         }
 
         // Check preset
-        if let Some(binding) = self.preset.bindings().into_iter().find(|b| b.action == action) {
+        if let Some(binding) = self
+            .preset
+            .bindings()
+            .into_iter()
+            .find(|b| b.action == action)
+        {
             return binding.display();
         }
 

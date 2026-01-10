@@ -7,10 +7,6 @@
 //! through the public API. For unit tests of validation functions, see
 //! src/utils/sync_validation.rs
 
-use std::collections::HashSet;
-use std::path::PathBuf;
-use tempfile::TempDir;
-
 /// Generate path combinations to test edge cases
 fn generate_path_combinations() -> Vec<(String, Vec<String>)> {
     let mut combinations = Vec::new();

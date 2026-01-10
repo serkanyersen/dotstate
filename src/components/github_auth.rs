@@ -851,7 +851,10 @@ impl GitHubAuthComponent {
             .map(|s| s.contains("✅"))
             .unwrap_or(false)
         {
-            format!("Press {} to continue", self.get_key(crate::keymap::Action::Confirm))
+            format!(
+                "Press {} to continue",
+                self.get_key(crate::keymap::Action::Confirm)
+            )
         } else {
             "Please wait...".to_string()
         };

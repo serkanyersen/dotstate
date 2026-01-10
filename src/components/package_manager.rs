@@ -446,11 +446,11 @@ impl PackageManagerComponent {
         // Footer with instructions (always the last chunk)
         let k = |a| config.keymap.get_key_display_for_action(a);
         let footer_text = format!(
-           "{}: Next field | {}: Previous | {}: Save | {}: Cancel",
-           k(crate::keymap::Action::NextTab),
-           k(crate::keymap::Action::PrevTab),
-           k(crate::keymap::Action::Confirm),
-           k(crate::keymap::Action::Cancel)
+            "{}: Next field | {}: Previous | {}: Save | {}: Cancel",
+            k(crate::keymap::Action::NextTab),
+            k(crate::keymap::Action::PrevTab),
+            k(crate::keymap::Action::Confirm),
+            k(crate::keymap::Action::Cancel)
         );
         footer::Footer::render(frame, chunks[chunks.len() - 1], &footer_text)?;
 

@@ -9,7 +9,7 @@
 
 use dotstate::utils::sync_validation;
 use std::collections::HashSet;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use tempfile::TempDir;
 
 /// Test that validation correctly prevents adding a file inside a synced directory
@@ -92,9 +92,6 @@ fn test_validation_handles_path_normalization() {
     // Try to add .nvim/init.lua (with dot) - should be blocked
     let file_path = PathBuf::from("/home/user/.nvim/init.lua");
     let relative_path = ".nvim/init.lua";
-
-    let result =
-        sync_validation::validate_before_sync(relative_path, &file_path, &synced_files, repo_path);
 
     // Should detect that .nvim is inside nvim (after normalization)
     // Actually, wait - nvim and .nvim are different paths. Let me test the actual case:
