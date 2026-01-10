@@ -297,7 +297,11 @@ impl App {
     fn cycle_theme(&mut self) -> Result<()> {
         use crate::styles::ThemeType;
 
-        let current_theme = self.config.theme.parse::<ThemeType>().unwrap_or(ThemeType::Dark);
+        let current_theme = self
+            .config
+            .theme
+            .parse::<ThemeType>()
+            .unwrap_or(ThemeType::Dark);
         let next_theme = match current_theme {
             ThemeType::Dark => ThemeType::Light,
             ThemeType::Light => ThemeType::NoColor,
