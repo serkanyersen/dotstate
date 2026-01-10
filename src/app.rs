@@ -776,12 +776,42 @@ impl App {
             }
         }
 
-        // Close help overlay on any key if it's showing
+        // Handle help overlay interactions
         if self.ui_state.show_help_overlay
             && matches!(event, Event::Key(k) if k.kind == KeyEventKind::Press)
         {
-            self.ui_state.show_help_overlay = false;
-            return Ok(());
+            use crossterm::event::KeyCode;
+            match event {
+                Event::Key(key) => {
+                    // Allow preset switching with 1/2/3 keys
+                    let new_preset = match key.code {
+                        KeyCode::Char('1') => Some(crate::keymap::KeymapPreset::Standard),
+                        KeyCode::Char('2') => Some(crate::keymap::KeymapPreset::Vim),
+                        KeyCode::Char('3') => Some(crate::keymap::KeymapPreset::Emacs),
+                        _ => None,
+                    };
+
+                    if let Some(preset) = new_preset {
+                        if self.config.keymap.preset != preset {
+                            info!("Switching keymap preset from {:?} to {:?}", self.config.keymap.preset, preset);
+                            self.config.keymap.preset = preset;
+                            // Save config immediately
+                            if let Err(e) = self.config.save(&self.config_path) {
+                                warn!("Failed to save preset change: {}", e);
+                            } else {
+                                info!("Keymap preset changed to {:?}", preset);
+                            }
+                        }
+                        // Don't close overlay when switching preset
+                        return Ok(());
+                    }
+
+                    // Any other key closes the overlay
+                    self.ui_state.show_help_overlay = false;
+                    return Ok(());
+                }
+                _ => {}
+            }
         }
 
         // Handle message component events first (e.g., deactivation warning on MainMenu)
