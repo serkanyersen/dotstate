@@ -187,14 +187,52 @@ impl ProfileManagerComponent {
         }
 
         // Footer
+        let k = |a| config.keymap.get_key_display_for_action(a);
         let footer_text = match state.popup_type {
-            ProfilePopupType::Create => "Tab: Next Field | ↑↓: Navigate Copy From | Space: Toggle Selection | Enter: Create | Esc: Cancel",
-            ProfilePopupType::Switch => "Enter: Confirm Switch | Esc: Cancel",
-            ProfilePopupType::Rename => "Enter: Confirm Rename | Esc: Cancel",
-            ProfilePopupType::Delete => "Type profile name to confirm | Enter: Delete | Esc: Cancel",
-            ProfilePopupType::None => "↑↓: Navigate | Enter: Switch Profile | C: Create | R: Rename | D: Delete | Esc: Back",
+            ProfilePopupType::Create => {
+                format!(
+                    "{}: Next Field | {}: Navigate Copy From | {}: Toggle Selection | {}: Create | {}: Cancel",
+                    k(crate::keymap::Action::NextTab),
+                    config.keymap.navigation_display(),
+                    k(crate::keymap::Action::ToggleSelect),
+                    k(crate::keymap::Action::Confirm),
+                    k(crate::keymap::Action::Cancel)
+                )
+            }
+            ProfilePopupType::Switch => {
+                format!(
+                    "{}: Confirm Switch | {}: Cancel",
+                    k(crate::keymap::Action::Confirm),
+                    k(crate::keymap::Action::Cancel)
+                )
+            }
+            ProfilePopupType::Rename => {
+                format!(
+                    "{}: Confirm Rename | {}: Cancel",
+                    k(crate::keymap::Action::Confirm),
+                    k(crate::keymap::Action::Cancel)
+                )
+            }
+            ProfilePopupType::Delete => {
+                format!(
+                    "Type profile name to confirm | {}: Delete | {}: Cancel",
+                    k(crate::keymap::Action::Confirm),
+                    k(crate::keymap::Action::Cancel)
+                )
+            }
+            ProfilePopupType::None => {
+                format!(
+                    "{}: Navigate | {}: Switch Profile | {}: Create | {}: Rename | {}: Delete | {}: Back",
+                    config.keymap.navigation_display(),
+                    k(crate::keymap::Action::Confirm),
+                    k(crate::keymap::Action::Create),
+                    k(crate::keymap::Action::Edit),
+                    k(crate::keymap::Action::Delete),
+                    k(crate::keymap::Action::Cancel)
+                )
+            }
         };
-        Footer::render(frame, footer_chunk, footer_text)?;
+        Footer::render(frame, footer_chunk, &footer_text)?;
 
         Ok(())
     }

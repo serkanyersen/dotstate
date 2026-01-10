@@ -55,6 +55,7 @@ impl PushChangesComponent {
         frame: &mut Frame,
         area: Rect,
         state: &mut SyncWithRemoteState,
+        config: &crate::config::Config,
         syntax_set: &SyntaxSet,
         theme: &Theme,
     ) -> Result<()> {
@@ -229,16 +230,22 @@ impl PushChangesComponent {
         }
 
         // Footer
+        let k = |a| config.keymap.get_key_display_for_action(a);
         let footer_text = if state.show_result_popup {
-            "Press any key or click to close"
+            "Press any key or click to close".to_string()
         } else if state.is_syncing {
-            "Syncing with remote..."
+            "Syncing with remote...".to_string()
         } else if state.changed_files.is_empty() {
-            "q/Esc: Back to Main Menu"
+            format!("{}: Back to Main Menu", k(crate::keymap::Action::Cancel))
         } else {
-            "Enter: Sync with Remote | ↑↓: Navigate | q/Esc: Back"
+            format!(
+                "{}: Sync with Remote | {}: Navigate | {}: Back",
+                k(crate::keymap::Action::Confirm),
+                config.keymap.navigation_display(),
+                k(crate::keymap::Action::Cancel)
+            )
         };
-        let _ = Footer::render(frame, footer_chunk, footer_text)?;
+        let _ = Footer::render(frame, footer_chunk, &footer_text)?;
 
         Ok(())
     }

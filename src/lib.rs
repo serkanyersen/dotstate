@@ -12,6 +12,7 @@ pub mod dotfile_candidates;
 pub mod file_manager;
 pub mod git;
 pub mod github;
+pub mod keymap;
 pub mod styles;
 pub mod tui;
 pub mod ui;
@@ -24,3 +25,6 @@ pub use config::Config;
 pub use file_manager::FileManager;
 pub use utils::ProfileManifest;
 pub use utils::SymlinkManager;
+
+// Keymap re-exports (used by Config and for external API)
+pub use keymap::{Action, KeyBinding, Keymap, KeymapPreset};

@@ -89,6 +89,12 @@ pub enum Action {
     Yes,
     /// Confirm no
     No,
+
+    // ============ Form/Save actions ============
+    /// Save / submit form (Ctrl+S in many contexts)
+    Save,
+    /// Toggle backup setting
+    ToggleBackup,
 }
 
 impl Action {
@@ -128,6 +134,8 @@ impl Action {
             Action::ScrollDown => "Scroll down",
             Action::Yes => "Yes",
             Action::No => "No",
+            Action::Save => "Save",
+            Action::ToggleBackup => "Toggle backup",
         }
     }
 
@@ -169,6 +177,8 @@ impl Action {
             Action::ScrollUp | Action::ScrollDown => "Scroll",
 
             Action::Yes | Action::No => "Prompts",
+
+            Action::Save | Action::ToggleBackup => "Actions",
         }
     }
 }

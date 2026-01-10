@@ -94,9 +94,15 @@ impl PackageManagerComponent {
             } else {
                 let k = |a| config.keymap.get_key_display_for_action(a);
                 format!(
-                    "{}: Navigate | A: Add | E: Edit | D: Delete | C: Check All | S: Check Selected | I: Install Missing | {}: Back",
+                    "{}: Navigate | {}: Add | {}: Edit | {}: Delete | {}: Check All | {}: Check Selected | {}: Install Missing | {}: Back",
                     config.keymap.navigation_display(),
-                    k(crate::keymap::Action::Quit)
+                    k(crate::keymap::Action::Create),
+                    k(crate::keymap::Action::Edit),
+                    k(crate::keymap::Action::Delete),
+                    k(crate::keymap::Action::Refresh),
+                    k(crate::keymap::Action::Sync),
+                    k(crate::keymap::Action::Install),
+                    k(crate::keymap::Action::Cancel)
                 )
             };
             footer::Footer::render(frame, layout.2, &footer_text)?;
@@ -438,12 +444,13 @@ impl PackageManagerComponent {
         }
 
         // Footer with instructions (always the last chunk)
-        // Footer with instructions (always the last chunk)
         let k = |a| config.keymap.get_key_display_for_action(a);
         let footer_text = format!(
-           "Tab: Next field | Shift+Tab: Previous | {}: Save | {}: Cancel",
+           "{}: Next field | {}: Previous | {}: Save | {}: Cancel",
+           k(crate::keymap::Action::NextTab),
+           k(crate::keymap::Action::PrevTab),
            k(crate::keymap::Action::Confirm),
-           k(crate::keymap::Action::Quit)
+           k(crate::keymap::Action::Cancel)
         );
         footer::Footer::render(frame, chunks[chunks.len() - 1], &footer_text)?;
 

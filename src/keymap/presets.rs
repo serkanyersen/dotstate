@@ -68,6 +68,8 @@ fn standard_bindings() -> Vec<KeyBinding> {
         KeyBinding::new("r", Action::Refresh),
         KeyBinding::new("s", Action::Sync),
         KeyBinding::new("i", Action::Install),
+        KeyBinding::new("ctrl+s", Action::Save),
+        KeyBinding::new("b", Action::ToggleBackup),
         // Text editing
         KeyBinding::new("backspace", Action::Backspace),
         KeyBinding::new("delete", Action::DeleteChar),
@@ -121,6 +123,8 @@ fn vim_bindings() -> Vec<KeyBinding> {
         KeyBinding::new("r", Action::Refresh),
         KeyBinding::new("s", Action::Sync),
         KeyBinding::new("i", Action::Install),
+        KeyBinding::new("ctrl+s", Action::Save),
+        KeyBinding::new("b", Action::ToggleBackup),
         // Text editing
         KeyBinding::new("backspace", Action::Backspace),
         KeyBinding::new("x", Action::DeleteChar), // vim style delete char
@@ -171,17 +175,19 @@ fn emacs_bindings() -> Vec<KeyBinding> {
         KeyBinding::new("ctrl+h", Action::Help),
         KeyBinding::new("?", Action::Help),
         // Actions
-        KeyBinding::new("ctrl+d", Action::Delete),
+        KeyBinding::new("d", Action::Delete), // Use 'd' since Ctrl+D is DeleteChar in Emacs
         KeyBinding::new("ctrl+e", Action::Edit),
         KeyBinding::new("ctrl+o", Action::Create),
-        KeyBinding::new("ctrl+s", Action::Search),
+        KeyBinding::new("/", Action::Search), // Use / for search (Ctrl+S is used for Save)
         KeyBinding::new("ctrl+r", Action::Refresh),
         KeyBinding::new("ctrl+x s", Action::Sync), // Note: multi-key not supported yet
         KeyBinding::new("s", Action::Sync),
         KeyBinding::new("i", Action::Install),
+        KeyBinding::new("ctrl+s", Action::Save),
+        KeyBinding::new("b", Action::ToggleBackup), // Use 'b' since Ctrl+B is MoveLeft in Emacs
         // Text editing
         KeyBinding::new("backspace", Action::Backspace),
-        KeyBinding::new("ctrl+d", Action::DeleteChar),
+        KeyBinding::new("ctrl+d", Action::DeleteChar), // Forward delete (Emacs standard)
         KeyBinding::new("delete", Action::DeleteChar),
         // Tab navigation
         KeyBinding::new("tab", Action::NextTab),

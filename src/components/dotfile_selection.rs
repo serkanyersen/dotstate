@@ -275,11 +275,7 @@ impl DotfileSelectionComponent {
                 };
 
                 let is_focused = selection_state.focus == DotfileSelectionFocus::FileBrowserPreview;
-                let preview_title = if is_focused {
-                    "Preview (u/d: Scroll)"
-                } else {
-                    "Preview"
-                };
+                let preview_title = "Preview";
 
                 FilePreview::render(
                     frame,
@@ -320,10 +316,11 @@ impl DotfileSelectionComponent {
             let footer_inner = footer_block.inner(browser_chunks[3]);
             let k = |a| config.keymap.get_key_display_for_action(a);
             let footer_text = format!(
-                "Tab: Switch Focus | {}: Navigate List | u/d: Scroll Preview | {}: Load Path | {}: Cancel",
+                "{}: Switch Focus | {}: Navigate List | {}: Load Path | {}: Cancel",
+                k(crate::keymap::Action::NextTab),
                 config.keymap.navigation_display(),
                 k(crate::keymap::Action::Confirm),
-                k(crate::keymap::Action::Quit)
+                k(crate::keymap::Action::Cancel)
             );
             let footer = Paragraph::new(footer_text)
                 .style(Style::default().fg(t.text_muted))
@@ -532,7 +529,7 @@ impl DotfileSelectionComponent {
                     let dotfile = &selection_state.dotfiles[selected_index];
                     let is_focused = selection_state.focus == DotfileSelectionFocus::Preview;
                     let preview_title = format!(
-                        "Preview: {} (u/d: Scroll)",
+                        "Preview: {}",
                         dotfile.relative_path.to_string_lossy()
                     );
 
@@ -603,9 +600,11 @@ impl DotfileSelectionComponent {
         } else {
             let k = |a| config.keymap.get_key_display_for_action(a);
             format!(
-                "Tab: Focus | {}: Navigate | Space/{}: Toggle | A: Add Custom | u/d: Scroll | B: Backup ({}) | {}: Back",
+                "Tab: Focus | {}: Navigate | Space/{}: Toggle | {}: Add Custom | {}: Backup ({}) | {}: Back",
                  config.keymap.navigation_display(),
                  k(crate::keymap::Action::Confirm),
+                 k(crate::keymap::Action::Create),
+                 k(crate::keymap::Action::ToggleBackup),
                  backup_status,
                  k(crate::keymap::Action::Quit)
             )

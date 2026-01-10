@@ -2,6 +2,8 @@
 //!
 //! Provides customizable keyboard shortcuts with preset keymaps (standard, vim, emacs).
 
+#![allow(dead_code)] // Types are used via Config in the binary, but compiler doesn't see direct usage
+
 mod actions;
 mod binding;
 mod presets;

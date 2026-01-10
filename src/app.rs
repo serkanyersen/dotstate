@@ -448,6 +448,7 @@ impl App {
                         frame,
                         area,
                         &mut self.ui_state.sync_with_remote,
+                        &config_clone,
                         &self.syntax_set,
                         syntax_theme,
                     ) {
@@ -727,25 +728,21 @@ impl App {
             if key.kind == KeyEventKind::Press {
                 if let Some(action) = self.get_action(key.code, key.modifiers) {
                     use crate::keymap::Action;
-                    match action {
-                        Action::Help => {
-                            // Toggle help overlay
-                            self.ui_state.show_help_overlay = !self.ui_state.show_help_overlay;
-                            return Ok(());
-                        }
-                        _ => {}
+                    if action == Action::Help {
+                        // Toggle help overlay
+                        self.ui_state.show_help_overlay = !self.ui_state.show_help_overlay;
+                        return Ok(());
                     }
                 }
             }
         }
 
         // Close help overlay on any key if it's showing
-        if self.ui_state.show_help_overlay {
-            if matches!(event, Event::Key(k) if k.kind == KeyEventKind::Press) {
+        if self.ui_state.show_help_overlay
+            && matches!(event, Event::Key(k) if k.kind == KeyEventKind::Press) {
                 self.ui_state.show_help_overlay = false;
                 return Ok(());
             }
-        }
 
         // Handle message component events first (e.g., deactivation warning on MainMenu)
         if let Some(ref mut msg_component) = self.message_component {
@@ -1029,19 +1026,47 @@ impl App {
                  if self.ui_state.input_mode_active {
                       if let Event::Key(key) = event {
                            if key.kind == KeyEventKind::Press {
-                                if key.code == KeyCode::Esc {
-                                     let state = &mut self.ui_state.dotfile_selection;
-                                     if state.adding_custom_file && !state.custom_file_focused {
-                                          state.adding_custom_file = false;
-                                          state.custom_file_input.clear();
-                                          return Ok(());
-                                     }
-                                }
-
+                                // Check for Tab/NextTab in file browser mode - allow focus switching even in input mode
                                 if self.ui_state.dotfile_selection.file_browser_mode {
-                                     self.handle_file_browser_input(key.code)?;
+                                    if let Some(action) = self.get_action(key.code, key.modifiers) {
+                                        use crate::keymap::Action;
+                                        if matches!(action, Action::NextTab) {
+                                            // Handle Tab focus switching in file browser
+                                            use crate::ui::DotfileSelectionFocus;
+                                            let state = &mut self.ui_state.dotfile_selection;
+                                            state.focus = match state.focus {
+                                                DotfileSelectionFocus::FileBrowserList => {
+                                                    state.file_browser_path_focused = false;
+                                                    DotfileSelectionFocus::FileBrowserPreview
+                                                }
+                                                DotfileSelectionFocus::FileBrowserPreview => {
+                                                    state.file_browser_path_focused = true;
+                                                    DotfileSelectionFocus::FileBrowserInput
+                                                }
+                                                DotfileSelectionFocus::FileBrowserInput => {
+                                                    state.file_browser_path_focused = false;
+                                                    DotfileSelectionFocus::FileBrowserList
+                                                }
+                                                _ => {
+                                                    state.file_browser_path_focused = false;
+                                                    DotfileSelectionFocus::FileBrowserList
+                                                }
+                                            };
+                                            return Ok(());
+                                        }
+                                    }
+                                    // Other input handling for file browser
+                                    self.handle_file_browser_input(key.code)?;
                                 } else if self.ui_state.dotfile_selection.adding_custom_file {
-                                     self.handle_custom_file_input(key.code)?;
+                                    if key.code == KeyCode::Esc {
+                                        let state = &mut self.ui_state.dotfile_selection;
+                                        if !state.custom_file_focused {
+                                            state.adding_custom_file = false;
+                                            state.custom_file_input.clear();
+                                            return Ok(());
+                                        }
+                                    }
+                                    self.handle_custom_file_input(key.code)?;
                                 }
                            }
                       }
@@ -1069,11 +1094,10 @@ impl App {
                                     if state.focus == DotfileSelectionFocus::FilesList {
                                         state.dotfile_list_state.select_previous();
                                         state.preview_scroll = 0;
-                                    } else if state.focus == DotfileSelectionFocus::Preview {
-                                        if state.preview_scroll > 0 {
+                                    } else if state.focus == DotfileSelectionFocus::Preview
+                                        && state.preview_scroll > 0 {
                                             state.preview_scroll = state.preview_scroll.saturating_sub(1);
                                         }
-                                    }
                                 }
                                 Action::MoveDown => {
                                     if state.focus == DotfileSelectionFocus::FilesList {
@@ -1091,11 +1115,34 @@ impl App {
                                     }
                                 }
                                 Action::NextTab => {
-                                    state.focus = match state.focus {
-                                        DotfileSelectionFocus::FilesList => DotfileSelectionFocus::Preview,
-                                        DotfileSelectionFocus::Preview => DotfileSelectionFocus::FilesList,
-                                        _ => DotfileSelectionFocus::FilesList,
-                                    };
+                                    if state.file_browser_mode {
+                                        // In file browser mode: cycle through List -> Preview -> Input -> List
+                                        state.focus = match state.focus {
+                                            DotfileSelectionFocus::FileBrowserList => {
+                                                state.file_browser_path_focused = false;
+                                                DotfileSelectionFocus::FileBrowserPreview
+                                            }
+                                            DotfileSelectionFocus::FileBrowserPreview => {
+                                                state.file_browser_path_focused = true;
+                                                DotfileSelectionFocus::FileBrowserInput
+                                            }
+                                            DotfileSelectionFocus::FileBrowserInput => {
+                                                state.file_browser_path_focused = false;
+                                                DotfileSelectionFocus::FileBrowserList
+                                            }
+                                            _ => {
+                                                state.file_browser_path_focused = false;
+                                                DotfileSelectionFocus::FileBrowserList
+                                            }
+                                        };
+                                    } else {
+                                        // Normal mode: switch between FilesList and Preview
+                                        state.focus = match state.focus {
+                                            DotfileSelectionFocus::FilesList => DotfileSelectionFocus::Preview,
+                                            DotfileSelectionFocus::Preview => DotfileSelectionFocus::FilesList,
+                                            _ => DotfileSelectionFocus::FilesList,
+                                        };
+                                    }
                                 }
                                 Action::PageUp => {
                                     if state.focus == DotfileSelectionFocus::FilesList {
@@ -1104,11 +1151,10 @@ impl App {
                                             state.dotfile_list_state.select(Some(new_index));
                                             state.preview_scroll = 0;
                                         }
-                                    } else if state.focus == DotfileSelectionFocus::Preview {
-                                        if state.preview_scroll > 0 {
+                                    } else if state.focus == DotfileSelectionFocus::Preview
+                                        && state.preview_scroll > 0 {
                                             state.preview_scroll = state.preview_scroll.saturating_sub(20);
                                         }
-                                    }
                                 }
                                 Action::PageDown => {
                                     if state.focus == DotfileSelectionFocus::FilesList {
@@ -1151,15 +1197,12 @@ impl App {
                                 Action::Create => {
                                     intent = DotfileIntent::CreateCustom;
                                 }
+                                Action::ToggleBackup => {
+                                    intent = DotfileIntent::ToggleBackup;
+                                }
                                 Action::Cancel | Action::Quit => {
                                     self.ui_state.current_screen = Screen::MainMenu;
                                 }
-                                _ => {}
-                           }
-                      } else {
-                           match key.code {
-                                KeyCode::Char('a') => { intent = DotfileIntent::CreateCustom; }
-                                KeyCode::Char('b') | KeyCode::Char('B') => { intent = DotfileIntent::ToggleBackup; }
                                 _ => {}
                            }
                       }
@@ -2924,8 +2967,8 @@ impl App {
                      }
                 }
 
-                // Check for Ctrl+S (Raw check for now as Safe Save)
-                if key.code == KeyCode::Char('s') && key.modifiers.contains(KeyModifiers::CONTROL) {
+                // Check for Save action (Ctrl+S or equivalent)
+                if matches!(action, Some(Action::Save)) {
                     if auth_state.repo_already_configured && auth_state.is_editing_token {
                         // Just update the token
                         self.update_github_token()?;
@@ -2969,132 +3012,129 @@ impl App {
                     return Ok(());
                 }
 
-                // Normal input handling
-                // Check Keymap for Navigation (only if non-character or special key)
-                let is_typing_char = match key.code {
-                    KeyCode::Char(_) => !key.modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SUPER),
-                    _ => false,
-                };
-
-                if !is_typing_char {
-                    if let Some(act) = action {
-                         match act {
-                             Action::Cancel | Action::Quit => {
-                                  self.ui_state.current_screen = Screen::MainMenu;
-                                  *auth_state = Default::default();
-                                  return Ok(());
-                             }
-                             Action::MoveLeft => {
-                                 // Handle Left
-                                 let current_input = match auth_state.focused_field {
-                                     GitHubAuthField::Token => &auth_state.token_input,
-                                     GitHubAuthField::RepoName => &auth_state.repo_name_input,
-                                     GitHubAuthField::RepoLocation => &auth_state.repo_location_input,
-                                     GitHubAuthField::IsPrivate => "",
-                                 };
-                                 crate::utils::handle_cursor_movement(current_input, &mut auth_state.cursor_position, KeyCode::Left);
-                                 return Ok(());
-                             }
-                             Action::MoveRight => {
-                                 let current_input = match auth_state.focused_field {
-                                     GitHubAuthField::Token => &auth_state.token_input,
-                                     GitHubAuthField::RepoName => &auth_state.repo_name_input,
-                                     GitHubAuthField::RepoLocation => &auth_state.repo_location_input,
-                                     GitHubAuthField::IsPrivate => "",
-                                 };
-                                 crate::utils::handle_cursor_movement(current_input, &mut auth_state.cursor_position, KeyCode::Right);
-                                 return Ok(());
-                             }
-                             Action::Home => {
-
-                                 // Re-implementing switch to be safe
-                                 let text = match auth_state.focused_field {
-                                        GitHubAuthField::Token => &auth_state.token_input,
-                                        GitHubAuthField::RepoName => &auth_state.repo_name_input,
-                                        GitHubAuthField::RepoLocation => &auth_state.repo_location_input,
-                                        GitHubAuthField::IsPrivate => "",
-                                 };
-                                 crate::utils::handle_cursor_movement(text, &mut auth_state.cursor_position, KeyCode::Home);
-                                 return Ok(());
-                             }
-                             Action::End => {
-                                 let text = match auth_state.focused_field {
-                                        GitHubAuthField::Token => &auth_state.token_input,
-                                        GitHubAuthField::RepoName => &auth_state.repo_name_input,
-                                        GitHubAuthField::RepoLocation => &auth_state.repo_location_input,
-                                        GitHubAuthField::IsPrivate => "",
-                                 };
-                                 crate::utils::handle_cursor_movement(text, &mut auth_state.cursor_position, KeyCode::End);
-                                 return Ok(());
-                             }
-                             _ => {}
+                // Normal input handling - check for navigation/editing actions from keymap
+                // Input mode allows NextTab, PrevTab, Home, End, Backspace, DeleteChar, Cancel, Confirm
+                if let Some(act) = action {
+                     match act {
+                         Action::Cancel | Action::Quit => {
+                              self.ui_state.current_screen = Screen::MainMenu;
+                              *auth_state = Default::default();
+                              return Ok(());
                          }
-                    }
+                         Action::NextTab if !auth_state.repo_already_configured => {
+                             auth_state.focused_field = match auth_state.focused_field {
+                                 GitHubAuthField::Token => GitHubAuthField::RepoName,
+                                 GitHubAuthField::RepoName => GitHubAuthField::RepoLocation,
+                                 GitHubAuthField::RepoLocation => GitHubAuthField::IsPrivate,
+                                 GitHubAuthField::IsPrivate => GitHubAuthField::Token,
+                             };
+                             auth_state.cursor_position = match auth_state.focused_field {
+                                 GitHubAuthField::Token => auth_state.token_input.chars().count(),
+                                 GitHubAuthField::RepoName => auth_state.repo_name_input.chars().count(),
+                                 GitHubAuthField::RepoLocation => auth_state.repo_location_input.chars().count(),
+                                 GitHubAuthField::IsPrivate => 0,
+                             };
+                             return Ok(());
+                         }
+                         Action::PrevTab if !auth_state.repo_already_configured => {
+                             auth_state.focused_field = match auth_state.focused_field {
+                                 GitHubAuthField::Token => GitHubAuthField::IsPrivate,
+                                 GitHubAuthField::RepoName => GitHubAuthField::Token,
+                                 GitHubAuthField::RepoLocation => GitHubAuthField::RepoName,
+                                 GitHubAuthField::IsPrivate => GitHubAuthField::RepoLocation,
+                             };
+                             auth_state.cursor_position = match auth_state.focused_field {
+                                 GitHubAuthField::Token => auth_state.token_input.chars().count(),
+                                 GitHubAuthField::RepoName => auth_state.repo_name_input.chars().count(),
+                                 GitHubAuthField::RepoLocation => auth_state.repo_location_input.chars().count(),
+                                 GitHubAuthField::IsPrivate => 0,
+                             };
+                             return Ok(());
+                         }
+                         Action::MoveLeft => {
+                             let current_input = match auth_state.focused_field {
+                                 GitHubAuthField::Token => &auth_state.token_input,
+                                 GitHubAuthField::RepoName => &auth_state.repo_name_input,
+                                 GitHubAuthField::RepoLocation => &auth_state.repo_location_input,
+                                 GitHubAuthField::IsPrivate => "",
+                             };
+                             crate::utils::handle_cursor_movement(current_input, &mut auth_state.cursor_position, KeyCode::Left);
+                             return Ok(());
+                         }
+                         Action::MoveRight => {
+                             let current_input = match auth_state.focused_field {
+                                 GitHubAuthField::Token => &auth_state.token_input,
+                                 GitHubAuthField::RepoName => &auth_state.repo_name_input,
+                                 GitHubAuthField::RepoLocation => &auth_state.repo_location_input,
+                                 GitHubAuthField::IsPrivate => "",
+                             };
+                             crate::utils::handle_cursor_movement(current_input, &mut auth_state.cursor_position, KeyCode::Right);
+                             return Ok(());
+                         }
+                         Action::Home => {
+                             let text = match auth_state.focused_field {
+                                    GitHubAuthField::Token => &auth_state.token_input,
+                                    GitHubAuthField::RepoName => &auth_state.repo_name_input,
+                                    GitHubAuthField::RepoLocation => &auth_state.repo_location_input,
+                                    GitHubAuthField::IsPrivate => "",
+                             };
+                             crate::utils::handle_cursor_movement(text, &mut auth_state.cursor_position, KeyCode::Home);
+                             return Ok(());
+                         }
+                         Action::End => {
+                             let text = match auth_state.focused_field {
+                                    GitHubAuthField::Token => &auth_state.token_input,
+                                    GitHubAuthField::RepoName => &auth_state.repo_name_input,
+                                    GitHubAuthField::RepoLocation => &auth_state.repo_location_input,
+                                    GitHubAuthField::IsPrivate => "",
+                             };
+                             crate::utils::handle_cursor_movement(text, &mut auth_state.cursor_position, KeyCode::End);
+                             return Ok(());
+                         }
+                         Action::Backspace => {
+                             match auth_state.focused_field {
+                                 GitHubAuthField::Token => crate::utils::handle_backspace(&mut auth_state.token_input, &mut auth_state.cursor_position),
+                                 GitHubAuthField::RepoName => crate::utils::handle_backspace(&mut auth_state.repo_name_input, &mut auth_state.cursor_position),
+                                 GitHubAuthField::RepoLocation => crate::utils::handle_backspace(&mut auth_state.repo_location_input, &mut auth_state.cursor_position),
+                                 GitHubAuthField::IsPrivate => {}
+                             }
+                             return Ok(());
+                         }
+                         Action::DeleteChar => {
+                             match auth_state.focused_field {
+                                 GitHubAuthField::Token => crate::utils::handle_delete(&mut auth_state.token_input, &mut auth_state.cursor_position),
+                                 GitHubAuthField::RepoName => crate::utils::handle_delete(&mut auth_state.repo_name_input, &mut auth_state.cursor_position),
+                                 GitHubAuthField::RepoLocation => crate::utils::handle_delete(&mut auth_state.repo_location_input, &mut auth_state.cursor_position),
+                                 GitHubAuthField::IsPrivate => {}
+                             }
+                             return Ok(());
+                         }
+                         Action::ToggleSelect => {
+                             // Space toggle for IsPrivate
+                             if auth_state.focused_field == GitHubAuthField::IsPrivate && !auth_state.repo_already_configured {
+                                 auth_state.is_private = !auth_state.is_private;
+                             }
+                             return Ok(());
+                         }
+                         _ => {}
+                     }
                 }
 
-                // Standard Raw handling (Tab, Backspace, Delete, Chars)
-                match key.code {
-                    KeyCode::Tab if !auth_state.repo_already_configured => {
-                        auth_state.focused_field = match auth_state.focused_field {
-                            GitHubAuthField::Token => GitHubAuthField::RepoName,
-                            GitHubAuthField::RepoName => GitHubAuthField::RepoLocation,
-                            GitHubAuthField::RepoLocation => GitHubAuthField::IsPrivate,
-                            GitHubAuthField::IsPrivate => GitHubAuthField::Token,
-                        };
-                        auth_state.cursor_position = match auth_state.focused_field {
-                            GitHubAuthField::Token => auth_state.token_input.chars().count(),
-                            GitHubAuthField::RepoName => auth_state.repo_name_input.chars().count(),
-                            GitHubAuthField::RepoLocation => auth_state.repo_location_input.chars().count(),
-                            GitHubAuthField::IsPrivate => 0,
-                        };
+                // Handle character input (only for text fields, not navigation)
+                if let KeyCode::Char(c) = key.code {
+                    // Regular char insertion for text fields
+                    match auth_state.focused_field {
+                        GitHubAuthField::Token if (!auth_state.repo_already_configured || auth_state.is_editing_token) && !key.modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SUPER) => {
+                            crate::utils::handle_char_insertion(&mut auth_state.token_input, &mut auth_state.cursor_position, c);
+                        }
+                        GitHubAuthField::RepoName if !auth_state.repo_already_configured && !key.modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SUPER) => {
+                            crate::utils::handle_char_insertion(&mut auth_state.repo_name_input, &mut auth_state.cursor_position, c);
+                        }
+                        GitHubAuthField::RepoLocation if !auth_state.repo_already_configured && !key.modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SUPER) => {
+                            crate::utils::handle_char_insertion(&mut auth_state.repo_location_input, &mut auth_state.cursor_position, c);
+                        }
+                        _ => {}
                     }
-                    KeyCode::BackTab if !auth_state.repo_already_configured => {
-                        auth_state.focused_field = match auth_state.focused_field {
-                            GitHubAuthField::Token => GitHubAuthField::IsPrivate,
-                            GitHubAuthField::RepoName => GitHubAuthField::Token,
-                            GitHubAuthField::RepoLocation => GitHubAuthField::RepoName,
-                            GitHubAuthField::IsPrivate => GitHubAuthField::RepoLocation,
-                        };
-                        auth_state.cursor_position = match auth_state.focused_field {
-                            GitHubAuthField::Token => auth_state.token_input.chars().count(),
-                            GitHubAuthField::RepoName => auth_state.repo_name_input.chars().count(),
-                            GitHubAuthField::RepoLocation => auth_state.repo_location_input.chars().count(),
-                            GitHubAuthField::IsPrivate => 0,
-                        };
-                    }
-                    KeyCode::Backspace => match auth_state.focused_field {
-                        GitHubAuthField::Token => crate::utils::handle_backspace(&mut auth_state.token_input, &mut auth_state.cursor_position),
-                        GitHubAuthField::RepoName => crate::utils::handle_backspace(&mut auth_state.repo_name_input, &mut auth_state.cursor_position),
-                        GitHubAuthField::RepoLocation => crate::utils::handle_backspace(&mut auth_state.repo_location_input, &mut auth_state.cursor_position),
-                        GitHubAuthField::IsPrivate => {}
-                    },
-                    KeyCode::Delete => match auth_state.focused_field {
-                         GitHubAuthField::Token => crate::utils::handle_delete(&mut auth_state.token_input, &mut auth_state.cursor_position),
-                         GitHubAuthField::RepoName => crate::utils::handle_delete(&mut auth_state.repo_name_input, &mut auth_state.cursor_position),
-                         GitHubAuthField::RepoLocation => crate::utils::handle_delete(&mut auth_state.repo_location_input, &mut auth_state.cursor_position),
-                         GitHubAuthField::IsPrivate => {}
-                    },
-                    KeyCode::Char(c) => {
-                        // Space toggle for IsPrivate
-                         if c == ' ' && auth_state.focused_field == GitHubAuthField::IsPrivate && !auth_state.repo_already_configured {
-                             auth_state.is_private = !auth_state.is_private;
-                         } else {
-                             // Regular char insertion
-                             match auth_state.focused_field {
-                                 GitHubAuthField::Token if !auth_state.repo_already_configured || auth_state.is_editing_token => {
-                                     crate::utils::handle_char_insertion(&mut auth_state.token_input, &mut auth_state.cursor_position, c);
-                                 }
-                                 GitHubAuthField::RepoName if !auth_state.repo_already_configured => {
-                                     crate::utils::handle_char_insertion(&mut auth_state.repo_name_input, &mut auth_state.cursor_position, c);
-                                 }
-                                 GitHubAuthField::RepoLocation if !auth_state.repo_already_configured => {
-                                     crate::utils::handle_char_insertion(&mut auth_state.repo_location_input, &mut auth_state.cursor_position, c);
-                                 }
-                                 _ => {}
-                             }
-                         }
-                    }
-                    _ => {}
                 }
             }
             GitHubAuthStep::Processing => {
@@ -3166,8 +3206,8 @@ impl App {
             return Ok(());
         }
 
-        // Check for Action::Confirm or Ctrl+S to validate and save
-        if matches!(action, Some(Action::Confirm)) || (key.code == KeyCode::Char('s') && key.modifiers.contains(KeyModifiers::CONTROL)) {
+        // Check for Action::Confirm or Action::Save to validate and save
+        if matches!(action, Some(Action::Confirm | Action::Save)) {
             // Validate local repo
             let path_str = auth_state.local_repo_path_input.trim();
             if path_str.is_empty() {
@@ -5774,6 +5814,8 @@ impl App {
                     return Ok(());
                 }
                 KeyCode::Tab => {
+                    // Tab in input field - switch to next focus area (handled by Action::NextTab in main handler)
+                    // For now, allow Tab to unfocus input and go to list
                     state.file_browser_path_focused = false;
                     state.focus = DotfileSelectionFocus::FileBrowserList;
                     return Ok(());
@@ -5792,27 +5834,8 @@ impl App {
                 state.file_browser_path_focused = false;
                 state.focus = DotfileSelectionFocus::FilesList;
             }
-            KeyCode::Tab => {
-                // Cycle focus: List -> Preview -> Input -> List
-                state.focus = match state.focus {
-                    DotfileSelectionFocus::FileBrowserList => {
-                        state.file_browser_path_focused = false;
-                        DotfileSelectionFocus::FileBrowserPreview
-                    }
-                    DotfileSelectionFocus::FileBrowserPreview => {
-                        state.file_browser_path_focused = true;
-                        DotfileSelectionFocus::FileBrowserInput
-                    }
-                    DotfileSelectionFocus::FileBrowserInput => {
-                        state.file_browser_path_focused = false;
-                        DotfileSelectionFocus::FileBrowserList
-                    }
-                    _ => {
-                        state.file_browser_path_focused = false;
-                        DotfileSelectionFocus::FileBrowserList
-                    }
-                };
-            }
+            // Tab handling is now done via Action::NextTab in the main event handler
+            // This section only handles non-keymap keys for file browser
             KeyCode::Up => {
                 if state.focus == DotfileSelectionFocus::FileBrowserList {
                     state.file_browser_list_state.select_previous();

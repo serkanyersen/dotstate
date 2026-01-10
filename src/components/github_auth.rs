@@ -981,9 +981,12 @@ impl Component for GitHubAuthComponent {
             }
         } else {
             format!(
-                "Tab: Next Field | Shift+Tab: Previous | Space: Toggle | {}: Save & Create | {}: Cancel",
+                "{}: Next Field | {}: Previous | {}: Toggle | {}: Save & Create | {}: Cancel",
+                self.get_key(crate::keymap::Action::NextTab),
+                self.get_key(crate::keymap::Action::PrevTab),
+                self.get_key(crate::keymap::Action::ToggleSelect),
                 self.get_key(crate::keymap::Action::Confirm),
-                self.get_key(crate::keymap::Action::Quit)
+                self.get_key(crate::keymap::Action::Cancel)
             )
         };
         let _ = Footer::render(frame, footer_chunk, &footer_text)?;
