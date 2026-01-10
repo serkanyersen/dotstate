@@ -893,9 +893,10 @@ impl Component for MainMenuComponent {
         match event {
             Event::Key(key) if key.kind == KeyEventKind::Press => {
                 // Use keymap if available, otherwise fall back to standard keys
-                let action = self.config.as_ref()
-                    .map(|c| c.keymap.get_action(key.code, key.modifiers))
-                    .flatten();
+                let action = self
+                    .config
+                    .as_ref()
+                    .and_then(|c| c.keymap.get_action(key.code, key.modifiers));
 
                 match action {
                     Some(Action::MoveUp) => {

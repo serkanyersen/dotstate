@@ -113,7 +113,7 @@ impl Component for ProfileManagerComponent {
             Event::Key(_) => {
                 // Keyboard events are handled in app.rs, not here
                 Ok(ComponentAction::None)
-            },
+            }
             Event::Mouse(mouse) => {
                 match mouse.kind {
                     MouseEventKind::Down(MouseButton::Left) => {

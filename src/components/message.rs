@@ -78,21 +78,23 @@ impl Component for MessageComponent {
         match event {
             Event::Key(key) if key.kind == KeyEventKind::Press => {
                 // Use keymap if available, otherwise accept any key (as footer says "Press any key")
-                let action = self.config.as_ref()
-                    .map(|c| c.keymap.get_action(key.code, key.modifiers))
-                    .flatten();
+                let action = self
+                    .config
+                    .as_ref()
+                    .and_then(|c| c.keymap.get_action(key.code, key.modifiers));
 
                 match action {
-                    Some(Action::Confirm) | Some(Action::ToggleSelect) | Some(Action::Quit) | Some(Action::Cancel) => {
-                        Ok(ComponentAction::Navigate(Screen::MainMenu))
-                    }
+                    Some(Action::Confirm)
+                    | Some(Action::ToggleSelect)
+                    | Some(Action::Quit)
+                    | Some(Action::Cancel) => Ok(ComponentAction::Navigate(Screen::MainMenu)),
                     _ => {
                         // If no action mapped or keymap not available, accept any key press
                         // (Footer says "Press any key or click to continue")
                         Ok(ComponentAction::Navigate(Screen::MainMenu))
                     }
                 }
-            },
+            }
             Event::Mouse(mouse) => {
                 match mouse.kind {
                     MouseEventKind::Down(MouseButton::Left) => {

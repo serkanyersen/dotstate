@@ -169,7 +169,7 @@ impl App {
                     ),
                     Screen::MainMenu,
                 )
-                .with_config(self.config.clone())
+                .with_config(self.config.clone()),
             );
         }
 
@@ -999,8 +999,10 @@ impl App {
                                     // YES logic - extract values and close modal in scope
                                     let (full_path, relative_path) = {
                                         let state = &mut self.ui_state.dotfile_selection;
-                                        let full_path = state.custom_file_confirm_path.clone().unwrap();
-                                        let relative_path = state.custom_file_confirm_relative.clone().unwrap();
+                                        let full_path =
+                                            state.custom_file_confirm_path.clone().unwrap();
+                                        let relative_path =
+                                            state.custom_file_confirm_relative.clone().unwrap();
                                         state.show_custom_file_confirm = false;
                                         state.custom_file_confirm_path = None;
                                         state.custom_file_confirm_relative = None;
@@ -1008,9 +1010,12 @@ impl App {
                                     };
 
                                     // Sync the file
-                                    if let Err(e) = self.add_custom_file_to_sync(&full_path, &relative_path) {
+                                    if let Err(e) =
+                                        self.add_custom_file_to_sync(&full_path, &relative_path)
+                                    {
                                         let state = &mut self.ui_state.dotfile_selection;
-                                        state.status_message = Some(format!("Error: Failed to sync file: {}", e));
+                                        state.status_message =
+                                            Some(format!("Error: Failed to sync file: {}", e));
                                         return Ok(());
                                     }
 
@@ -1048,7 +1053,8 @@ impl App {
                     if self.ui_state.dotfile_selection.file_browser_mode {
                         // In file browser, only block navigation if we're actually in the input field
                         let state = &self.ui_state.dotfile_selection;
-                        state.file_browser_path_focused && state.focus == crate::ui::DotfileSelectionFocus::FileBrowserInput
+                        state.file_browser_path_focused
+                            && state.focus == crate::ui::DotfileSelectionFocus::FileBrowserInput
                     } else {
                         // Other input modes - always block navigation
                         true
@@ -1133,9 +1139,11 @@ impl App {
                                     {
                                         state.preview_scroll =
                                             state.preview_scroll.saturating_sub(1);
-                                    } else if state.focus == DotfileSelectionFocus::FileBrowserList {
+                                    } else if state.focus == DotfileSelectionFocus::FileBrowserList
+                                    {
                                         state.file_browser_list_state.select_previous();
-                                    } else if state.focus == DotfileSelectionFocus::FileBrowserPreview
+                                    } else if state.focus
+                                        == DotfileSelectionFocus::FileBrowserPreview
                                         && state.file_browser_preview_scroll > 0
                                     {
                                         state.file_browser_preview_scroll =
@@ -1149,9 +1157,12 @@ impl App {
                                     } else if state.focus == DotfileSelectionFocus::Preview {
                                         state.preview_scroll =
                                             state.preview_scroll.saturating_add(1);
-                                    } else if state.focus == DotfileSelectionFocus::FileBrowserList {
+                                    } else if state.focus == DotfileSelectionFocus::FileBrowserList
+                                    {
                                         state.file_browser_list_state.select_next();
-                                    } else if state.focus == DotfileSelectionFocus::FileBrowserPreview {
+                                    } else if state.focus
+                                        == DotfileSelectionFocus::FileBrowserPreview
+                                    {
                                         state.file_browser_preview_scroll =
                                             state.file_browser_preview_scroll.saturating_add(1);
                                     }
@@ -1160,46 +1171,78 @@ impl App {
                                     if state.file_browser_mode {
                                         // File browser mode: Enter on list item
                                         if state.focus == DotfileSelectionFocus::FileBrowserList {
-                                            if let Some(idx) = state.file_browser_list_state.selected() {
+                                            if let Some(idx) =
+                                                state.file_browser_list_state.selected()
+                                            {
                                                 if idx < state.file_browser_entries.len() {
                                                     let entry = &state.file_browser_entries[idx];
 
                                                     // Handle special entries: ".." (parent) and "." (current folder)
                                                     if entry == Path::new("..") {
                                                         // Go to parent directory
-                                                        if let Some(parent) = state.file_browser_path.parent() {
+                                                        if let Some(parent) =
+                                                            state.file_browser_path.parent()
+                                                        {
                                                             let parent_path = parent.to_path_buf();
-                                                            state.file_browser_path = parent_path.clone();
-                                                            state.file_browser_path_input = state.file_browser_path.to_string_lossy().to_string();
-                                                            state.file_browser_path_cursor = state.file_browser_path_input.chars().count();
-                                                            state.file_browser_list_state.select(Some(0));
-                                                            self.ui_state.dotfile_selection.file_browser_path = state.file_browser_path.clone();
+                                                            state.file_browser_path =
+                                                                parent_path.clone();
+                                                            state.file_browser_path_input = state
+                                                                .file_browser_path
+                                                                .to_string_lossy()
+                                                                .to_string();
+                                                            state.file_browser_path_cursor = state
+                                                                .file_browser_path_input
+                                                                .chars()
+                                                                .count();
+                                                            state
+                                                                .file_browser_list_state
+                                                                .select(Some(0));
+                                                            self.ui_state
+                                                                .dotfile_selection
+                                                                .file_browser_path =
+                                                                state.file_browser_path.clone();
                                                             self.refresh_file_browser()?;
                                                         }
                                                         return Ok(());
                                                     } else if entry == Path::new(".") {
                                                         // Add current folder
-                                                        let current_folder = state.file_browser_path.clone();
+                                                        let current_folder =
+                                                            state.file_browser_path.clone();
                                                         let home_dir = crate::utils::get_home_dir();
                                                         let relative_path = current_folder
                                                             .strip_prefix(&home_dir)
-                                                            .map(|p| p.to_string_lossy().to_string())
-                                                            .unwrap_or_else(|_| current_folder.to_string_lossy().to_string());
+                                                            .map(|p| {
+                                                                p.to_string_lossy().to_string()
+                                                            })
+                                                            .unwrap_or_else(|_| {
+                                                                current_folder
+                                                                    .to_string_lossy()
+                                                                    .to_string()
+                                                            });
 
                                                         // Sanity checks
                                                         let repo_path = &self.config.repo_path;
-                                                        let (is_safe, reason) = crate::utils::is_safe_to_add(&current_folder, repo_path);
+                                                        let (is_safe, reason) =
+                                                            crate::utils::is_safe_to_add(
+                                                                &current_folder,
+                                                                repo_path,
+                                                            );
                                                         if !is_safe {
                                                             state.status_message = Some(format!(
                                                                 "Error: {}. Path: {}",
-                                                                reason.unwrap_or_else(|| "Cannot add this folder".to_string()),
+                                                                reason.unwrap_or_else(|| {
+                                                                    "Cannot add this folder"
+                                                                        .to_string()
+                                                                }),
                                                                 current_folder.display()
                                                             ));
                                                             return Ok(());
                                                         }
 
                                                         // Check if it's a git repo
-                                                        if crate::utils::is_git_repo(&current_folder) {
+                                                        if crate::utils::is_git_repo(
+                                                            &current_folder,
+                                                        ) {
                                                             state.status_message = Some(format!(
                                                                 "Error: Cannot sync a git repository. Path contains a .git directory: {}",
                                                                 current_folder.display()
@@ -1209,13 +1252,16 @@ impl App {
 
                                                         // Show confirmation modal
                                                         state.show_custom_file_confirm = true;
-                                                        state.custom_file_confirm_path = Some(current_folder.clone());
-                                                        state.custom_file_confirm_relative = Some(relative_path.clone());
+                                                        state.custom_file_confirm_path =
+                                                            Some(current_folder.clone());
+                                                        state.custom_file_confirm_relative =
+                                                            Some(relative_path.clone());
                                                         state.file_browser_mode = false;
                                                         state.adding_custom_file = false;
                                                         state.file_browser_path_input.clear();
                                                         state.file_browser_path_cursor = 0;
-                                                        state.focus = DotfileSelectionFocus::FilesList;
+                                                        state.focus =
+                                                            DotfileSelectionFocus::FilesList;
                                                         return Ok(());
                                                     }
 
@@ -1229,52 +1275,80 @@ impl App {
                                                     if full_path.is_dir() {
                                                         // Navigate into directory
                                                         state.file_browser_path = full_path.clone();
-                                                        state.file_browser_path_input = full_path.to_string_lossy().to_string();
-                                                        state.file_browser_path_cursor = state.file_browser_path_input.chars().count();
-                                                        state.file_browser_list_state.select(Some(0));
-                                                        self.ui_state.dotfile_selection.file_browser_path = state.file_browser_path.clone();
+                                                        state.file_browser_path_input =
+                                                            full_path.to_string_lossy().to_string();
+                                                        state.file_browser_path_cursor = state
+                                                            .file_browser_path_input
+                                                            .chars()
+                                                            .count();
+                                                        state
+                                                            .file_browser_list_state
+                                                            .select(Some(0));
+                                                        self.ui_state
+                                                            .dotfile_selection
+                                                            .file_browser_path =
+                                                            state.file_browser_path.clone();
                                                         self.refresh_file_browser()?;
                                                     } else if full_path.is_file() {
                                                         // It's a file - directly sync it
                                                         let home_dir = crate::utils::get_home_dir();
                                                         let relative_path = full_path
                                                             .strip_prefix(&home_dir)
-                                                            .map(|p| p.to_string_lossy().to_string())
-                                                            .unwrap_or_else(|_| full_path.to_string_lossy().to_string());
+                                                            .map(|p| {
+                                                                p.to_string_lossy().to_string()
+                                                            })
+                                                            .unwrap_or_else(|_| {
+                                                                full_path
+                                                                    .to_string_lossy()
+                                                                    .to_string()
+                                                            });
 
                                                         // Close browser first
-                                                        let relative_path_clone = relative_path.clone();
+                                                        let relative_path_clone =
+                                                            relative_path.clone();
                                                         let full_path_clone = full_path.clone();
                                                         state.file_browser_mode = false;
                                                         state.adding_custom_file = false;
                                                         state.file_browser_path_input.clear();
                                                         state.file_browser_path_cursor = 0;
-                                                        state.focus = DotfileSelectionFocus::FilesList;
+                                                        state.focus =
+                                                            DotfileSelectionFocus::FilesList;
                                                         let _ = state; // Release borrow
 
                                                         // Add the file directly to the dotfiles list and sync it
-                                                        self.add_custom_file_to_sync(&full_path_clone, &relative_path_clone)?;
+                                                        self.add_custom_file_to_sync(
+                                                            &full_path_clone,
+                                                            &relative_path_clone,
+                                                        )?;
 
                                                         // Re-scan to refresh the list
                                                         self.scan_dotfiles()?;
 
                                                         // Find and select the file in the list
                                                         let file_index_opt = {
-                                                            let state = &self.ui_state.dotfile_selection;
+                                                            let state =
+                                                                &self.ui_state.dotfile_selection;
                                                             state.dotfiles.iter().position(|d| {
-                                                                d.relative_path.to_string_lossy() == relative_path_clone
+                                                                d.relative_path.to_string_lossy()
+                                                                    == relative_path_clone
                                                             })
                                                         };
                                                         if let Some(index) = file_index_opt {
                                                             let _ = self.add_file_to_sync(index);
-                                                            let state = &mut self.ui_state.dotfile_selection;
-                                                            state.dotfile_list_state.select(Some(index));
+                                                            let state = &mut self
+                                                                .ui_state
+                                                                .dotfile_selection;
+                                                            state
+                                                                .dotfile_list_state
+                                                                .select(Some(index));
                                                         }
                                                     }
                                                 }
                                             }
                                             return Ok(());
-                                        } else if state.focus == DotfileSelectionFocus::FileBrowserInput {
+                                        } else if state.focus
+                                            == DotfileSelectionFocus::FileBrowserInput
+                                        {
                                             // Enter in input field - load path
                                             let path_str = state.file_browser_path_input.trim();
                                             if !path_str.is_empty() {
@@ -1283,39 +1357,64 @@ impl App {
                                                 if full_path.exists() {
                                                     if full_path.is_dir() {
                                                         state.file_browser_path = full_path.clone();
-                                                        state.file_browser_path_input = state.file_browser_path.to_string_lossy().to_string();
-                                                        state.file_browser_path_cursor = state.file_browser_path_input.chars().count();
-                                                        state.file_browser_list_state.select(Some(0));
-                                                        state.focus = DotfileSelectionFocus::FileBrowserList;
-                                                        self.ui_state.dotfile_selection.file_browser_path = state.file_browser_path.clone();
+                                                        state.file_browser_path_input = state
+                                                            .file_browser_path
+                                                            .to_string_lossy()
+                                                            .to_string();
+                                                        state.file_browser_path_cursor = state
+                                                            .file_browser_path_input
+                                                            .chars()
+                                                            .count();
+                                                        state
+                                                            .file_browser_list_state
+                                                            .select(Some(0));
+                                                        state.focus =
+                                                            DotfileSelectionFocus::FileBrowserList;
+                                                        self.ui_state
+                                                            .dotfile_selection
+                                                            .file_browser_path =
+                                                            state.file_browser_path.clone();
                                                         self.refresh_file_browser()?;
                                                     } else {
                                                         // It's a file - directly sync it
                                                         let home_dir = crate::utils::get_home_dir();
                                                         let relative_path = full_path
                                                             .strip_prefix(&home_dir)
-                                                            .map(|p| p.to_string_lossy().to_string())
-                                                            .unwrap_or_else(|_| full_path.to_string_lossy().to_string());
+                                                            .map(|p| {
+                                                                p.to_string_lossy().to_string()
+                                                            })
+                                                            .unwrap_or_else(|_| {
+                                                                full_path
+                                                                    .to_string_lossy()
+                                                                    .to_string()
+                                                            });
 
                                                         state.file_browser_mode = false;
                                                         state.adding_custom_file = false;
                                                         state.file_browser_path_input.clear();
                                                         state.file_browser_path_cursor = 0;
-                                                        state.focus = DotfileSelectionFocus::FilesList;
+                                                        state.focus =
+                                                            DotfileSelectionFocus::FilesList;
 
                                                         self.scan_dotfiles()?;
 
                                                         let file_index = {
-                                                            let state = &self.ui_state.dotfile_selection;
+                                                            let state =
+                                                                &self.ui_state.dotfile_selection;
                                                             state.dotfiles.iter().position(|d| {
-                                                                d.relative_path.to_string_lossy() == relative_path
+                                                                d.relative_path.to_string_lossy()
+                                                                    == relative_path
                                                             })
                                                         };
 
                                                         if let Some(index) = file_index {
                                                             let _ = self.add_file_to_sync(index);
-                                                            let state = &mut self.ui_state.dotfile_selection;
-                                                            state.dotfile_list_state.select(Some(index));
+                                                            let state = &mut self
+                                                                .ui_state
+                                                                .dotfile_selection;
+                                                            state
+                                                                .dotfile_list_state
+                                                                .select(Some(index));
                                                         }
                                                     }
                                                 }
@@ -1373,12 +1472,16 @@ impl App {
                                     {
                                         state.preview_scroll =
                                             state.preview_scroll.saturating_sub(20);
-                                    } else if state.focus == DotfileSelectionFocus::FileBrowserList {
-                                        if let Some(current) = state.file_browser_list_state.selected() {
+                                    } else if state.focus == DotfileSelectionFocus::FileBrowserList
+                                    {
+                                        if let Some(current) =
+                                            state.file_browser_list_state.selected()
+                                        {
                                             let new_index = current.saturating_sub(10);
                                             state.file_browser_list_state.select(Some(new_index));
                                         }
-                                    } else if state.focus == DotfileSelectionFocus::FileBrowserPreview
+                                    } else if state.focus
+                                        == DotfileSelectionFocus::FileBrowserPreview
                                         && state.file_browser_preview_scroll > 0
                                     {
                                         state.file_browser_preview_scroll =
@@ -1401,13 +1504,19 @@ impl App {
                                     } else if state.focus == DotfileSelectionFocus::Preview {
                                         state.preview_scroll =
                                             state.preview_scroll.saturating_add(20);
-                                    } else if state.focus == DotfileSelectionFocus::FileBrowserList {
-                                        if let Some(current) = state.file_browser_list_state.selected() {
-                                            let new_index = (current + 10)
-                                                .min(state.file_browser_entries.len().saturating_sub(1));
+                                    } else if state.focus == DotfileSelectionFocus::FileBrowserList
+                                    {
+                                        if let Some(current) =
+                                            state.file_browser_list_state.selected()
+                                        {
+                                            let new_index = (current + 10).min(
+                                                state.file_browser_entries.len().saturating_sub(1),
+                                            );
                                             state.file_browser_list_state.select(Some(new_index));
                                         }
-                                    } else if state.focus == DotfileSelectionFocus::FileBrowserPreview {
+                                    } else if state.focus
+                                        == DotfileSelectionFocus::FileBrowserPreview
+                                    {
                                         state.file_browser_preview_scroll =
                                             state.file_browser_preview_scroll.saturating_add(20);
                                     }
@@ -1418,7 +1527,8 @@ impl App {
                                     {
                                         state.preview_scroll =
                                             state.preview_scroll.saturating_sub(10);
-                                    } else if state.focus == DotfileSelectionFocus::FileBrowserPreview
+                                    } else if state.focus
+                                        == DotfileSelectionFocus::FileBrowserPreview
                                         && state.file_browser_preview_scroll > 0
                                     {
                                         state.file_browser_preview_scroll =
@@ -1430,7 +1540,9 @@ impl App {
                                     if state.focus == DotfileSelectionFocus::Preview {
                                         state.preview_scroll =
                                             state.preview_scroll.saturating_add(10);
-                                    } else if state.focus == DotfileSelectionFocus::FileBrowserPreview {
+                                    } else if state.focus
+                                        == DotfileSelectionFocus::FileBrowserPreview
+                                    {
                                         state.file_browser_preview_scroll =
                                             state.file_browser_preview_scroll.saturating_add(10);
                                     }
@@ -1442,9 +1554,12 @@ impl App {
                                         state.preview_scroll = 0;
                                     } else if state.focus == DotfileSelectionFocus::Preview {
                                         state.preview_scroll = 0;
-                                    } else if state.focus == DotfileSelectionFocus::FileBrowserList {
+                                    } else if state.focus == DotfileSelectionFocus::FileBrowserList
+                                    {
                                         state.file_browser_list_state.select_first();
-                                    } else if state.focus == DotfileSelectionFocus::FileBrowserPreview {
+                                    } else if state.focus
+                                        == DotfileSelectionFocus::FileBrowserPreview
+                                    {
                                         state.file_browser_preview_scroll = 0;
                                     }
                                 }
@@ -1452,7 +1567,8 @@ impl App {
                                     if state.focus == DotfileSelectionFocus::FilesList {
                                         state.dotfile_list_state.select_last();
                                         state.preview_scroll = 0;
-                                    } else if state.focus == DotfileSelectionFocus::FileBrowserList {
+                                    } else if state.focus == DotfileSelectionFocus::FileBrowserList
+                                    {
                                         state.file_browser_list_state.select_last();
                                     }
                                 }
@@ -1716,41 +1832,43 @@ impl App {
                                             }
                                             Action::NextTab => {
                                                 // Switch to next field
-                                                state.add_focused_field =
-                                                    match state.add_focused_field {
-                                                        AddPackageField::Name => {
-                                                            AddPackageField::Description
-                                                        }
-                                                        AddPackageField::Description => {
-                                                            AddPackageField::Manager
-                                                        }
-                                                        AddPackageField::Manager => {
-                                                            if state.add_is_custom {
-                                                                AddPackageField::BinaryName
-                                                            } else {
-                                                                AddPackageField::PackageName
-                                                            }
-                                                        }
-                                                        AddPackageField::PackageName => {
+                                                state.add_focused_field = match state
+                                                    .add_focused_field
+                                                {
+                                                    AddPackageField::Name => {
+                                                        AddPackageField::Description
+                                                    }
+                                                    AddPackageField::Description => {
+                                                        AddPackageField::Manager
+                                                    }
+                                                    AddPackageField::Manager => {
+                                                        if state.add_is_custom {
                                                             AddPackageField::BinaryName
+                                                        } else {
+                                                            AddPackageField::PackageName
                                                         }
-                                                        AddPackageField::BinaryName => {
-                                                            if state.add_is_custom {
-                                                                AddPackageField::InstallCommand
-                                                            } else {
-                                                                AddPackageField::Name // Wrap around
-                                                            }
-                                                        }
-                                                        AddPackageField::InstallCommand => {
-                                                            AddPackageField::ExistenceCheck
-                                                        }
-                                                        AddPackageField::ExistenceCheck => {
-                                                            AddPackageField::Name // Wrap around
-                                                        }
-                                                        AddPackageField::ManagerCheck => {
+                                                    }
+                                                    AddPackageField::PackageName => {
+                                                        AddPackageField::BinaryName
+                                                    }
+                                                    AddPackageField::BinaryName => {
+                                                        if state.add_is_custom {
+                                                            AddPackageField::InstallCommand
+                                                        } else {
                                                             AddPackageField::Name
+                                                            // Wrap around
                                                         }
-                                                    };
+                                                    }
+                                                    AddPackageField::InstallCommand => {
+                                                        AddPackageField::ExistenceCheck
+                                                    }
+                                                    AddPackageField::ExistenceCheck => {
+                                                        AddPackageField::Name // Wrap around
+                                                    }
+                                                    AddPackageField::ManagerCheck => {
+                                                        AddPackageField::Name
+                                                    }
+                                                };
                                                 return Ok(());
                                             }
                                             Action::PrevTab => {
@@ -1798,9 +1916,12 @@ impl App {
                                                 return Ok(());
                                             }
                                             Action::Confirm => {
-                                                if state.add_focused_field == AddPackageField::Manager {
+                                                if state.add_focused_field
+                                                    == AddPackageField::Manager
+                                                {
                                                     // Enter selects the current manager
-                                                    let manager_count = state.available_managers.len();
+                                                    let manager_count =
+                                                        state.available_managers.len();
                                                     if manager_count > 0 {
                                                         state.add_manager = Some(
                                                             state.available_managers
@@ -1825,8 +1946,11 @@ impl App {
                                             }
                                             Action::ToggleSelect => {
                                                 // Space toggles/selects the current manager
-                                                if state.add_focused_field == AddPackageField::Manager {
-                                                    let manager_count = state.available_managers.len();
+                                                if state.add_focused_field
+                                                    == AddPackageField::Manager
+                                                {
+                                                    let manager_count =
+                                                        state.available_managers.len();
                                                     if manager_count > 0 {
                                                         state.add_manager = Some(
                                                             state.available_managers
@@ -1845,25 +1969,30 @@ impl App {
                                                 // Fall through to handle_package_popup_event
                                             }
                                             Action::MoveUp | Action::MoveDown => {
-                                                if state.add_focused_field == AddPackageField::Manager {
+                                                if state.add_focused_field
+                                                    == AddPackageField::Manager
+                                                {
                                                     // Navigate through managers
-                                                    let manager_count = state.available_managers.len();
+                                                    let manager_count =
+                                                        state.available_managers.len();
                                                     if manager_count > 0 {
                                                         match action {
                                                             Action::MoveDown => {
-                                                                state.add_manager_selected =
-                                                                    (state.add_manager_selected + 1)
-                                                                        % manager_count;
+                                                                state.add_manager_selected = (state
+                                                                    .add_manager_selected
+                                                                    + 1)
+                                                                    % manager_count;
                                                             }
                                                             Action::MoveUp => {
-                                                                state.add_manager_selected = if state
-                                                                    .add_manager_selected
-                                                                    == 0
-                                                                {
-                                                                    manager_count - 1
-                                                                } else {
-                                                                    state.add_manager_selected - 1
-                                                                };
+                                                                state.add_manager_selected =
+                                                                    if state.add_manager_selected
+                                                                        == 0
+                                                                    {
+                                                                        manager_count - 1
+                                                                    } else {
+                                                                        state.add_manager_selected
+                                                                            - 1
+                                                                    };
                                                             }
                                                             _ => {}
                                                         }
@@ -1886,7 +2015,10 @@ impl App {
                                                 // Cursor movement in text fields - handled by handle_package_popup_event
                                                 // Fall through
                                             }
-                                            Action::Backspace | Action::DeleteChar | Action::Home | Action::End => {
+                                            Action::Backspace
+                                            | Action::DeleteChar
+                                            | Action::Home
+                                            | Action::End => {
                                                 // Text editing actions - handled by handle_package_popup_event
                                                 // Fall through
                                             }
@@ -1913,7 +2045,8 @@ impl App {
                                                     if let Some(idx) = state.delete_index {
                                                         let _ = state;
                                                         self.delete_package(idx)?;
-                                                        let state = &mut self.ui_state.package_manager;
+                                                        let state =
+                                                            &mut self.ui_state.package_manager;
                                                         state.popup_type = PackagePopupType::None;
                                                         state.delete_index = None;
                                                         state.delete_confirm_input.clear();
@@ -1939,7 +2072,8 @@ impl App {
                                                 for (idx, status) in
                                                     state.package_statuses.iter().enumerate()
                                                 {
-                                                    if matches!(status, PackageStatus::NotInstalled) {
+                                                    if matches!(status, PackageStatus::NotInstalled)
+                                                    {
                                                         packages_to_install.push(idx);
                                                     }
                                                 }
@@ -2057,8 +2191,7 @@ impl App {
                                                 if state.package_statuses.len()
                                                     != state.packages.len()
                                                 {
-                                                    state.package_statuses =
-                                                        vec![
+                                                    state.package_statuses = vec![
                                                             PackageStatus::Unknown;
                                                             state.packages.len()
                                                         ];
@@ -2231,7 +2364,9 @@ impl App {
                                             Action::Confirm => {
                                                 // Enter always creates the profile (if name is filled)
                                                 // If Copy From is focused, select the current item first, then create
-                                                if state.create_focused_field == CreateField::CopyFrom {
+                                                if state.create_focused_field
+                                                    == CreateField::CopyFrom
+                                                {
                                                     // Get current UI index (0 = "Start Blank", 1+ = profiles)
                                                     let ui_current =
                                                         if let Some(idx) = state.create_copy_from {
@@ -2253,12 +2388,14 @@ impl App {
                                                 // Create profile (Enter always creates, regardless of focus)
                                                 if !state.create_name_input.is_empty() {
                                                     let name = state.create_name_input.clone();
-                                                    let description =
-                                                        if state.create_description_input.is_empty() {
-                                                            None
-                                                        } else {
-                                                            Some(state.create_description_input.clone())
-                                                        };
+                                                    let description = if state
+                                                        .create_description_input
+                                                        .is_empty()
+                                                    {
+                                                        None
+                                                    } else {
+                                                        Some(state.create_description_input.clone())
+                                                    };
                                                     let copy_from = state.create_copy_from;
                                                     let name_clone = name.clone();
                                                     let description_clone = description.clone();
@@ -2274,7 +2411,9 @@ impl App {
                                                             self.config = Config::load_or_create(
                                                                 &self.config_path,
                                                             )?;
-                                                            self.ui_state.profile_manager.popup_type =
+                                                            self.ui_state
+                                                                .profile_manager
+                                                                .popup_type =
                                                                 ProfilePopupType::None;
                                                             self.ui_state
                                                                 .profile_manager
@@ -2288,11 +2427,15 @@ impl App {
                                                                 .profile_manager
                                                                 .create_focused_field =
                                                                 CreateField::Name;
-                                                            if let Ok(profiles) = self.get_profiles() {
+                                                            if let Ok(profiles) =
+                                                                self.get_profiles()
+                                                            {
                                                                 if !profiles.is_empty() {
                                                                     let new_idx = profiles
                                                                         .iter()
-                                                                        .position(|p| p.name == name)
+                                                                        .position(|p| {
+                                                                            p.name == name
+                                                                        })
                                                                         .unwrap_or(
                                                                             profiles
                                                                                 .len()
@@ -2306,7 +2449,10 @@ impl App {
                                                             }
                                                         }
                                                         Err(e) => {
-                                                            error!("Failed to create profile: {}", e);
+                                                            error!(
+                                                                "Failed to create profile: {}",
+                                                                e
+                                                            );
                                                             self.message_component = Some(MessageComponent::new(
                                                                 "Profile Creation Failed".to_string(),
                                                                 format!("Failed to create profile '{}':\n{}", name, e),
@@ -2319,7 +2465,9 @@ impl App {
                                             }
                                             Action::ToggleSelect => {
                                                 // Space toggles Copy From selection when Copy From is focused
-                                                if state.create_focused_field == CreateField::CopyFrom {
+                                                if state.create_focused_field
+                                                    == CreateField::CopyFrom
+                                                {
                                                     let ui_current =
                                                         if let Some(idx) = state.create_copy_from {
                                                             idx + 1
@@ -2331,10 +2479,13 @@ impl App {
                                                         state.create_copy_from = None;
                                                     } else {
                                                         let profile_idx = ui_current - 1;
-                                                        if state.create_copy_from == Some(profile_idx) {
+                                                        if state.create_copy_from
+                                                            == Some(profile_idx)
+                                                        {
                                                             state.create_copy_from = None;
                                                         } else {
-                                                            state.create_copy_from = Some(profile_idx);
+                                                            state.create_copy_from =
+                                                                Some(profile_idx);
                                                         }
                                                     }
                                                     return Ok(());
@@ -2344,7 +2495,9 @@ impl App {
                                             }
                                             Action::MoveUp => {
                                                 // Navigate Copy From list
-                                                if state.create_focused_field == CreateField::CopyFrom {
+                                                if state.create_focused_field
+                                                    == CreateField::CopyFrom
+                                                {
                                                     let ui_current =
                                                         if let Some(idx) = state.create_copy_from {
                                                             idx + 1
@@ -2359,11 +2512,9 @@ impl App {
                                                             state.create_copy_from =
                                                                 Some(ui_current - 2);
                                                         }
-                                                    } else {
-                                                        if !profiles.is_empty() {
-                                                            state.create_copy_from =
-                                                                Some(profiles.len() - 1);
-                                                        }
+                                                    } else if !profiles.is_empty() {
+                                                        state.create_copy_from =
+                                                            Some(profiles.len() - 1);
                                                     }
                                                     return Ok(());
                                                 }
@@ -2371,7 +2522,9 @@ impl App {
                                             }
                                             Action::MoveDown => {
                                                 // Navigate Copy From list
-                                                if state.create_focused_field == CreateField::CopyFrom {
+                                                if state.create_focused_field
+                                                    == CreateField::CopyFrom
+                                                {
                                                     let ui_current =
                                                         if let Some(idx) = state.create_copy_from {
                                                             idx + 1
@@ -2384,7 +2537,8 @@ impl App {
                                                         if ui_current == 0 {
                                                             state.create_copy_from = Some(0);
                                                         } else {
-                                                            state.create_copy_from = Some(ui_current);
+                                                            state.create_copy_from =
+                                                                Some(ui_current);
                                                         }
                                                     } else {
                                                         state.create_copy_from = None;
@@ -2393,7 +2547,10 @@ impl App {
                                                 }
                                                 // For text fields, fall through to cursor movement
                                             }
-                                            Action::MoveLeft | Action::MoveRight | Action::Home | Action::End => {
+                                            Action::MoveLeft
+                                            | Action::MoveRight
+                                            | Action::Home
+                                            | Action::End => {
                                                 // Cursor movement in text fields - handled below
                                                 // Fall through
                                             }
@@ -2408,7 +2565,16 @@ impl App {
                                     // Handle text editing and character input (only if action wasn't handled above)
                                     // Check if we need to handle text editing actions or character input
                                     let handled_by_action = if let Some(action) = action {
-                                        matches!(action, Action::MoveLeft | Action::MoveRight | Action::Home | Action::End | Action::Backspace | Action::DeleteChar | Action::ToggleSelect)
+                                        matches!(
+                                            action,
+                                            Action::MoveLeft
+                                                | Action::MoveRight
+                                                | Action::Home
+                                                | Action::End
+                                                | Action::Backspace
+                                                | Action::DeleteChar
+                                                | Action::ToggleSelect
+                                        )
                                     } else {
                                         false
                                     };
@@ -2462,7 +2628,10 @@ impl App {
                                                             }
                                                         }
                                                         CreateField::Description => {
-                                                            if !state.create_description_input.is_empty() {
+                                                            if !state
+                                                                .create_description_input
+                                                                .is_empty()
+                                                            {
                                                                 crate::utils::text_input::handle_backspace(
                                                                     &mut state.create_description_input,
                                                                     &mut state.create_description_cursor,
@@ -2484,7 +2653,10 @@ impl App {
                                                             }
                                                         }
                                                         CreateField::Description => {
-                                                            if !state.create_description_input.is_empty() {
+                                                            if !state
+                                                                .create_description_input
+                                                                .is_empty()
+                                                            {
                                                                 crate::utils::text_input::handle_delete(
                                                                     &mut state.create_description_input,
                                                                     &mut state.create_description_cursor,
@@ -2514,7 +2686,11 @@ impl App {
 
                                         // Handle character input
                                         if let KeyCode::Char(c) = key.code {
-                                            if !key.modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SUPER) {
+                                            if !key.modifiers.intersects(
+                                                KeyModifiers::CONTROL
+                                                    | KeyModifiers::ALT
+                                                    | KeyModifiers::SUPER,
+                                            ) {
                                                 match state.create_focused_field {
                                                     CreateField::Name => {
                                                         crate::utils::text_input::handle_char_insertion(
@@ -2554,9 +2730,10 @@ impl App {
                                                         }
                                                         match self.switch_profile(&profile_name) {
                                                             Ok(_) => {
-                                                                self.config = Config::load_or_create(
-                                                                    &self.config_path,
-                                                                )?;
+                                                                self.config =
+                                                                    Config::load_or_create(
+                                                                        &self.config_path,
+                                                                    )?;
                                                                 self.ui_state
                                                                     .profile_manager
                                                                     .popup_type =
@@ -2568,7 +2745,8 @@ impl App {
                                                                         let new_idx = profiles
                                                                             .iter()
                                                                             .position(|p| {
-                                                                                p.name == profile_name
+                                                                                p.name
+                                                                                    == profile_name
                                                                             })
                                                                             .unwrap_or(0);
                                                                         self.ui_state
@@ -2579,7 +2757,10 @@ impl App {
                                                                 }
                                                             }
                                                             Err(e) => {
-                                                                error!("Failed to switch profile: {}", e);
+                                                                error!(
+                                                                    "Failed to switch profile: {}",
+                                                                    e
+                                                                );
                                                                 self.ui_state
                                                                     .profile_manager
                                                                     .popup_type =
@@ -2613,7 +2794,8 @@ impl App {
                                                     if let Some(idx) = state.list_state.selected() {
                                                         if let Some(profile) = profiles.get(idx) {
                                                             let old_name = profile.name.clone();
-                                                            let new_name = state.rename_input.clone();
+                                                            let new_name =
+                                                                state.rename_input.clone();
                                                             let old_name_clone = old_name.clone();
                                                             let new_name_clone = new_name.clone();
                                                             {
@@ -2640,13 +2822,16 @@ impl App {
                                                                             let new_idx = profiles
                                                                                 .iter()
                                                                                 .position(|p| {
-                                                                                    p.name == new_name
+                                                                                    p.name
+                                                                                        == new_name
                                                                                 })
                                                                                 .unwrap_or(0);
                                                                             self.ui_state
                                                                                 .profile_manager
                                                                                 .list_state
-                                                                                .select(Some(new_idx));
+                                                                                .select(Some(
+                                                                                    new_idx,
+                                                                                ));
                                                                         }
                                                                     }
                                                                 }
@@ -2702,7 +2887,11 @@ impl App {
 
                                     // Handle character input
                                     if let KeyCode::Char(c) = key.code {
-                                        if !key.modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SUPER) {
+                                        if !key.modifiers.intersects(
+                                            KeyModifiers::CONTROL
+                                                | KeyModifiers::ALT
+                                                | KeyModifiers::SUPER,
+                                        ) {
                                             crate::utils::text_input::handle_char_insertion(
                                                 &mut state.rename_input,
                                                 &mut state.rename_cursor,
@@ -2722,7 +2911,9 @@ impl App {
                                                 // Delete profile
                                                 if let Some(idx) = state.list_state.selected() {
                                                     if let Some(profile) = profiles.get(idx) {
-                                                        if state.delete_confirm_input == profile.name {
+                                                        if state.delete_confirm_input
+                                                            == profile.name
+                                                        {
                                                             let profile_name = profile.name.clone();
                                                             let idx_clone = idx;
                                                             let profile_name_clone =
@@ -2758,7 +2949,9 @@ impl App {
                                                                             self.ui_state
                                                                                 .profile_manager
                                                                                 .list_state
-                                                                                .select(Some(new_idx));
+                                                                                .select(Some(
+                                                                                    new_idx,
+                                                                                ));
                                                                         } else {
                                                                             self.ui_state
                                                                                 .profile_manager
@@ -2823,7 +3016,11 @@ impl App {
 
                                     // Handle character input
                                     if let KeyCode::Char(c) = key.code {
-                                        if !key.modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SUPER) {
+                                        if !key.modifiers.intersects(
+                                            KeyModifiers::CONTROL
+                                                | KeyModifiers::ALT
+                                                | KeyModifiers::SUPER,
+                                        ) {
                                             crate::utils::text_input::handle_char_insertion(
                                                 &mut state.delete_confirm_input,
                                                 &mut state.delete_confirm_cursor,
@@ -6914,11 +7111,11 @@ impl App {
     /// Handle popup events for package manager (text input and cursor movement only)
     /// Tab/Esc/Enter are handled inline in the main event handler
     fn handle_package_popup_event(&mut self, event: Event) -> Result<()> {
+        use crate::keymap::Action;
         use crate::utils::package_manager::PackageManagerImpl;
         use crate::utils::text_input::{
             handle_backspace, handle_char_insertion, handle_cursor_movement, handle_delete,
         };
-        use crate::keymap::Action;
         use crossterm::event::{KeyCode, KeyEventKind, KeyModifiers};
 
         // Get action before borrowing state
@@ -6940,7 +7137,10 @@ impl App {
                     Event::Key(key) if key.kind == KeyEventKind::Press => {
                         if let Some(action) = action_opt.flatten() {
                             match action {
-                                Action::MoveLeft | Action::MoveRight | Action::Home | Action::End => {
+                                Action::MoveLeft
+                                | Action::MoveRight
+                                | Action::Home
+                                | Action::End => {
                                     // Handle cursor movement in focused field
                                     let key_code = match action {
                                         Action::MoveLeft => KeyCode::Left,
@@ -7016,7 +7216,8 @@ impl App {
                                             );
                                         }
                                         AddPackageField::PackageName => {
-                                            let old_package_name = state.add_package_name_input.clone();
+                                            let old_package_name =
+                                                state.add_package_name_input.clone();
                                             handle_backspace(
                                                 &mut state.add_package_name_input,
                                                 &mut state.add_package_name_cursor,
@@ -7115,7 +7316,9 @@ impl App {
 
                         // Handle character input (only if not already handled by action and no modifiers)
                         if let KeyCode::Char(c) = key.code {
-                            if !key.modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SUPER) {
+                            if !key.modifiers.intersects(
+                                KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SUPER,
+                            ) {
                                 match state.add_focused_field {
                                     AddPackageField::Name => {
                                         handle_char_insertion(
@@ -7201,7 +7404,10 @@ impl App {
                     Event::Key(key) if key.kind == KeyEventKind::Press => {
                         if let Some(action) = action_opt.flatten() {
                             match action {
-                                Action::MoveLeft | Action::MoveRight | Action::Home | Action::End => {
+                                Action::MoveLeft
+                                | Action::MoveRight
+                                | Action::Home
+                                | Action::End => {
                                     let key_code = match action {
                                         Action::MoveLeft => KeyCode::Left,
                                         Action::MoveRight => KeyCode::Right,
@@ -7236,7 +7442,9 @@ impl App {
 
                         // Handle character input
                         if let KeyCode::Char(c) = key.code {
-                            if !key.modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SUPER) {
+                            if !key.modifiers.intersects(
+                                KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SUPER,
+                            ) {
                                 handle_char_insertion(
                                     &mut state.delete_confirm_input,
                                     &mut state.delete_confirm_cursor,
