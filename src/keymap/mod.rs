@@ -38,22 +38,14 @@ impl Default for Keymap {
 
 impl Keymap {
     /// Get the action for a key event, checking overrides first then preset
+    /// Note: If an action is overridden, preset bindings for that action are ignored
     pub fn get_action(&self, code: KeyCode, modifiers: KeyModifiers) -> Option<Action> {
-        // Check overrides first
-        for binding in &self.overrides {
+        // Use all_bindings which already handles override shadowing
+        for binding in self.all_bindings() {
             if binding.matches(code, modifiers) {
                 return Some(binding.action);
             }
         }
-
-        // Fall back to preset
-        let preset_bindings = self.preset.bindings();
-        for binding in preset_bindings {
-            if binding.matches(code, modifiers) {
-                return Some(binding.action);
-            }
-        }
-
         None
     }
 
@@ -77,32 +69,30 @@ impl Keymap {
         bindings
     }
 
-    /// Get the display string for navigation keys based on preset
-    /// Used for footer hints like "↑↓: Navigate" or "j/k: Navigate"
-    pub fn navigation_display(&self) -> &'static str {
-        match self.preset {
-            KeymapPreset::Standard => "↑↓",
-            KeymapPreset::Vim => "j/k",
-            KeymapPreset::Emacs => "C-n/p",
+    /// Get the display string for navigation keys (up/down)
+    /// Reflects actual bindings including overrides
+    pub fn navigation_display(&self) -> String {
+        let up_key = self.get_key_display_for_action(Action::MoveUp);
+        let down_key = self.get_key_display_for_action(Action::MoveDown);
+        format!("{}/{}", up_key, down_key)
+    }
+
+    /// Get the display string for quit/cancel key
+    /// Reflects actual bindings including overrides
+    pub fn quit_display(&self) -> String {
+        let quit_key = self.get_key_display_for_action(Action::Quit);
+        let cancel_key = self.get_key_display_for_action(Action::Cancel);
+        if quit_key == cancel_key {
+            quit_key
+        } else {
+            format!("{}/{}", quit_key, cancel_key)
         }
     }
 
-    /// Get the display string for quit/cancel key based on preset
-    pub fn quit_display(&self) -> &'static str {
-        match self.preset {
-            KeymapPreset::Standard => "q/Esc",
-            KeymapPreset::Vim => "q/Esc",
-            KeymapPreset::Emacs => "C-g",
-        }
-    }
-
-    /// Get the display string for confirm key based on preset
-    pub fn confirm_display(&self) -> &'static str {
-        match self.preset {
-            KeymapPreset::Standard => "Enter",
-            KeymapPreset::Vim => "Enter",
-            KeymapPreset::Emacs => "Enter",
-        }
+    /// Get the display string for confirm key
+    /// Reflects actual bindings including overrides
+    pub fn confirm_display(&self) -> String {
+        self.get_key_display_for_action(Action::Confirm)
     }
 
     /// Get the display string for a specific action (e.g., Action::Quit -> "q")

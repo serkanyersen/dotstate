@@ -1,0 +1,56 @@
+# Example configuration file with keymap overrides
+# This shows how to customize key bindings beyond the preset
+
+active_profile = "default"
+repo_path = "/tmp/dotstate-storage"
+repo_name = "dotstate-storage"
+default_branch = "main"
+backup_enabled = true
+profile_activated = false
+custom_files = []
+theme = "dark"
+
+[keymap]
+# Choose a base preset: "standard", "vim", or "emacs"
+preset = "vim"
+
+# Override specific key bindings
+# Overrides take precedence over preset bindings
+# Format: key = "action"
+# Key format examples: "j", "ctrl+n", "f1", "ctrl+shift+n"
+# Action names use snake_case: move_up, move_down, move_left, move_right, confirm, cancel, quit, help, etc.
+[[keymap.overrides]]
+key = "x"
+action = "quit"
+# This makes 'x' quit the app (overriding the default 'q' in vim preset)
+
+[[keymap.overrides]]
+key = "w"
+action = "move_up"
+# This makes 'w' move up (normally 'k' in vim preset)
+
+[[keymap.overrides]]
+key = "ctrl+h"
+action = "help"
+# This makes Ctrl+H show help (overriding any preset binding for Help)
+
+# You can override any action with any key combination
+# Available actions (all in snake_case):
+# Navigation: move_up, move_down, move_left, move_right, page_up, page_down, go_to_top, go_to_end, home, end
+# Selection: confirm, cancel, toggle_select, select_all, deselect_all
+# Global: quit, help
+# Actions: delete, edit, create, search, refresh, sync, check_status, install
+# Text editing: backspace, delete_char
+# Navigation: next_tab, prev_tab
+# Scroll: scroll_up, scroll_down
+# Prompts: yes, no
+# Forms: save, toggle_backup
+#
+# For example, to use function keys:
+# [[keymap.overrides]]
+# key = "f1"
+# action = "help"
+#
+# [[keymap.overrides]]
+# key = "f2"
+# action = "quit"
