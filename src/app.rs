@@ -183,20 +183,20 @@ impl App {
             self.draw()?;
 
             // Start async update check after first render (non-blocking for UI)
-            // if !self.has_checked_updates
-            //     && self.config.updates.check_enabled
-            //     && self.update_check_receiver.is_none()
-            // {
-            //     debug!("Spawning async update check (deferred until after first render)...");
-            //     let (tx, rx) = oneshot::channel();
-            //     thread::spawn(move || {
-            //         let result = crate::version_check::check_for_updates_with_result()
-            //             .map_err(|e| e.to_string());
-            //         // Ignore send error - receiver might be dropped if app quits
-            //         let _ = tx.send(result);
-            //     });
-            //     self.update_check_receiver = Some(rx);
-            // }
+            if !self.has_checked_updates
+                && self.config.updates.check_enabled
+                && self.update_check_receiver.is_none()
+            {
+                debug!("Spawning async update check (deferred until after first render)...");
+                let (tx, rx) = oneshot::channel();
+                thread::spawn(move || {
+                    let result = crate::version_check::check_for_updates_with_result()
+                        .map_err(|e| e.to_string());
+                    // Ignore send error - receiver might be dropped if app quits
+                    let _ = tx.send(result);
+                });
+                self.update_check_receiver = Some(rx);
+            }
 
             // Check if update check result is ready (non-blocking)
             if let Some(receiver) = &mut self.update_check_receiver {
