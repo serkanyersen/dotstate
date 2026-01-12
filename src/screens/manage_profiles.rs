@@ -1,20 +1,91 @@
-use crate::components::profile_manager::{
-    CreateField, ProfileManagerComponent, ProfileManagerState, ProfilePopupType,
-};
+use crate::components::footer::Footer;
+use crate::components::header::Header;
+use crate::components::input_field::InputField;
 use crate::config::Config;
 use crate::keymap::{Action, Keymap};
 use crate::screens::{RenderContext, Screen, ScreenAction, ScreenContext};
+use crate::styles::{theme, LIST_HIGHLIGHT_SYMBOL};
 use crate::ui::Screen as ScreenId;
-use crate::utils::text_input::{
-    handle_backspace, handle_char_insertion, handle_cursor_movement, handle_delete,
+use crate::utils::{
+    center_popup, create_standard_layout, focused_border_style, unfocused_border_style,
+    text_input::{handle_backspace, handle_char_insertion, handle_cursor_movement, handle_delete},
 };
-// use crate::utils::ProfileInfo; // Unused
 use anyhow::Result;
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
 use ratatui::prelude::*;
+use ratatui::widgets::{
+    Block, Borders, Clear, List, ListItem, ListState, Paragraph, Scrollbar, ScrollbarOrientation,
+    Wrap,
+};
+
+/// Profile manager popup types
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProfilePopupType {
+    None,
+    Create,
+    Switch,
+    Rename,
+    Delete,
+}
+
+/// Which field is focused in the create popup
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CreateField {
+    Name,
+    Description,
+    CopyFrom,
+}
+
+/// Profile manager component state
+#[derive(Debug, Clone)]
+pub struct ProfileManagerState {
+    pub list_state: ListState,
+    pub clickable_areas: Vec<(Rect, usize)>, // (area, profile_index)
+    pub popup_type: ProfilePopupType,
+    // Create popup state
+    pub create_name_input: String,
+    pub create_name_cursor: usize,
+    pub create_description_input: String,
+    pub create_description_cursor: usize,
+    pub create_copy_from: Option<usize>, // Index of profile to copy from
+    pub create_focused_field: CreateField, // Which field is focused
+    // Rename popup state
+    pub rename_input: String,
+    pub rename_cursor: usize,
+    // Delete popup state
+    pub delete_confirm_input: String,
+    pub delete_confirm_cursor: usize,
+    // Clickable areas for form fields (for mouse support)
+    pub create_name_area: Option<Rect>,
+    pub create_description_area: Option<Rect>,
+    // Cached profiles to reduce disk I/O
+    pub profiles: Vec<crate::utils::ProfileInfo>,
+}
+
+impl Default for ProfileManagerState {
+    fn default() -> Self {
+        Self {
+            list_state: ListState::default(),
+            clickable_areas: Vec::new(),
+            popup_type: ProfilePopupType::None,
+            create_name_input: String::new(),
+            create_name_cursor: 0,
+            create_description_input: String::new(),
+            create_description_cursor: 0,
+            create_copy_from: None,
+            create_focused_field: CreateField::Name,
+            rename_input: String::new(),
+            rename_cursor: 0,
+            delete_confirm_input: String::new(),
+            delete_confirm_cursor: 0,
+            create_name_area: None,
+            create_description_area: None,
+            profiles: Vec::new(),
+        }
+    }
+}
 
 pub struct ManageProfilesScreen {
-    component: ProfileManagerComponent,
     pub state: ProfileManagerState,
 }
 
@@ -27,7 +98,6 @@ impl Default for ManageProfilesScreen {
 impl ManageProfilesScreen {
     pub fn new() -> Self {
         Self {
-            component: ProfileManagerComponent::new(),
             state: ProfileManagerState::default(),
         }
     }
@@ -117,32 +187,617 @@ impl ManageProfilesScreen {
         }
         ScreenAction::None
     }
+    /// Render the profiles list on the left
+    fn render_profiles_list(
+        &self,
+        frame: &mut Frame,
+        area: Rect,
+        config: &Config,
+    ) -> Result<()> {
+        let t = theme();
+        let active_profile = &config.active_profile;
+
+        let items: Vec<ListItem> = self.state
+            .profiles
+            .iter()
+            .map(|profile| {
+                let is_active = profile.name == *active_profile;
+                let icon = if is_active { "⭐" } else { "  " };
+                let name_style = if is_active {
+                    Style::default()
+                        .fg(t.text_emphasis)
+                        .add_modifier(Modifier::BOLD)
+                } else {
+                    t.text_style()
+                };
+
+                let file_count = profile.synced_files.len();
+                let file_text = if file_count == 1 {
+                    "1 file".to_string()
+                } else {
+                    format!("{} files", file_count)
+                };
+
+                let text = format!("{} {} ({})", icon, profile.name, file_text);
+                ListItem::new(text).style(name_style)
+            })
+            .collect();
+
+        let list = List::new(items)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title("Profiles")
+                    .border_style(focused_border_style()),
+            )
+            .highlight_style(t.highlight_style())
+            .highlight_symbol(LIST_HIGHLIGHT_SYMBOL);
+
+        // Render with state
+        frame.render_stateful_widget(list, area, &mut self.state.list_state.clone());
+
+        Ok(())
+    }
+
+    /// Render profile details on the right
+    fn render_profile_details(
+        &self,
+        frame: &mut Frame,
+        area: Rect,
+        config: &Config,
+    ) -> Result<()> {
+        let active_profile = &config.active_profile;
+
+        // Find selected profile (use selected index, fallback to active, then first)
+        let profile = self.state
+            .list_state
+            .selected()
+            .and_then(|idx| self.state.profiles.get(idx))
+            .or_else(|| self.state.profiles.iter().find(|p| p.name == *active_profile))
+            .or_else(|| self.state.profiles.first());
+
+        let t = theme();
+        if let Some(profile) = profile {
+            let is_active = profile.name == *active_profile;
+            let status = if is_active {
+                ("● Active", t.success)
+            } else {
+                ("○ Inactive", t.text_emphasis)
+            };
+
+            let description = profile.description.as_deref().unwrap_or("No description");
+
+            let files_text = if profile.synced_files.is_empty() {
+                "No files synced".to_string()
+            } else {
+                format!("{} files synced:", profile.synced_files.len())
+            };
+
+            let files_list = if profile.synced_files.is_empty() {
+                String::new()
+            } else {
+                profile
+                    .synced_files
+                    .iter()
+                    .take(10) // Show first 10
+                    .map(|f| format!("  • {}", f))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            };
+
+            let more_text = if profile.synced_files.len() > 10 {
+                format!("\n  ... and {} more", profile.synced_files.len() - 10)
+            } else {
+                String::new()
+            };
+
+            // Create styled text with colors
+            use ratatui::text::{Line, Span};
+            let mut lines = vec![
+                Line::from(vec![
+                    Span::styled(
+                        "Name: ",
+                        Style::default().fg(t.primary).add_modifier(Modifier::BOLD),
+                    ),
+                    Span::styled(&profile.name, t.text_style()),
+                ]),
+                Line::from(""),
+                Line::from(vec![
+                    Span::styled(
+                        "Status: ",
+                        Style::default().fg(t.primary).add_modifier(Modifier::BOLD),
+                    ),
+                    Span::styled(status.0, Style::default().fg(status.1)),
+                ]),
+                Line::from(""),
+                Line::from(vec![Span::styled(
+                    "Description:",
+                    Style::default().fg(t.primary).add_modifier(Modifier::BOLD),
+                )]),
+                Line::from(vec![Span::styled(
+                    description,
+                    Style::default().fg(t.text_muted),
+                )]),
+                Line::from(""),
+                Line::from(vec![Span::styled(
+                    &files_text,
+                    Style::default().fg(t.primary).add_modifier(Modifier::BOLD),
+                )]),
+            ];
+
+            if !files_list.is_empty() {
+                for line in files_list.lines() {
+                    lines.push(Line::from(vec![Span::styled(line, t.text_style())]));
+                }
+            }
+            if !more_text.is_empty() {
+                lines.push(Line::from(vec![Span::styled(
+                    &more_text,
+                    Style::default().fg(t.text_muted),
+                )]));
+            }
+
+            let text = ratatui::text::Text::from(lines);
+
+            let paragraph = Paragraph::new(text)
+                .block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .title("Profile Details")
+                        .border_style(unfocused_border_style())
+                        .padding(ratatui::widgets::Padding::new(1, 1, 1, 1)),
+                )
+                .wrap(Wrap { trim: true });
+
+            frame.render_widget(paragraph, area);
+        } else {
+            let paragraph =
+                Paragraph::new("No profiles found.\n\nPress 'C' to create your first profile.")
+                    .block(
+                        Block::default()
+                            .borders(Borders::ALL)
+                            .title("Profile Details")
+                            .border_style(unfocused_border_style())
+                            .padding(ratatui::widgets::Padding::new(1, 1, 1, 1)),
+                    )
+                    .wrap(Wrap { trim: true });
+            frame.render_widget(paragraph, area);
+        }
+
+        Ok(())
+    }
+
+    /// Render the active popup
+    fn render_popup(
+        &self,
+        frame: &mut Frame,
+        area: Rect,
+        config: &Config,
+    ) -> Result<()> {
+        match self.state.popup_type {
+            ProfilePopupType::Create => self.render_create_popup(frame, area),
+            ProfilePopupType::Switch => self.render_switch_popup(frame, area, config),
+            ProfilePopupType::Rename => self.render_rename_popup(frame, area),
+            ProfilePopupType::Delete => self.render_delete_popup(frame, area, config),
+            ProfilePopupType::None => Ok(()),
+        }
+    }
+
+    /// Render create profile popup
+    fn render_create_popup(
+        &self,
+        frame: &mut Frame,
+        area: Rect,
+    ) -> Result<()> {
+        let popup_area = center_popup(area, 60, 50);
+        frame.render_widget(Clear, popup_area);
+
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(1), // Title (no border)
+                Constraint::Length(3), // Name input
+                Constraint::Length(3), // Description input
+                Constraint::Min(8),    // Copy from option (at least 8 lines, can grow)
+                Constraint::Min(0),    // Spacer
+            ])
+            .split(popup_area);
+
+        let t = theme();
+        // Title (no border, just text)
+        let title = Paragraph::new("Create New Profile")
+            .alignment(Alignment::Center)
+            .style(t.title_style());
+        frame.render_widget(title, chunks[0]);
+
+        // Name input
+        InputField::render(
+            frame,
+            chunks[1],
+            &self.state.create_name_input,
+            self.state.create_name_cursor,
+            self.state.create_focused_field == CreateField::Name, // Focused based on state
+            "Profile Name",
+            Some("e.g., Personal-Mac, Work-Linux"),
+            Alignment::Left,
+            false,
+        )?;
+
+        // Description input
+        InputField::render(
+            frame,
+            chunks[2],
+            &self.state.create_description_input,
+            self.state.create_description_cursor,
+            self.state.create_focused_field == CreateField::Description, // Focused based on state
+            "Description (optional)",
+            None,
+            Alignment::Left,
+            false,
+        )?;
+
+        // Copy from option - show list of profiles to select from
+        let is_focused = self.state.create_focused_field == CreateField::CopyFrom;
+        let border_style = if is_focused {
+            focused_border_style()
+        } else {
+            unfocused_border_style()
+        };
+
+        if self.state.profiles.is_empty() {
+            let copy_para = Paragraph::new("No profiles available to copy from")
+                .block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .title("Copy From")
+                        .border_style(border_style),
+                )
+                .wrap(Wrap { trim: true });
+            frame.render_widget(copy_para, chunks[3]);
+        } else {
+            // Create a list with "Start Blank" first, then profiles
+            let mut items = Vec::new();
+
+            // Add "Start Blank" option at the start
+            let is_start_blank_selected = self.state.create_copy_from.is_none();
+            let start_blank_prefix = if is_start_blank_selected {
+                "✓ "
+            } else {
+                "  "
+            };
+            let start_blank_style = if is_start_blank_selected {
+                Style::default().fg(t.success)
+            } else {
+                t.text_style()
+            };
+            items.push(
+                ListItem::new(format!("{}Start Blank", start_blank_prefix))
+                    .style(start_blank_style),
+            );
+
+            // Add profiles (offset by 1 because "Start Blank" is at index 0)
+            for (idx, profile) in self.state.profiles.iter().enumerate() {
+                let is_selected = self.state.create_copy_from == Some(idx);
+                let prefix = if is_selected { "✓ " } else { "  " };
+                let style = if is_selected {
+                    Style::default().fg(t.success)
+                } else {
+                    t.text_style()
+                };
+                let file_count = profile.synced_files.len();
+                let file_text = if file_count == 0 {
+                    " (no files)".to_string()
+                } else if file_count == 1 {
+                    " (1 file)".to_string()
+                } else {
+                    format!(" ({} files)", file_count)
+                };
+                let text = format!("{}{}{}", prefix, profile.name, file_text);
+                items.push(ListItem::new(text).style(style));
+            }
+
+            let list = List::new(items)
+                .block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .title("Copy From")
+                        .border_style(border_style),
+                )
+                .highlight_style(t.highlight_style())
+                .highlight_symbol(LIST_HIGHLIGHT_SYMBOL);
+
+            // Create a temporary list state for rendering
+            // Index 0 = "Start Blank" (None), Index 1+ = profile at (idx - 1)
+            let mut list_state = ListState::default();
+            let ui_selected_idx = if let Some(profile_idx) = self.state.create_copy_from {
+                Some(profile_idx + 1) // Offset by 1 because "Start Blank" is at 0
+            } else {
+                Some(0) // "Start Blank" is selected
+            };
+            list_state.select(ui_selected_idx);
+
+            // Calculate if we need a scrollbar (if items exceed visible area)
+            let visible_height = chunks[3].height.saturating_sub(2); // Subtract borders
+            let total_items = (self.state.profiles.len() + 1) as u16; // +1 for "Start Blank"
+            let needs_scrollbar = total_items > visible_height;
+
+            // Render the list
+            frame.render_stateful_widget(list, chunks[3], &mut list_state);
+
+            // Render scrollbar if needed
+            if needs_scrollbar {
+                use ratatui::widgets::ScrollbarState;
+
+                let selected_pos = list_state.selected().unwrap_or(0);
+                let mut scrollbar_state =
+                    ScrollbarState::new(total_items as usize).position(selected_pos);
+
+                let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
+                    .begin_symbol(Some("↑"))
+                    .end_symbol(Some("↓"));
+
+                frame.render_stateful_widget(scrollbar, chunks[3], &mut scrollbar_state);
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Render switch profile confirmation popup
+    fn render_switch_popup(
+        &self,
+        frame: &mut Frame,
+        area: Rect,
+        config: &Config,
+    ) -> Result<()> {
+        let popup_area = center_popup(area, 70, 40);
+        frame.render_widget(Clear, popup_area);
+
+        let selected_idx = self.state.list_state.selected();
+        let current_profile = self.state
+            .profiles
+            .iter()
+            .find(|p| p.name == config.active_profile);
+        let target_profile = selected_idx.and_then(|idx| self.state.profiles.get(idx));
+
+        let content = if let (Some(current), Some(target)) = (current_profile, target_profile) {
+            format!(
+                "Switch Profile\n\n\
+                Current: {} ({} files)\n\
+                Target: {} ({} files)\n\n\
+                This will:\n\
+                • Remove symlinks for current profile\n\
+                • Create symlinks for target profile\n\
+                • Backup existing files (if backups are enabled)\n\n\
+                Continue?",
+                current.name,
+                current.synced_files.len(),
+                target.name,
+                target.synced_files.len()
+            )
+        } else {
+            "Invalid profile selection".to_string()
+        };
+
+        let para = Paragraph::new(content)
+            .block(Block::default().borders(Borders::ALL))
+            .wrap(Wrap { trim: true })
+            .alignment(Alignment::Center);
+        frame.render_widget(para, popup_area);
+
+        Ok(())
+    }
+
+    /// Render rename profile popup
+    fn render_rename_popup(
+        &self,
+        frame: &mut Frame,
+        area: Rect,
+    ) -> Result<()> {
+        let t = theme();
+        let popup_area = center_popup(area, 60, 30);
+        frame.render_widget(Clear, popup_area);
+
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(1), // Title (no border)
+                Constraint::Length(3), // Input
+                Constraint::Min(0),    // Spacer
+            ])
+            .split(popup_area);
+
+        // Title (no border, just text)
+        let selected_idx = self.state.list_state.selected();
+        let profile_name = selected_idx
+            .and_then(|idx| self.state.profiles.get(idx))
+            .map(|p| p.name.as_str())
+            .unwrap_or("Profile");
+
+        let title = Paragraph::new(format!("Rename Profile: {}", profile_name))
+            .alignment(Alignment::Center)
+            .style(t.title_style());
+        frame.render_widget(title, chunks[0]);
+
+        // Name input
+        InputField::render(
+            frame,
+            chunks[1],
+            &self.state.rename_input,
+            self.state.rename_cursor,
+            true,
+            "New Name",
+            Some("Enter new profile name"),
+            Alignment::Left,
+            false,
+        )?;
+
+        Ok(())
+    }
+
+    /// Render delete profile confirmation popup
+    fn render_delete_popup(
+        &self,
+        frame: &mut Frame,
+        area: Rect,
+        config: &Config,
+    ) -> Result<()> {
+        let popup_area = center_popup(area, 70, 40);
+        frame.render_widget(Clear, popup_area);
+
+        let selected_idx = self.state.list_state.selected();
+        let profile = selected_idx.and_then(|idx| self.state.profiles.get(idx));
+        let active_profile = &config.active_profile;
+        let is_active = profile.map(|p| p.name == *active_profile).unwrap_or(false);
+
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(5), // Warning text
+                Constraint::Length(3), // Confirmation input
+                Constraint::Min(0),    // Spacer
+            ])
+            .split(popup_area);
+
+        let warning_text = if let Some(p) = profile {
+            if is_active {
+                format!(
+                    "⚠️  WARNING: Cannot Delete Active Profile\n\n\
+                    Profile '{}' is currently active.\n\
+                    Please switch to another profile first.",
+                    p.name
+                )
+            } else {
+                format!(
+                    "⚠️  WARNING: Delete Profile\n\n\
+                    This will permanently delete:\n\
+                    • Profile '{}'\n\
+                    • All {} synced files in the repo\n\
+                    • Profile folder: ~/.config/dotstate/storage/{}/\n\n\
+                    Type the profile name to confirm:",
+                    p.name,
+                    p.synced_files.len(),
+                    p.name
+                )
+            }
+        } else {
+            "Invalid profile selection".to_string()
+        };
+
+        let warning = Paragraph::new(warning_text)
+            .block(Block::default().borders(Borders::ALL))
+            .wrap(Wrap { trim: true });
+        frame.render_widget(warning, chunks[0]);
+
+        // Confirmation input (only if not active)
+        if let Some(p) = profile {
+            if !is_active {
+                InputField::render(
+                    frame,
+                    chunks[1],
+                    &self.state.delete_confirm_input,
+                    self.state.delete_confirm_cursor,
+                    true,
+                    "Type profile name to confirm",
+                    Some(&p.name),
+                    Alignment::Left,
+                    false,
+                )?;
+            }
+        }
+
+        Ok(())
+    }
 }
 
 impl Screen for ManageProfilesScreen {
     fn render(&mut self, frame: &mut Frame, area: Rect, ctx: &RenderContext) -> Result<()> {
-        // We need profiles to render. RenderContext doesn't have them.
-        // We'll have to get them from `config` or similar, but `get_profiles` reads from disk/manifest.
-        // The original App had `get_profiles()`.
-        // We can expose `ProfileService::get_profiles` helper or store them in state.
-        // Ideally, state should store the cached profiles.
-        // But for now, let's try to load them here or assume they are in ctx if we added them?
-        // No, RenderContext is generic.
-        // We should probably load profiles in `handle_event` (ScreenAction::Refresh) and store in state?
-        // Or better: pass them in via context?
-        // Let's use `crate::services::ProfileService::get_profiles` here directly.
-        // It might be slow to hit disk every frame.
-        // Ideally state has `profiles: Vec<ProfileInfo>`.
+        // Clear the entire area first
+        frame.render_widget(Clear, area);
 
-        // Let's modify `ProfileManagerState` to hold profiles?
-        // It's defined in components/profile_manager.rs.
-        // Creating a local wrapper or just fetching for now.
-        // Since `ProfileService::get_profiles` is just JSON parse, it's probably fine for 60fps?
-        // Maybe not.
-        // Best approach: Add `profiles` to `ProfileManagerState` and update it on entry/refresh.
+        // Background - use Reset to inherit terminal's native background
+        let background = Block::default().style(Style::default().bg(Color::Reset));
+        frame.render_widget(background, area);
 
-        self.component
-            .render_with_config(frame, area, ctx.config, &mut self.state)
+        // Layout: Header, Content (split), Footer
+        let (header_chunk, content_chunk, footer_chunk) = create_standard_layout(area, 5, 2);
+
+        // Header
+        let _ = Header::render(
+            frame,
+            header_chunk,
+            "DotState - Manage Profiles",
+            "Manage different profiles for different machines. Each profile has its own set of synced dotfiles."
+        )?;
+
+        // Split content: Left (profiles list), Right (profile details)
+        let chunks = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(40), Constraint::Percentage(60)])
+            .split(content_chunk);
+        let left_chunk = chunks[0];
+        let right_chunk = chunks[1];
+
+        // Check if popup is active
+        if self.state.popup_type != ProfilePopupType::None {
+            self.render_popup(frame, area, ctx.config)?;
+        } else {
+            // Left: Profiles list
+            self.render_profiles_list(frame, left_chunk, ctx.config)?;
+
+            // Right: Profile details
+            self.render_profile_details(frame, right_chunk, ctx.config)?;
+        }
+
+        // Footer
+        let k = |a| ctx.config.keymap.get_key_display_for_action(a);
+        let footer_text = match self.state.popup_type {
+            ProfilePopupType::Create => {
+                format!(
+                    "{}: Next Field | {}: Navigate Copy From | {}: Toggle Selection | {}: Create | {}: Cancel",
+                    k(crate::keymap::Action::NextTab),
+                    ctx.config.keymap.navigation_display(),
+                    k(crate::keymap::Action::ToggleSelect),
+                    k(crate::keymap::Action::Confirm),
+                    k(crate::keymap::Action::Cancel)
+                )
+            }
+            ProfilePopupType::Switch => {
+                format!(
+                    "{}: Confirm Switch | {}: Cancel",
+                    k(crate::keymap::Action::Confirm),
+                    k(crate::keymap::Action::Cancel)
+                )
+            }
+            ProfilePopupType::Rename => {
+                format!(
+                    "{}: Confirm Rename | {}: Cancel",
+                    k(crate::keymap::Action::Confirm),
+                    k(crate::keymap::Action::Cancel)
+                )
+            }
+            ProfilePopupType::Delete => {
+                format!(
+                    "Type profile name to confirm | {}: Delete | {}: Cancel",
+                    k(crate::keymap::Action::Confirm),
+                    k(crate::keymap::Action::Cancel)
+                )
+            }
+            ProfilePopupType::None => {
+                format!(
+                    "{}: Navigate | {}: Switch Profile | {}: Create | {}: Rename | {}: Delete | {}: Back",
+                    ctx.config.keymap.navigation_display(),
+                    k(crate::keymap::Action::Confirm),
+                    k(crate::keymap::Action::Create),
+                    k(crate::keymap::Action::Edit),
+                    k(crate::keymap::Action::Delete),
+                    k(crate::keymap::Action::Cancel)
+                )
+            }
+        };
+        Footer::render(frame, footer_chunk, &footer_text)?;
+
+        Ok(())
     }
 
     fn handle_event(&mut self, event: Event, ctx: &ScreenContext) -> Result<ScreenAction> {
