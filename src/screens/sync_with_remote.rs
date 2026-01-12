@@ -6,7 +6,7 @@
 use crate::components::PushChangesComponent;
 use crate::config::Config;
 use crate::screens::screen_trait::{RenderContext, Screen, ScreenAction, ScreenContext};
-use crate::ui::SyncWithRemoteState;
+use crate::ui::{Screen as ScreenId, SyncWithRemoteState};
 use anyhow::Result;
 use crossterm::event::Event;
 use ratatui::layout::Rect;
@@ -68,6 +68,62 @@ impl SyncWithRemoteScreen {
     pub fn reset_state(&mut self) {
         self.state = SyncWithRemoteState::default();
     }
+
+    /// Load changed files from git repository
+    pub fn load_changed_files(&mut self, ctx: &ScreenContext) {
+        use crate::services::GitService;
+        self.state.changed_files = GitService::load_changed_files(&ctx.config.repo_path);
+        // Select first item if list is not empty
+        if !self.state.changed_files.is_empty() {
+            self.state.list_state.select(Some(0));
+            self.update_diff_preview(ctx);
+        }
+    }
+
+    /// Update the diff preview based on the selected file
+    fn update_diff_preview(&mut self, ctx: &ScreenContext) {
+        use crate::services::GitService;
+        self.state.diff_content = None;
+
+        let selected_idx = match self.state.list_state.selected() {
+            Some(idx) => idx,
+            None => return,
+        };
+
+        if selected_idx >= self.state.changed_files.len() {
+            return;
+        }
+
+        let file_info = &self.state.changed_files[selected_idx];
+        if let Some(diff) = GitService::get_diff_for_file(&ctx.config.repo_path, file_info) {
+            self.state.diff_content = Some(diff);
+            self.state.preview_scroll = 0;
+        }
+    }
+
+    /// Start syncing changes (push/pull)
+    fn start_sync(&mut self, ctx: &ScreenContext) -> Result<()> {
+        use crate::services::GitService;
+        use tracing::info;
+
+        info!("Starting sync operation");
+
+        // Mark as syncing
+        self.state.is_syncing = true;
+        self.state.sync_progress = Some("Syncing...".to_string());
+
+        // Perform sync using service
+        let result = GitService::sync(&ctx.config);
+
+        // Update state with result
+        self.state.is_syncing = false;
+        self.state.sync_progress = None;
+        self.state.sync_result = Some(result.message);
+        self.state.pulled_changes_count = result.pulled_count;
+        self.state.show_result_popup = true;
+
+        Ok(())
+    }
 }
 
 impl Default for SyncWithRemoteScreen {
@@ -82,9 +138,109 @@ impl Screen for SyncWithRemoteScreen {
         Ok(())
     }
 
-    fn handle_event(&mut self, _event: Event, _ctx: &ScreenContext) -> Result<ScreenAction> {
-        // TODO: Move event handling from app.rs here
-        // Currently handled in app.rs (handle_event, Screen::SyncWithRemote case)
+    fn handle_event(&mut self, event: Event, ctx: &ScreenContext) -> Result<ScreenAction> {
+        use crate::keymap::Action;
+        use crossterm::event::{KeyEventKind, MouseButton, MouseEventKind};
+
+        // Handle keyboard events
+        if let Event::Key(key) = &event {
+            if key.kind == KeyEventKind::Press {
+                if let Some(action) = ctx.config.keymap.get_action(key.code, key.modifiers) {
+                    match action {
+                        Action::Confirm => {
+                            // Start pushing if not already pushing and we have changes
+                            if !self.state.is_syncing && !self.state.changed_files.is_empty() {
+                                self.start_sync(ctx)?;
+                            }
+                            return Ok(ScreenAction::None);
+                        }
+                        Action::Quit | Action::Cancel => {
+                            // Close result popup or go back
+                            if self.state.show_result_popup {
+                                self.state.show_result_popup = false;
+                                self.state.sync_result = None;
+                                self.state.pulled_changes_count = None;
+                                return Ok(ScreenAction::Navigate(ScreenId::MainMenu));
+                            } else {
+                                return Ok(ScreenAction::Navigate(ScreenId::MainMenu));
+                            }
+                        }
+                        Action::MoveUp => {
+                            self.state.list_state.select_previous();
+                            self.update_diff_preview(ctx);
+                            return Ok(ScreenAction::None);
+                        }
+                        Action::MoveDown => {
+                            self.state.list_state.select_next();
+                            self.update_diff_preview(ctx);
+                            return Ok(ScreenAction::None);
+                        }
+                        Action::ScrollUp => {
+                            self.state.preview_scroll = self.state.preview_scroll.saturating_sub(1);
+                            return Ok(ScreenAction::None);
+                        }
+                        Action::ScrollDown => {
+                            self.state.preview_scroll += 1;
+                            return Ok(ScreenAction::None);
+                        }
+                        Action::PageUp => {
+                            if let Some(current) = self.state.list_state.selected() {
+                                let new_index = current.saturating_sub(10);
+                                self.state.list_state.select(Some(new_index));
+                                self.update_diff_preview(ctx);
+                            }
+                            return Ok(ScreenAction::None);
+                        }
+                        Action::PageDown => {
+                            if let Some(current) = self.state.list_state.selected() {
+                                let new_index = (current + 10)
+                                    .min(self.state.changed_files.len().saturating_sub(1));
+                                self.state.list_state.select(Some(new_index));
+                                self.update_diff_preview(ctx);
+                            }
+                            return Ok(ScreenAction::None);
+                        }
+                        Action::GoToTop => {
+                            self.state.list_state.select_first();
+                            self.update_diff_preview(ctx);
+                            return Ok(ScreenAction::None);
+                        }
+                        Action::GoToEnd => {
+                            self.state.list_state.select_last();
+                            self.update_diff_preview(ctx);
+                            return Ok(ScreenAction::None);
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        } else if let Event::Mouse(mouse) = event {
+            // Handle mouse events for list navigation
+            match mouse.kind {
+                MouseEventKind::ScrollUp => {
+                    self.state.list_state.select_previous();
+                    self.update_diff_preview(ctx);
+                    return Ok(ScreenAction::None);
+                }
+                MouseEventKind::ScrollDown => {
+                    self.state.list_state.select_next();
+                    self.update_diff_preview(ctx);
+                    return Ok(ScreenAction::None);
+                }
+                MouseEventKind::Down(MouseButton::Left) => {
+                    // Click to sync or close popup
+                    if self.state.show_result_popup {
+                        // After sync, go directly to main menu
+                        self.state.show_result_popup = false;
+                        self.state.sync_result = None;
+                        self.state.pulled_changes_count = None;
+                        return Ok(ScreenAction::Navigate(ScreenId::MainMenu));
+                    }
+                }
+                _ => {}
+            }
+        }
+
         Ok(ScreenAction::None)
     }
 

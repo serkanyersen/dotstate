@@ -18,7 +18,7 @@ use crate::utils::list_navigation::ListStateExt;
 use crate::utils::profile_manifest::PackageManager;
 use anyhow::{Context, Result};
 use crossterm::event::{
-    Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind,
+    Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers,
 };
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -407,11 +407,15 @@ impl App {
 
         // Load changed files when entering PushChanges screen
         if self.ui_state.current_screen == Screen::SyncWithRemote
-            && !self.ui_state.sync_with_remote.is_syncing
+            && !self.sync_with_remote_screen.get_state().is_syncing
         {
             // Only load if we don't have files yet
-            if self.ui_state.sync_with_remote.changed_files.is_empty() {
-                self.load_changed_files();
+            if self.sync_with_remote_screen.get_state().changed_files.is_empty() {
+                use crate::screens::ScreenContext;
+                let ctx = ScreenContext::new(&self.config, &self.config_path);
+                self.sync_with_remote_screen.load_changed_files(&ctx);
+                // Sync state back
+                self.ui_state.sync_with_remote = self.sync_with_remote_screen.get_state().clone();
             }
         }
 
@@ -895,124 +899,22 @@ impl App {
                 return Ok(());
             }
             Screen::SyncWithRemote => {
-                // Handle push changes events with keymap
-                if let Event::Key(key) = event {
-                    if key.kind == KeyEventKind::Press {
-                        if let Some(action) = self.get_action(key.code, key.modifiers) {
-                            use crate::keymap::Action;
-                            match action {
-                                Action::Confirm => {
-                                    // Start pushing if not already pushing and we have changes
-                                    if !self.ui_state.sync_with_remote.is_syncing
-                                        && !self.ui_state.sync_with_remote.changed_files.is_empty()
-                                    {
-                                        self.start_sync()?;
-                                    }
-                                }
-                                Action::Quit | Action::Cancel => {
-                                    // Close result popup or go back
-                                    if self.ui_state.sync_with_remote.show_result_popup {
-                                        self.ui_state.sync_with_remote.show_result_popup = false;
-                                        self.ui_state.sync_with_remote.sync_result = None;
-                                        self.ui_state.sync_with_remote.pulled_changes_count = None;
-                                        self.ui_state.current_screen = Screen::MainMenu;
-                                        self.ui_state.sync_with_remote =
-                                            crate::ui::SyncWithRemoteState::default();
-                                        self.check_changes_to_push();
-                                    } else {
-                                        self.ui_state.current_screen = Screen::MainMenu;
-                                        self.ui_state.sync_with_remote =
-                                            crate::ui::SyncWithRemoteState::default();
-                                    }
-                                }
-                                Action::MoveUp => {
-                                    self.ui_state.sync_with_remote.list_state.select_previous();
-                                    self.update_diff_preview();
-                                }
-                                Action::MoveDown => {
-                                    self.ui_state.sync_with_remote.list_state.select_next();
-                                    self.update_diff_preview();
-                                }
-                                Action::ScrollUp => {
-                                    self.ui_state.sync_with_remote.preview_scroll = self
-                                        .ui_state
-                                        .sync_with_remote
-                                        .preview_scroll
-                                        .saturating_sub(1);
-                                }
-                                Action::ScrollDown => {
-                                    self.ui_state.sync_with_remote.preview_scroll += 1;
-                                }
-                                Action::PageUp => {
-                                    if let Some(current) =
-                                        self.ui_state.sync_with_remote.list_state.selected()
-                                    {
-                                        let new_index = current.saturating_sub(10);
-                                        self.ui_state
-                                            .sync_with_remote
-                                            .list_state
-                                            .select(Some(new_index));
-                                        self.update_diff_preview();
-                                    }
-                                }
-                                Action::PageDown => {
-                                    if let Some(current) =
-                                        self.ui_state.sync_with_remote.list_state.selected()
-                                    {
-                                        let new_index = (current + 10).min(
-                                            self.ui_state
-                                                .sync_with_remote
-                                                .changed_files
-                                                .len()
-                                                .saturating_sub(1),
-                                        );
-                                        self.ui_state
-                                            .sync_with_remote
-                                            .list_state
-                                            .select(Some(new_index));
-                                        self.update_diff_preview();
-                                    }
-                                }
-                                Action::GoToTop => {
-                                    self.ui_state.sync_with_remote.list_state.select_first();
-                                    self.update_diff_preview();
-                                }
-                                Action::GoToEnd => {
-                                    self.ui_state.sync_with_remote.list_state.select_last();
-                                    self.update_diff_preview();
-                                }
-                                _ => {}
-                            }
-                        }
-                    }
-                } else if let Event::Mouse(mouse) = event {
-                    // Handle mouse events for list navigation
-                    if let MouseEventKind::ScrollUp = mouse.kind {
-                        self.ui_state.sync_with_remote.list_state.select_previous();
-                        self.update_diff_preview();
-                    } else if let MouseEventKind::ScrollDown = mouse.kind {
-                        self.ui_state.sync_with_remote.list_state.select_next();
-                        self.update_diff_preview();
-                    } else if let MouseEventKind::Down(MouseButton::Left) = mouse.kind {
-                        // Click to sync or close popup
-                        if self.ui_state.sync_with_remote.show_result_popup {
-                            // After sync, go directly to main menu
-                            self.ui_state.sync_with_remote.show_result_popup = false;
-                            self.ui_state.sync_with_remote.sync_result = None;
-                            self.ui_state.sync_with_remote.pulled_changes_count = None;
-                            self.ui_state.current_screen = Screen::MainMenu;
-                            // Reset sync state
-                            self.ui_state.sync_with_remote =
-                                crate::ui::SyncWithRemoteState::default();
-                            // Re-check for changes after sync
-                            self.check_changes_to_push();
-                        } else if !self.ui_state.sync_with_remote.is_syncing
-                            && !self.ui_state.sync_with_remote.changed_files.is_empty()
-                        {
-                            self.start_sync()?;
-                        }
-                    }
+                // Router pattern - delegate to screen's handle_event method
+                use crate::screens::ScreenContext;
+                let ctx = ScreenContext::new(&self.config, &self.config_path);
+                let action = self.sync_with_remote_screen.handle_event(event, &ctx)?;
+
+                // Sync state from screen back to ui_state
+                self.ui_state.sync_with_remote = self.sync_with_remote_screen.get_state().clone();
+
+                // Handle navigation actions that require app-level logic
+                if let crate::screens::ScreenAction::Navigate(Screen::MainMenu) = &action {
+                    // Reset sync state and check for changes after sync
+                    self.ui_state.sync_with_remote = crate::ui::SyncWithRemoteState::default();
+                    self.check_changes_to_push();
                 }
+
+                self.process_screen_action(action)?;
                 return Ok(());
             }
             Screen::DotfileSelection => {
@@ -4710,60 +4612,6 @@ impl App {
         Ok(())
     }
 
-    /// Load changed files from git repository
-    fn load_changed_files(&mut self) {
-        use crate::services::GitService;
-        self.ui_state.sync_with_remote.changed_files =
-            GitService::load_changed_files(&self.config.repo_path);
-        // Select first item if list is not empty
-        if !self.ui_state.sync_with_remote.changed_files.is_empty() {
-            self.ui_state.sync_with_remote.list_state.select(Some(0));
-            self.update_diff_preview();
-        }
-    }
-
-    /// Update the diff preview based on the selected file
-    fn update_diff_preview(&mut self) {
-        use crate::services::GitService;
-        self.ui_state.sync_with_remote.diff_content = None;
-
-        let selected_idx = match self.ui_state.sync_with_remote.list_state.selected() {
-            Some(idx) => idx,
-            None => return,
-        };
-
-        if selected_idx >= self.ui_state.sync_with_remote.changed_files.len() {
-            return;
-        }
-
-        let file_info = &self.ui_state.sync_with_remote.changed_files[selected_idx];
-        if let Some(diff) = GitService::get_diff_for_file(&self.config.repo_path, file_info) {
-            self.ui_state.sync_with_remote.diff_content = Some(diff);
-            self.ui_state.sync_with_remote.preview_scroll = 0;
-        }
-    }
-
-    /// Start pushing changes (async operation with progress updates)
-    fn start_sync(&mut self) -> Result<()> {
-        use crate::services::GitService;
-        info!("Starting sync operation");
-
-        // Mark as syncing
-        self.ui_state.sync_with_remote.is_syncing = true;
-        self.ui_state.sync_with_remote.sync_progress = Some("Syncing...".to_string());
-
-        // Perform sync using service
-        let result = GitService::sync(&self.config);
-
-        // Update state with result
-        self.ui_state.sync_with_remote.is_syncing = false;
-        self.ui_state.sync_with_remote.sync_progress = None;
-        self.ui_state.sync_with_remote.sync_result = Some(result.message);
-        self.ui_state.sync_with_remote.pulled_changes_count = result.pulled_count;
-        self.ui_state.sync_with_remote.show_result_popup = true;
-
-        Ok(())
-    }
 
     /// Handle input for file browser
     fn handle_file_browser_input(&mut self, key_code: KeyCode) -> Result<()> {
