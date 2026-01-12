@@ -3,15 +3,107 @@
 //! This screen handles selecting and managing dotfiles for syncing.
 //! It wraps the DotfileSelectionComponent for rendering and handles all events.
 
+use crate::file_manager::Dotfile;
+use crate::components::file_preview::FilePreview;
+use crate::components::footer::Footer;
+use crate::components::header::Header;
+use crate::components::input_field::InputField;
 use crate::config::Config;
 use crate::screens::screen_trait::{RenderContext, Screen, ScreenAction, ScreenContext};
-use crate::ui::{DotfileSelectionFocus, DotfileSelectionState, Screen as ScreenId};
-use crate::utils::list_navigation::ListStateExt;
+use crate::styles::{theme as ui_theme, LIST_HIGHLIGHT_SYMBOL};
+use crate::ui::Screen as ScreenId;
+use crate::utils::{
+    center_popup, create_split_layout, create_standard_layout, focused_border_style,
+    unfocused_border_style, list_navigation::ListStateExt,
+};
 use anyhow::Result;
 use crossterm::event::{Event, KeyCode, KeyEventKind};
-use ratatui::layout::Rect;
+use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
+use ratatui::style::{Color, Modifier, Style};
+
+use ratatui::widgets::{
+    Block, Borders, Clear, List, ListItem, ListState, Paragraph, Scrollbar, ScrollbarOrientation,
+    ScrollbarState, StatefulWidget, Wrap,
+};
 use ratatui::Frame;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use syntect::highlighting::Theme;
+use syntect::parsing::SyntaxSet;
+
+/// Focus area in dotfile selection screen
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DotfileSelectionFocus {
+    FilesList,          // Files list pane is focused
+    Preview,            // Preview pane is focused
+    FileBrowserList,    // File browser list pane is focused
+    FileBrowserPreview, // File browser preview pane is focused
+    FileBrowserInput,   // File browser path input is focused
+}
+
+/// Dotfile selection state
+#[derive(Debug)]
+pub struct DotfileSelectionState {
+    pub dotfiles: Vec<Dotfile>,
+    pub preview_index: Option<usize>,
+    pub preview_scroll: usize,
+    pub selected_for_sync: std::collections::HashSet<usize>, // Indices of selected files
+    pub dotfile_list_scrollbar: ScrollbarState,              // Scrollbar state for dotfile list
+    pub dotfile_list_state: ListState, // ListState for main dotfile list (handles selection and scrolling)
+    pub status_message: Option<String>, // For sync summary
+    pub adding_custom_file: bool,      // Whether we're in "add custom file" mode
+    pub custom_file_input: String,     // Input for custom file path
+    pub custom_file_cursor: usize,     // Cursor position for custom file input
+    pub custom_file_focused: bool,     // Whether custom file input is focused
+    pub file_browser_mode: bool,       // Whether we're in file browser mode
+    pub file_browser_path: PathBuf,    // Current directory in file browser
+    pub file_browser_selected: usize,  // Selected file index in browser
+    pub file_browser_entries: Vec<PathBuf>, // Files/dirs in current directory
+    pub file_browser_scrollbar: ScrollbarState, // Scrollbar state for file browser
+    pub file_browser_list_state: ListState, // ListState for file browser (handles selection and scrolling)
+    pub file_browser_preview_scroll: usize, // Scroll offset for file browser preview
+    pub file_browser_path_input: String,    // Path input for file browser
+    pub file_browser_path_cursor: usize,    // Cursor position for path input
+    pub file_browser_path_focused: bool,    // Whether path input is focused
+    pub focus: DotfileSelectionFocus,       // Which pane currently has focus
+    pub backup_enabled: bool,               // Whether backups are enabled (tracks config value)
+    // Custom file confirmation modal
+    pub show_custom_file_confirm: bool, // Whether to show confirmation modal
+    pub custom_file_confirm_path: Option<PathBuf>, // Full path to confirm
+    pub custom_file_confirm_relative: Option<String>, // Relative path for confirmation
+}
+
+impl Default for DotfileSelectionState {
+    fn default() -> Self {
+        Self {
+            dotfiles: Vec::new(),
+            preview_index: None,
+            preview_scroll: 0,
+            selected_for_sync: std::collections::HashSet::new(),
+            dotfile_list_scrollbar: ScrollbarState::new(0),
+            dotfile_list_state: ListState::default(),
+            status_message: None,
+            adding_custom_file: false,
+            custom_file_input: String::new(),
+            custom_file_cursor: 0,
+            custom_file_focused: true,
+            file_browser_mode: false,
+            file_browser_path: dirs::home_dir().unwrap_or_else(|| PathBuf::from("/")),
+            file_browser_selected: 0,
+            file_browser_entries: Vec::new(),
+            file_browser_scrollbar: ScrollbarState::new(0),
+            file_browser_list_state: ListState::default(),
+            file_browser_preview_scroll: 0,
+            file_browser_path_input: String::new(),
+            file_browser_path_cursor: 0,
+            file_browser_path_focused: false,
+            focus: DotfileSelectionFocus::FilesList, // Start with files list focused
+            backup_enabled: true,                    // Default to enabled
+            show_custom_file_confirm: false,
+            custom_file_confirm_path: None,
+            custom_file_confirm_relative: None,
+        }
+    }
+}
 
 /// Dotfile selection screen controller.
 pub struct DotfileSelectionScreen {
@@ -609,6 +701,601 @@ impl DotfileSelectionScreen {
 
         Ok(ScreenAction::None)
     }
+    #[allow(clippy::too_many_arguments)] // Render function needs all these parameters
+    fn render_file_browser(
+        &mut self,
+        frame: &mut Frame,
+        area: Rect,
+        footer_chunk: Rect,
+        config: &Config,
+        syntax_set: &SyntaxSet,
+        theme: &Theme,
+    ) -> Result<()> {
+        // Create popup area (centered, 80% width, 70% height)
+        let popup_area = center_popup(area, 80, 70);
+
+        // Clear the popup area first (this is the key to making it a popup)
+        frame.render_widget(Clear, popup_area);
+
+        // File browser overlay - with path input field
+        let browser_chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(1), // Current path display
+                Constraint::Length(3), // Path input field
+                Constraint::Min(0),    // File list and preview
+                Constraint::Length(2), // Footer (1 for border, 1 for text)
+            ])
+            .split(popup_area);
+
+        // Current path display
+        let path_display = Paragraph::new(
+            self.state
+                .file_browser_path
+                .to_string_lossy()
+                .to_string(),
+        )
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Current Directory")
+                .title_alignment(Alignment::Center)
+                .style(Style::default().bg(Color::Reset)),
+        );
+        frame.render_widget(path_display, browser_chunks[0]);
+
+        // Path input field - use InputField component
+        let path_input_text = if self.state.file_browser_path_input.is_empty() {
+            self.state
+                .file_browser_path
+                .to_string_lossy()
+                .to_string()
+        } else {
+            self.state.file_browser_path_input.clone()
+        };
+
+        let cursor_pos = if self.state.file_browser_path_input.is_empty() {
+            path_input_text.chars().count()
+        } else {
+            self.state
+                .file_browser_path_cursor
+                .min(path_input_text.chars().count())
+        };
+
+        InputField::render(
+            frame,
+            browser_chunks[1],
+            &path_input_text,
+            cursor_pos,
+            self.state.file_browser_path_focused,
+            "Path Input",
+            None,
+            Alignment::Left,
+            false, // Not disabled
+        )?;
+
+        // Split list and preview
+        let list_preview_chunks = create_split_layout(browser_chunks[2], &[50, 50]);
+
+        // File list using ListState
+        let items: Vec<ListItem> = self.state
+            .file_browser_entries
+            .iter()
+            .map(|path| {
+                let is_dir = if path == Path::new("..") {
+                    true
+                } else {
+                    let full_path = if path.is_absolute() {
+                        path.to_path_buf()
+                    } else {
+                        self.state.file_browser_path.join(path)
+                    };
+                    full_path.is_dir()
+                };
+
+                let name = if path == Path::new("..") {
+                    ".. (parent)".to_string()
+                } else if path == Path::new(".") {
+                    ". (add this folder)".to_string()
+                } else {
+                    path.file_name()
+                        .and_then(|n| n.to_str())
+                        .map(|s| s.to_string())
+                        .unwrap_or_else(|| path.to_string_lossy().to_string())
+                };
+
+                let prefix = if is_dir { "📁 " } else { "📄 " };
+                let display = format!("{}{}", prefix, name);
+
+                ListItem::new(display)
+            })
+            .collect();
+
+        // Update scrollbar state
+        let total_items = self.state.file_browser_entries.len();
+        let selected_index = self.state
+            .file_browser_list_state
+            .selected()
+            .unwrap_or(0);
+        self.state.file_browser_scrollbar = self.state
+            .file_browser_scrollbar
+            .content_length(total_items)
+            .position(selected_index);
+
+        // Add focus indicator to file browser list
+        let t = ui_theme();
+        let list_title = "Select File or Directory (Enter to load path)";
+        let list_border_style = if self.state.focus == DotfileSelectionFocus::FileBrowserList {
+            focused_border_style().bg(Color::Reset)
+        } else {
+            unfocused_border_style().bg(Color::Reset)
+        };
+
+        let list = List::new(items)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title(list_title)
+                    .title_alignment(Alignment::Center)
+                    .border_style(list_border_style),
+            )
+            .highlight_style(t.highlight_style())
+            .highlight_symbol(LIST_HIGHLIGHT_SYMBOL);
+
+        StatefulWidget::render(
+            list,
+            list_preview_chunks[0],
+            frame.buffer_mut(),
+            &mut self.state.file_browser_list_state,
+        );
+
+        // Render scrollbar
+        frame.render_stateful_widget(
+            Scrollbar::new(ScrollbarOrientation::VerticalRight)
+                .begin_symbol(Some("↑"))
+                .end_symbol(Some("↓")),
+            list_preview_chunks[0],
+            &mut self.state.file_browser_scrollbar,
+        );
+
+        // Preview panel
+        if let Some(selected_index) = self.state.file_browser_list_state.selected() {
+            if selected_index < self.state.file_browser_entries.len() {
+                let selected = &self.state.file_browser_entries[selected_index];
+                let full_path = if selected == Path::new("..") {
+                    self.state
+                        .file_browser_path
+                        .parent()
+                        .map(|p| p.to_path_buf())
+                        .unwrap_or_else(|| PathBuf::from("/"))
+                } else if selected == Path::new(".") {
+                    // Current folder
+                    self.state.file_browser_path.clone()
+                } else if selected.is_absolute() {
+                    selected.to_path_buf()
+                } else {
+                    self.state.file_browser_path.join(selected)
+                };
+
+                let is_focused = self.state.focus == DotfileSelectionFocus::FileBrowserPreview;
+                let preview_title = "Preview";
+
+                FilePreview::render(
+                    frame,
+                    list_preview_chunks[1],
+                    &full_path,
+                    self.state.file_browser_preview_scroll,
+                    is_focused,
+                    Some(preview_title),
+                    None,
+                    syntax_set,
+                    theme,
+                )?;
+            } else {
+                let empty_preview = Paragraph::new("No selection").block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .title("Preview")
+                        .title_alignment(Alignment::Center),
+                );
+                frame.render_widget(empty_preview, list_preview_chunks[1]);
+            }
+        } else {
+            let empty_preview = Paragraph::new("No selection").block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title("Preview")
+                    .title_alignment(Alignment::Center),
+            );
+            frame.render_widget(empty_preview, list_preview_chunks[1]);
+        }
+
+        // Footer for file browser (inside popup)
+        if browser_chunks.len() > 3 && browser_chunks[3].height > 0 {
+            let footer_block = Block::default()
+                .borders(Borders::TOP)
+                .border_style(Style::default().fg(t.text_muted))
+                .style(Style::default().bg(Color::Reset));
+            let footer_inner = footer_block.inner(browser_chunks[3]);
+            let k = |a| config.keymap.get_key_display_for_action(a);
+            let footer_text = format!(
+                "{}: Switch Focus | {}: Navigate List | {}: Load Path | {}: Cancel",
+                k(crate::keymap::Action::NextTab),
+                config.keymap.navigation_display(),
+                k(crate::keymap::Action::Confirm),
+                k(crate::keymap::Action::Cancel)
+            );
+            let footer = Paragraph::new(footer_text)
+                .style(Style::default().fg(t.text_muted))
+                .alignment(Alignment::Center);
+            frame.render_widget(footer_block, browser_chunks[3]);
+            frame.render_widget(footer, footer_inner);
+        }
+
+        // Also render main footer (outside popup, at bottom of screen)
+        let k = |a| config.keymap.get_key_display_for_action(a);
+        let footer_text = format!(
+            "File Browser Active - {}: Cancel",
+            k(crate::keymap::Action::Quit)
+        );
+        let _ = Footer::render(frame, footer_chunk, &footer_text)?;
+
+        Ok(())
+    }
+
+    fn render_custom_file_input(
+        &mut self,
+        frame: &mut Frame,
+        content_chunk: Rect,
+        footer_chunk: Rect,
+        config: &Config,
+    ) -> Result<()> {
+        let input_chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Min(0),
+                Constraint::Length(3), // Input field
+            ])
+            .split(content_chunk);
+
+        let input_text = self.state.custom_file_input.clone();
+        let cursor_pos = self.state
+            .custom_file_cursor
+            .min(input_text.chars().count());
+
+        InputField::render(
+            frame,
+            input_chunks[1],
+            &input_text,
+            cursor_pos,
+            self.state.custom_file_focused,
+            "Custom File Path",
+            Some("Enter file path (e.g., ~/.myconfig or /path/to/file)"),
+            Alignment::Center,
+            false, // Not disabled
+        )?;
+
+        let k = |a| config.keymap.get_key_display_for_action(a);
+        let footer_text = format!(
+            "{}: Add File | {}: Cancel | Tab: Focus/Unfocus",
+            k(crate::keymap::Action::Confirm),
+            k(crate::keymap::Action::Quit)
+        );
+        let _ = Footer::render(frame, footer_chunk, &footer_text)?;
+
+        Ok(())
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn render_dotfile_list(
+        &mut self,
+        frame: &mut Frame,
+        content_chunk: Rect,
+        footer_chunk: Rect,
+        config: &Config,
+        syntax_set: &SyntaxSet,
+        theme: &Theme,
+    ) -> Result<()> {
+        // Split content into left (list + description) and right (preview)
+        let (left_area, preview_area_opt) = if self.state.status_message.is_some() {
+            (content_chunk, None::<Rect>)
+        } else {
+            let content_chunks = create_split_layout(content_chunk, &[50, 50]);
+            (content_chunks[0], Some(content_chunks[1]))
+        };
+
+        // Split left area into list (top) and description (bottom)
+        let left_chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Min(0),    // List takes remaining space
+                Constraint::Length(4), // Description block (3 lines + 1 border)
+            ])
+            .split(left_area);
+
+        let list_area = left_chunks[0];
+        let description_area = left_chunks[1];
+
+        // File list using ListState - simplified, no descriptions inline
+        let t = ui_theme();
+        let items: Vec<ListItem> = self.state
+            .dotfiles
+            .iter()
+            .enumerate()
+            .map(|(i, dotfile)| {
+                let is_selected = self.state.selected_for_sync.contains(&i);
+                let prefix = if is_selected { "✓ " } else { "  " };
+                let style = if is_selected {
+                    Style::default().fg(t.success)
+                } else {
+                    t.text_style()
+                };
+                let path_str = dotfile.relative_path.to_string_lossy();
+                ListItem::new(format!("{}{}", prefix, path_str)).style(style)
+            })
+            .collect();
+
+        // Update scrollbar state
+        let total_dotfiles = self.state.dotfiles.len();
+        let selected_index = self.state.dotfile_list_state.selected().unwrap_or(0);
+        self.state.dotfile_list_scrollbar = self.state
+            .dotfile_list_scrollbar
+            .content_length(total_dotfiles)
+            .position(selected_index);
+
+        // Add focus indicator to files list
+        let list_title = format!("Found {} dotfiles", self.state.dotfiles.len());
+        let list_border_style = if self.state.focus == DotfileSelectionFocus::FilesList {
+            focused_border_style()
+        } else {
+            unfocused_border_style()
+        };
+
+        let list = List::new(items)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title(list_title)
+                    .title_alignment(Alignment::Center)
+                    .border_style(list_border_style),
+            )
+            .highlight_style(t.highlight_style())
+            .highlight_symbol(LIST_HIGHLIGHT_SYMBOL);
+
+        StatefulWidget::render(
+            list,
+            list_area,
+            frame.buffer_mut(),
+            &mut self.state.dotfile_list_state,
+        );
+
+        // Render scrollbar
+        frame.render_stateful_widget(
+            Scrollbar::new(ScrollbarOrientation::VerticalRight)
+                .begin_symbol(Some("↑"))
+                .end_symbol(Some("↓")),
+            list_area,
+            &mut self.state.dotfile_list_scrollbar,
+        );
+
+        // Description block
+        if let Some(selected_index) = self.state.dotfile_list_state.selected() {
+            if selected_index < self.state.dotfiles.len() {
+                let dotfile = &self.state.dotfiles[selected_index];
+                let description_text = if let Some(desc) = &dotfile.description {
+                    desc.clone()
+                } else {
+                    format!(
+                        "No description available for {}",
+                        dotfile.relative_path.to_string_lossy()
+                    )
+                };
+
+                let description_para = Paragraph::new(description_text)
+                    .block(
+                        Block::default()
+                            .borders(Borders::ALL)
+                            .title("Description")
+                            .title_alignment(Alignment::Center)
+                            .border_style(unfocused_border_style()),
+                    )
+                    .wrap(Wrap { trim: true })
+                    .style(t.text_style());
+                frame.render_widget(description_para, description_area);
+            } else {
+                let empty_desc = Paragraph::new("No file selected").block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .title("Description")
+                        .title_alignment(Alignment::Center)
+                        .border_style(unfocused_border_style()),
+                );
+                frame.render_widget(empty_desc, description_area);
+            }
+        } else {
+            let empty_desc = Paragraph::new("No file selected").block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title("Description")
+                    .title_alignment(Alignment::Center)
+                    .border_style(unfocused_border_style()),
+            );
+            frame.render_widget(empty_desc, description_area);
+        }
+
+        // Preview panel
+        if let Some(preview_rect) = preview_area_opt {
+            if let Some(selected_index) = self.state.dotfile_list_state.selected() {
+                if selected_index < self.state.dotfiles.len() {
+                    let dotfile = &self.state.dotfiles[selected_index];
+                    let is_focused = self.state.focus == DotfileSelectionFocus::Preview;
+                    let preview_title =
+                        format!("Preview: {}", dotfile.relative_path.to_string_lossy());
+
+                    FilePreview::render(
+                        frame,
+                        preview_rect,
+                        &dotfile.original_path,
+                        self.state.preview_scroll,
+                        is_focused,
+                        Some(&preview_title),
+                        None,
+                        syntax_set,
+                        theme,
+                    )?;
+                } else {
+                    let empty_preview = Paragraph::new("No file selected").block(
+                        Block::default()
+                            .borders(Borders::ALL)
+                            .title("Preview")
+                            .title_alignment(Alignment::Center),
+                    );
+                    frame.render_widget(empty_preview, preview_rect);
+                }
+            } else {
+                let empty_preview = Paragraph::new("No file selected").block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .title("Preview")
+                        .title_alignment(Alignment::Center),
+                );
+                frame.render_widget(empty_preview, preview_rect);
+            }
+        }
+
+        // Status message overlay
+        if let Some(status) = &self.state.status_message {
+            let status_chunks = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([Constraint::Min(0), Constraint::Length(10)])
+                .split(content_chunk);
+
+            frame.render_widget(Clear, status_chunks[1]);
+            frame.render_widget(
+                Block::default().style(Style::default().bg(t.background)),
+                status_chunks[1],
+            );
+
+            let status_block = Block::default()
+                .borders(Borders::ALL)
+                .title("Sync Summary")
+                .title_alignment(Alignment::Center)
+                .style(Style::default().bg(t.background));
+            let status_para = Paragraph::new(status.as_str())
+                .block(status_block)
+                .wrap(Wrap { trim: true });
+            frame.render_widget(status_para, status_chunks[1]);
+        }
+
+        // Footer
+        let backup_status = if self.state.backup_enabled {
+            "ON"
+        } else {
+            "OFF"
+        };
+        let footer_text = if self.state.status_message.is_some() {
+            let k = |a| config.keymap.get_key_display_for_action(a);
+            format!("{}: Continue", k(crate::keymap::Action::Confirm))
+        } else {
+            let k = |a| config.keymap.get_key_display_for_action(a);
+            format!(
+                "Tab: Focus | {}: Navigate | Space/{}: Toggle | {}: Add Custom | {}: Backup ({}) | {}: Back",
+                 config.keymap.navigation_display(),
+                 k(crate::keymap::Action::Confirm),
+                 k(crate::keymap::Action::Create),
+                 k(crate::keymap::Action::ToggleBackup),
+                 backup_status,
+                 k(crate::keymap::Action::Quit)
+            )
+        };
+
+        let _ = Footer::render(frame, footer_chunk, &footer_text)?;
+
+        Ok(())
+    }
+
+    fn render_custom_file_confirm(
+        &mut self,
+        frame: &mut Frame,
+        area: Rect,
+        config: &Config,
+    ) -> Result<()> {
+        let t = ui_theme();
+        // Dim the background
+        let dim = Block::default().style(Style::default().bg(Color::Reset).fg(t.text_muted));
+        frame.render_widget(dim, area);
+
+        // Create centered popup
+        let popup_area = crate::utils::center_popup(area, 70, 40);
+        frame.render_widget(Clear, popup_area);
+
+        let path = self.state
+            .custom_file_confirm_path
+            .as_ref()
+            .map(|p| p.display().to_string())
+            .unwrap_or_else(|| "Unknown".to_string());
+
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(3), // Title
+                Constraint::Length(1), // Spacer
+                Constraint::Length(3), // Path label
+                Constraint::Length(3), // Path value (highlighted)
+                Constraint::Length(1), // Spacer
+                Constraint::Length(3), // Warning message
+                Constraint::Length(1), // Spacer
+                Constraint::Length(1), // Instructions
+            ])
+            .split(popup_area);
+
+        // Title
+        let title = Paragraph::new("Confirm Add Custom File")
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title("Confirmation")
+                    .title_alignment(Alignment::Center)
+                    .style(Style::default().bg(Color::Reset)),
+            )
+            .alignment(Alignment::Center)
+            .style(
+                Style::default()
+                    .fg(t.text_emphasis)
+                    .add_modifier(Modifier::BOLD),
+            );
+        frame.render_widget(title, chunks[0]);
+
+        // Path label
+        let path_label = Paragraph::new("Path:").style(t.text_style());
+        frame.render_widget(path_label, chunks[2]);
+
+        // Path value (highlighted in different color)
+        let path_value = Paragraph::new(path.as_str())
+            .wrap(Wrap { trim: true })
+            .style(Style::default().fg(t.primary).add_modifier(Modifier::BOLD));
+        frame.render_widget(path_value, chunks[3]);
+
+        // Warning message
+        let warning = Paragraph::new("⚠️  This will move this path to the storage repo and replace it with a symlink.\nMake sure you know what you are doing.")
+            .wrap(Wrap { trim: true })
+            .style(Style::default().fg(t.warning));
+        frame.render_widget(warning, chunks[5]);
+
+        // Instructions
+        let k = |a| config.keymap.get_key_display_for_action(a);
+        let instruction_text = format!(
+            "Press Y/{} to confirm, N/{} to cancel",
+            k(crate::keymap::Action::Confirm),
+            k(crate::keymap::Action::Quit)
+        );
+        let instructions = Paragraph::new(instruction_text)
+            .alignment(Alignment::Center)
+            .style(Style::default().fg(t.text_muted));
+        frame.render_widget(instructions, chunks[7]);
+
+        Ok(())
+    }
 }
 
 impl Default for DotfileSelectionScreen {
@@ -619,18 +1306,59 @@ impl Default for DotfileSelectionScreen {
 
 impl Screen for DotfileSelectionScreen {
     fn render(&mut self, frame: &mut Frame, area: Rect, ctx: &RenderContext) -> Result<()> {
-        use crate::components::dotfile_selection::DotfileSelectionComponent;
+        // Clear the entire area first to prevent background bleed-through
+        frame.render_widget(Clear, area);
 
-        let mut component = DotfileSelectionComponent::new();
-        component.render_with_state(
+        // Background - use Reset to inherit terminal's native background
+        let background = Block::default().style(Style::default().bg(Color::Reset));
+        frame.render_widget(background, area);
+
+        // Layout: Title/Description, Content (list + preview), Footer
+        let (header_chunk, content_chunk, footer_chunk) = create_standard_layout(area, 5, 2);
+
+        // Header: Use common header component
+        let _ = Header::render(
             frame,
-            area,
-            &mut self.state,
-            ctx.config,
-            ctx.syntax_set,
-            ctx.syntax_theme,
-        )
+            header_chunk,
+            "DotState - Manage Files",
+            "Add or remove files to your repository. You can also add custom files. We have automatically detected some common dotfiles for you."
+        )?;
+
+        // Check if confirmation modal is showing
+        if self.state.show_custom_file_confirm {
+            self.render_custom_file_confirm(frame, area, ctx.config)?;
+        }
+        // Check if file browser is active - render as popup
+        else if self.state.file_browser_mode {
+            self.render_file_browser(
+                frame,
+                area,
+                footer_chunk,
+                ctx.config,
+                ctx.syntax_set,
+                ctx.syntax_theme,
+            )?;
+        } else if self.state.adding_custom_file {
+            self.render_custom_file_input(
+                frame,
+                content_chunk,
+                footer_chunk,
+                ctx.config,
+            )?;
+        } else {
+            self.render_dotfile_list(
+                frame,
+                content_chunk,
+                footer_chunk,
+                ctx.config,
+                ctx.syntax_set,
+                ctx.syntax_theme,
+            )?;
+        }
+
+        Ok(())
     }
+
 
     fn handle_event(&mut self, event: Event, ctx: &ScreenContext) -> Result<ScreenAction> {
         // 1. Modal first - captures all events

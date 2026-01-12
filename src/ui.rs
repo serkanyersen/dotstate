@@ -1,6 +1,4 @@
-use crate::file_manager::Dotfile;
 use ratatui::widgets::{ListState, ScrollbarState};
-use std::path::PathBuf;
 
 /// Application screens
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -148,80 +146,7 @@ impl Default for GitHubAuthState {
     }
 }
 
-/// Focus area in dotfile selection screen
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DotfileSelectionFocus {
-    FilesList,          // Files list pane is focused
-    Preview,            // Preview pane is focused
-    FileBrowserList,    // File browser list pane is focused
-    FileBrowserPreview, // File browser preview pane is focused
-    FileBrowserInput,   // File browser path input is focused
-}
 
-/// Dotfile selection state
-#[derive(Debug)]
-pub struct DotfileSelectionState {
-    pub dotfiles: Vec<Dotfile>,
-    pub preview_index: Option<usize>,
-    pub preview_scroll: usize,
-    pub selected_for_sync: std::collections::HashSet<usize>, // Indices of selected files
-    pub dotfile_list_scrollbar: ScrollbarState,              // Scrollbar state for dotfile list
-    pub dotfile_list_state: ListState, // ListState for main dotfile list (handles selection and scrolling)
-    pub status_message: Option<String>, // For sync summary
-    pub adding_custom_file: bool,      // Whether we're in "add custom file" mode
-    pub custom_file_input: String,     // Input for custom file path
-    pub custom_file_cursor: usize,     // Cursor position for custom file input
-    pub custom_file_focused: bool,     // Whether custom file input is focused
-    pub file_browser_mode: bool,       // Whether we're in file browser mode
-    pub file_browser_path: PathBuf,    // Current directory in file browser
-    pub file_browser_selected: usize,  // Selected file index in browser
-    pub file_browser_entries: Vec<PathBuf>, // Files/dirs in current directory
-    pub file_browser_scrollbar: ScrollbarState, // Scrollbar state for file browser
-    pub file_browser_list_state: ListState, // ListState for file browser (handles selection and scrolling)
-    pub file_browser_preview_scroll: usize, // Scroll offset for file browser preview
-    pub file_browser_path_input: String,    // Path input for file browser
-    pub file_browser_path_cursor: usize,    // Cursor position for path input
-    pub file_browser_path_focused: bool,    // Whether path input is focused
-    pub focus: DotfileSelectionFocus,       // Which pane currently has focus
-    pub backup_enabled: bool,               // Whether backups are enabled (tracks config value)
-    // Custom file confirmation modal
-    pub show_custom_file_confirm: bool, // Whether to show confirmation modal
-    pub custom_file_confirm_path: Option<PathBuf>, // Full path to confirm
-    pub custom_file_confirm_relative: Option<String>, // Relative path for confirmation
-}
-
-impl Default for DotfileSelectionState {
-    fn default() -> Self {
-        Self {
-            dotfiles: Vec::new(),
-            preview_index: None,
-            preview_scroll: 0,
-            selected_for_sync: std::collections::HashSet::new(),
-            dotfile_list_scrollbar: ScrollbarState::new(0),
-            dotfile_list_state: ListState::default(),
-            status_message: None,
-            adding_custom_file: false,
-            custom_file_input: String::new(),
-            custom_file_cursor: 0,
-            custom_file_focused: true,
-            file_browser_mode: false,
-            file_browser_path: dirs::home_dir().unwrap_or_else(|| PathBuf::from("/")),
-            file_browser_selected: 0,
-            file_browser_entries: Vec::new(),
-            file_browser_scrollbar: ScrollbarState::new(0),
-            file_browser_list_state: ListState::default(),
-            file_browser_preview_scroll: 0,
-            file_browser_path_input: String::new(),
-            file_browser_path_cursor: 0,
-            file_browser_path_focused: false,
-            focus: DotfileSelectionFocus::FilesList, // Start with files list focused
-            backup_enabled: true,                    // Default to enabled
-            show_custom_file_confirm: false,
-            custom_file_confirm_path: None,
-            custom_file_confirm_relative: None,
-        }
-    }
-}
 
 /// Sync with remote state
 #[derive(Debug, Clone)]

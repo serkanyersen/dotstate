@@ -10,6 +10,7 @@ use crate::tui::Tui;
 use crate::ui::{GitHubAuthStep, GitHubSetupStep, Screen, UiState};
 
 use anyhow::{Context, Result};
+use crate::screens::dotfile_selection::DotfileSelectionState;
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -1579,7 +1580,7 @@ impl App {
     /// Add a single file to sync (copy to repo, create symlink, update manifest)
     fn add_file_to_sync_with_state(
         config: &crate::config::Config,
-        state: &mut crate::ui::DotfileSelectionState,
+        state: &mut DotfileSelectionState,
         file_index: usize,
     ) -> Result<()> {
         use crate::services::SyncService;
@@ -1685,7 +1686,7 @@ impl App {
     /// Remove a single file from sync (restore from repo, remove symlink, update manifest)
     fn remove_file_from_sync_with_state(
         config: &crate::config::Config,
-        state: &mut crate::ui::DotfileSelectionState,
+        state: &mut DotfileSelectionState,
         file_index: usize,
     ) -> Result<()> {
         use crate::services::SyncService;
@@ -1724,7 +1725,7 @@ impl App {
     /// Scan for dotfiles and populate the selection state
     fn scan_dotfiles_into(
         config: &crate::config::Config,
-        state: &mut crate::ui::DotfileSelectionState,
+        state: &mut DotfileSelectionState,
     ) -> Result<()> {
         use crate::services::SyncService;
 
@@ -1758,7 +1759,7 @@ impl App {
     /// Refresh file browser entries for current directory
     fn refresh_file_browser_into(
         config: &crate::config::Config,
-        state: &mut crate::ui::DotfileSelectionState,
+        state: &mut DotfileSelectionState,
     ) -> Result<()> {
         let path = &state.file_browser_path;
 
