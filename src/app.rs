@@ -8,7 +8,7 @@ use crate::git::GitManager;
 use crate::github::GitHubClient;
 use crate::tui::Tui;
 use crate::ui::{
-    GitHubAuthStep, GitHubSetupStep, PackageStatus, Screen, UiState,
+    GitHubAuthStep, GitHubSetupStep, Screen, UiState,
 };
 
 
@@ -806,14 +806,7 @@ impl App {
                 // Reset sync state
                 self.ui_state.sync_with_remote = crate::ui::SyncWithRemoteState::default();
             }
-            Screen::ManageProfiles => {
-                // Initialize list state with first profile selected
-                if let Ok(profiles) = self.get_profiles() {
-                    if !profiles.is_empty() {
-                        self.ui_state.profile_manager.list_state.select(Some(0));
-                    }
-                }
-            }
+
             Screen::ManagePackages => {
                 // reset state if needed?
                 // self.manage_packages_screen.reset_state();
@@ -1828,11 +1821,6 @@ impl App {
         crate::services::ProfileService::load_manifest(&self.config.repo_path)
     }
 
-    /// Helper: Get profiles from manifest
-    fn get_profiles(&self) -> Result<Vec<crate::utils::ProfileInfo>> {
-        crate::services::ProfileService::get_profiles(&self.config.repo_path)
-    }
-
     /// Helper: Get active profile info from manifest
     fn get_active_profile_info(&self) -> Result<Option<crate::utils::ProfileInfo>> {
         crate::services::ProfileService::get_profile_info(&self.config.repo_path, &self.config.active_profile)
@@ -1871,13 +1859,8 @@ impl App {
                 switch_result.packages.len()
             );
             // Initialize package checking state
-            let state = &mut self.ui_state.package_manager;
-            state.packages = switch_result.packages;
-            state.package_statuses = vec![PackageStatus::Unknown; state.packages.len()];
-            state.is_checking = true;
-            state.checking_index = None;
-            state.checking_delay_until =
-                Some(std::time::Instant::now() + Duration::from_millis(100));
+            self.manage_packages_screen.update_packages(switch_result.packages);
+            self.manage_packages_screen.start_checking();
         }
 
         Ok(())
@@ -1939,13 +1922,8 @@ impl App {
                 activation_result.packages.len()
             );
             // Initialize package checking state
-            let state = &mut self.ui_state.package_manager;
-            state.packages = activation_result.packages;
-            state.package_statuses = vec![PackageStatus::Unknown; state.packages.len()];
-            state.is_checking = true;
-            state.checking_index = None;
-            state.checking_delay_until =
-                Some(std::time::Instant::now() + Duration::from_millis(100));
+            self.manage_packages_screen.update_packages(activation_result.packages);
+            self.manage_packages_screen.start_checking();
         }
 
         Ok(())

@@ -1,4 +1,3 @@
-use crate::components::profile_manager::ProfileManagerState;
 use crate::file_manager::Dotfile;
 use ratatui::widgets::{ListState, ScrollbarState};
 use std::path::PathBuf;
@@ -423,12 +422,9 @@ pub struct UiState {
     pub github_auth: GitHubAuthState,
     pub dotfile_selection: DotfileSelectionState,
     pub sync_with_remote: SyncWithRemoteState,
-    pub profile_manager: ProfileManagerState,
     pub has_changes_to_push: bool, // Whether there are uncommitted or unpushed changes
     /// State for profile selection after GitHub setup
     pub profile_selection: ProfileSelectionState,
-    /// State for package manager
-    pub package_manager: PackageManagerState,
     /// Whether a text input is currently focused (blocks navigation keybindings)
     /// When true, keymap navigation is disabled so users can type freely
     pub input_mode_active: bool,
@@ -450,10 +446,9 @@ impl UiState {
             github_auth: GitHubAuthState::default(),
             dotfile_selection: DotfileSelectionState::default(),
             sync_with_remote: SyncWithRemoteState::default(),
-            profile_manager: ProfileManagerState::default(),
+
             has_changes_to_push: false,
             profile_selection: ProfileSelectionState::default(),
-            package_manager: PackageManagerState::default(),
             input_mode_active: false,
             show_help_overlay: false,
         }

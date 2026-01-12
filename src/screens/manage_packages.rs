@@ -51,6 +51,15 @@ impl ManagePackagesScreen {
          self.state.popup_type = PackagePopupType::None;
     }
 
+    pub fn start_checking(&mut self) {
+        let state = &mut self.state;
+        state.is_checking = true;
+        state.checking_index = None;
+        state.checking_delay_until = Some(std::time::Instant::now() + Duration::from_millis(100));
+        // Reset statuses to Unknown if we are re-checking
+        state.package_statuses = vec![PackageStatus::Unknown; state.packages.len()];
+    }
+
     pub fn start_installing_missing_packages(&mut self) {
         let state = &mut self.state;
         let mut packages_to_install = Vec::new();
