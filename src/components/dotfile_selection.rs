@@ -4,7 +4,7 @@ use crate::components::footer::Footer;
 use crate::components::header::Header;
 use crate::components::input_field::InputField;
 use crate::styles::{theme as ui_theme, LIST_HIGHLIGHT_SYMBOL};
-use crate::ui::{DotfileSelectionFocus, UiState};
+use crate::ui::{DotfileSelectionFocus, DotfileSelectionState};
 use crate::utils::{
     center_popup, create_split_layout, create_standard_layout, focused_border_style,
     unfocused_border_style,
@@ -36,12 +36,12 @@ impl DotfileSelectionComponent {
         Self
     }
 
-    /// Render with state - this is the main render method that takes UiState
+    /// Render with state - this is the main render method that takes DotfileSelectionState directly
     pub fn render_with_state(
         &mut self,
         frame: &mut Frame,
         area: Rect,
-        state: &mut UiState,
+        selection_state: &mut DotfileSelectionState,
         config: &crate::config::Config,
         syntax_set: &SyntaxSet,
         theme: &Theme,
@@ -52,8 +52,6 @@ impl DotfileSelectionComponent {
         // Background - use Reset to inherit terminal's native background
         let background = Block::default().style(Style::default().bg(Color::Reset));
         frame.render_widget(background, area);
-
-        let selection_state = &mut state.dotfile_selection;
 
         // Layout: Title/Description, Content (list + preview), Footer
         let (header_chunk, content_chunk, footer_chunk) = create_standard_layout(area, 5, 2);

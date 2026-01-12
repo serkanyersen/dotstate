@@ -621,28 +621,15 @@ impl Screen for DotfileSelectionScreen {
     fn render(&mut self, frame: &mut Frame, area: Rect, ctx: &RenderContext) -> Result<()> {
         use crate::components::dotfile_selection::DotfileSelectionComponent;
 
-        // Create a temporary UiState with our state for the component
-        // Note: The component expects UiState but we're using our own state
-        // We need to create a wrapper or modify the component to accept DotfileSelectionState directly
-        let mut ui_state = crate::ui::UiState::default();
-
-        // Copy our state into the ui_state
-        std::mem::swap(&mut ui_state.dotfile_selection, &mut self.state);
-
         let mut component = DotfileSelectionComponent::new();
-        let result = component.render_with_state(
+        component.render_with_state(
             frame,
             area,
-            &mut ui_state,
+            &mut self.state,
             ctx.config,
             ctx.syntax_set,
             ctx.syntax_theme,
-        );
-
-        // Copy back the potentially modified state
-        std::mem::swap(&mut ui_state.dotfile_selection, &mut self.state);
-
-        result
+        )
     }
 
     fn handle_event(&mut self, event: Event, ctx: &ScreenContext) -> Result<ScreenAction> {

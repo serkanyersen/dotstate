@@ -773,16 +773,11 @@ impl App {
             Screen::DotfileSelection => {
                 // Check for changes when returning to menu
                 self.check_changes_to_push();
-                self.scan_dotfiles()?;
-                // Reset state when entering the page
-                self.ui_state.dotfile_selection.status_message = None;
-                // Sync backup_enabled from config
-                self.ui_state.dotfile_selection.backup_enabled = self.config.backup_enabled;
-                // Sync state with screen
-                std::mem::swap(
-                    &mut self.ui_state.dotfile_selection,
-                    self.dotfile_selection_screen.get_state_mut(),
-                );
+                // Get screen state and update it directly
+                let state = self.dotfile_selection_screen.get_state_mut();
+                state.status_message = None;
+                state.backup_enabled = self.config.backup_enabled;
+                Self::scan_dotfiles_into(&self.config, state)?;
             }
             Screen::GitHubAuth => {
                 // Setup git repository
@@ -1010,87 +1005,30 @@ impl App {
             }
             // Dotfile selection actions
             ScreenAction::ScanDotfiles => {
-                self.scan_dotfiles()?;
-                // Copy state back to screen
-                std::mem::swap(
-                    &mut self.ui_state.dotfile_selection,
-                    self.dotfile_selection_screen.get_state_mut(),
-                );
+                let state = self.dotfile_selection_screen.get_state_mut();
+                Self::scan_dotfiles_into(&self.config, state)?;
             }
             ScreenAction::RefreshFileBrowser => {
-                // Copy state from screen to ui_state first
-                std::mem::swap(
-                    &mut self.ui_state.dotfile_selection,
-                    self.dotfile_selection_screen.get_state_mut(),
-                );
-                self.refresh_file_browser()?;
-                // Copy back
-                std::mem::swap(
-                    &mut self.ui_state.dotfile_selection,
-                    self.dotfile_selection_screen.get_state_mut(),
-                );
+                let state = self.dotfile_selection_screen.get_state_mut();
+                Self::refresh_file_browser_into(&self.config, state)?;
             }
             ScreenAction::ToggleFileSync {
                 file_index,
                 is_synced,
             } => {
-                // Copy state from screen to ui_state first
-                std::mem::swap(
-                    &mut self.ui_state.dotfile_selection,
-                    self.dotfile_selection_screen.get_state_mut(),
-                );
+                let state = self.dotfile_selection_screen.get_state_mut();
                 if is_synced {
-                    self.remove_file_from_sync(file_index)?;
+                    Self::remove_file_from_sync_with_state(&self.config, state, file_index)?;
                 } else {
-                    self.add_file_to_sync(file_index)?;
+                    Self::add_file_to_sync_with_state(&self.config, state, file_index)?;
                 }
-                // Copy back
-                std::mem::swap(
-                    &mut self.ui_state.dotfile_selection,
-                    self.dotfile_selection_screen.get_state_mut(),
-                );
             }
             ScreenAction::AddCustomFileToSync {
                 full_path,
                 relative_path,
             } => {
-                // Copy state from screen to ui_state first
-                std::mem::swap(
-                    &mut self.ui_state.dotfile_selection,
-                    self.dotfile_selection_screen.get_state_mut(),
-                );
-
-                if let Err(e) = self.add_custom_file_to_sync(&full_path, &relative_path) {
-                    self.ui_state.dotfile_selection.status_message =
-                        Some(format!("Error: Failed to sync file: {}", e));
-                } else {
-                    // Re-scan to refresh the list
-                    self.scan_dotfiles()?;
-
-                    // Find and select the file in the list
-                    if let Some(index) = self
-                        .ui_state
-                        .dotfile_selection
-                        .dotfiles
-                        .iter()
-                        .position(|d| d.relative_path.to_string_lossy() == relative_path)
-                    {
-                        self.ui_state
-                            .dotfile_selection
-                            .dotfile_list_state
-                            .select(Some(index));
-                        self.ui_state
-                            .dotfile_selection
-                            .selected_for_sync
-                            .insert(index);
-                    }
-                }
-
-                // Copy back
-                std::mem::swap(
-                    &mut self.ui_state.dotfile_selection,
-                    self.dotfile_selection_screen.get_state_mut(),
-                );
+                // Handle custom file sync - may update config
+                self.handle_add_custom_file_to_sync(full_path, relative_path)?;
             }
             ScreenAction::SetBackupEnabled { enabled } => {
                 self.config.backup_enabled = enabled;
@@ -1619,12 +1557,10 @@ impl App {
 
                 if should_scan_dotfiles {
                     // New install with default profile - go directly to dotfile selection
-                    // Sync backup_enabled from config
-                    self.ui_state.dotfile_selection.backup_enabled = self.config.backup_enabled;
-                    // Trigger search for dotfiles
-                    self.scan_dotfiles()?;
-                    // Reset state when entering the page
-                    self.ui_state.dotfile_selection.status_message = None;
+                    let state = self.dotfile_selection_screen.get_state_mut();
+                    state.backup_enabled = self.config.backup_enabled;
+                    state.status_message = None;
+                    Self::scan_dotfiles_into(&self.config, state)?;
                 }
 
                 self.ui_state.current_screen = target_screen;
@@ -1647,10 +1583,13 @@ impl App {
     }
 
     /// Add a single file to sync (copy to repo, create symlink, update manifest)
-    fn add_file_to_sync(&mut self, file_index: usize) -> Result<()> {
+    fn add_file_to_sync_with_state(
+        config: &crate::config::Config,
+        state: &mut crate::ui::DotfileSelectionState,
+        file_index: usize,
+    ) -> Result<()> {
         use crate::services::SyncService;
 
-        let state = &self.ui_state.dotfile_selection;
         if file_index >= state.dotfiles.len() {
             warn!(
                 "File index {} out of bounds ({} files)",
@@ -1667,24 +1606,21 @@ impl App {
 
         // Use service to add file to sync
         match SyncService::add_file_to_sync(
-            &self.config,
+            config,
             &full_path,
             &relative_str,
             backup_enabled,
         )? {
             crate::services::sync_service::AddFileResult::Success => {
-                let state = &mut self.ui_state.dotfile_selection;
                 state.selected_for_sync.insert(file_index);
                 state.dotfiles[file_index].synced = true;
                 info!("Successfully added file to sync: {}", relative_str);
             }
             crate::services::sync_service::AddFileResult::AlreadySynced => {
-                let state = &mut self.ui_state.dotfile_selection;
                 state.selected_for_sync.insert(file_index);
                 debug!("File already synced: {}", relative_str);
             }
             crate::services::sync_service::AddFileResult::ValidationFailed(error_msg) => {
-                let state = &mut self.ui_state.dotfile_selection;
                 state.status_message = Some(format!("Error: {}", error_msg));
                 warn!("Validation failed for {}: {}", relative_str, error_msg);
             }
@@ -1693,35 +1629,54 @@ impl App {
         Ok(())
     }
 
-    /// Add a custom file directly to sync (bypasses scan_dotfiles since custom files aren't in default list)
-    fn add_custom_file_to_sync(&mut self, full_path: &Path, relative_path: &str) -> Result<()> {
+    /// Handle adding a custom file to sync, including state and config updates
+    fn handle_add_custom_file_to_sync(
+        &mut self,
+        full_path: PathBuf,
+        relative_path: String,
+    ) -> Result<()> {
         use crate::services::SyncService;
 
-        let backup_enabled = self.ui_state.dotfile_selection.backup_enabled;
+        let backup_enabled = self.dotfile_selection_screen.get_state().backup_enabled;
 
         // Use service to add file to sync
-        match SyncService::add_file_to_sync(&self.config, full_path, relative_path, backup_enabled)?
-        {
+        match SyncService::add_file_to_sync(
+            &self.config,
+            &full_path,
+            &relative_path,
+            backup_enabled,
+        )? {
             crate::services::sync_service::AddFileResult::Success => {
                 // Check if this is a custom file (not in default dotfile candidates)
-                if SyncService::is_custom_file(relative_path) {
+                if SyncService::is_custom_file(&relative_path) {
                     // Add to config.custom_files if not already there
-                    if !self
-                        .config
-                        .custom_files
-                        .contains(&relative_path.to_string())
-                    {
-                        self.config.custom_files.push(relative_path.to_string());
+                    if !self.config.custom_files.contains(&relative_path) {
+                        self.config.custom_files.push(relative_path.clone());
                         self.config.save(&self.config_path)?;
                     }
                 }
                 info!("Successfully added custom file to sync: {}", relative_path);
+
+                // Re-scan to refresh the list
+                let state = self.dotfile_selection_screen.get_state_mut();
+                Self::scan_dotfiles_into(&self.config, state)?;
+
+                // Find and select the file in the list
+                let state = self.dotfile_selection_screen.get_state_mut();
+                if let Some(index) = state
+                    .dotfiles
+                    .iter()
+                    .position(|d| d.relative_path.to_string_lossy() == relative_path)
+                {
+                    state.dotfile_list_state.select(Some(index));
+                    state.selected_for_sync.insert(index);
+                }
             }
             crate::services::sync_service::AddFileResult::AlreadySynced => {
                 debug!("Custom file already synced: {}", relative_path);
             }
             crate::services::sync_service::AddFileResult::ValidationFailed(error_msg) => {
-                let state = &mut self.ui_state.dotfile_selection;
+                let state = self.dotfile_selection_screen.get_state_mut();
                 state.status_message = Some(format!("Error: {}", error_msg));
                 warn!(
                     "Validation failed for custom file {}: {}",
@@ -1734,10 +1689,13 @@ impl App {
     }
 
     /// Remove a single file from sync (restore from repo, remove symlink, update manifest)
-    fn remove_file_from_sync(&mut self, file_index: usize) -> Result<()> {
+    fn remove_file_from_sync_with_state(
+        config: &crate::config::Config,
+        state: &mut crate::ui::DotfileSelectionState,
+        file_index: usize,
+    ) -> Result<()> {
         use crate::services::SyncService;
 
-        let state = &mut self.ui_state.dotfile_selection;
         if file_index >= state.dotfiles.len() {
             warn!(
                 "File index {} out of bounds ({} files)",
@@ -1753,7 +1711,7 @@ impl App {
             .to_string();
 
         // Use service to remove file from sync
-        match SyncService::remove_file_from_sync(&self.config, &relative_str)? {
+        match SyncService::remove_file_from_sync(config, &relative_str)? {
             crate::services::sync_service::RemoveFileResult::Success => {
                 // Unmark as selected and synced
                 state.selected_for_sync.remove(&file_index);
@@ -1770,11 +1728,14 @@ impl App {
     }
 
     /// Scan for dotfiles and populate the selection state
-    fn scan_dotfiles(&mut self) -> Result<()> {
+    fn scan_dotfiles_into(
+        config: &crate::config::Config,
+        state: &mut crate::ui::DotfileSelectionState,
+    ) -> Result<()> {
         use crate::services::SyncService;
 
         // Use service to scan dotfiles
-        let found = SyncService::scan_dotfiles(&self.config)?;
+        let found = SyncService::scan_dotfiles(config)?;
 
         // Build selected indices for synced files
         let selected_indices: std::collections::HashSet<usize> = found
@@ -1784,31 +1745,27 @@ impl App {
             .map(|(i, _)| i)
             .collect();
 
-        // Update UI state
-        self.ui_state.dotfile_selection.dotfiles = found;
-        self.ui_state.dotfile_selection.preview_index = None;
-        self.ui_state.dotfile_selection.preview_scroll = 0;
-        self.ui_state.dotfile_selection.selected_for_sync = selected_indices;
+        // Update state
+        state.dotfiles = found;
+        state.preview_index = None;
+        state.preview_scroll = 0;
+        state.selected_for_sync = selected_indices;
 
         // Initialize ListState with first item selected if available
-        if !self.ui_state.dotfile_selection.dotfiles.is_empty() {
-            self.ui_state
-                .dotfile_selection
-                .dotfile_list_state
-                .select(Some(0));
+        if !state.dotfiles.is_empty() {
+            state.dotfile_list_state.select(Some(0));
         } else {
-            self.ui_state
-                .dotfile_selection
-                .dotfile_list_state
-                .select(None);
+            state.dotfile_list_state.select(None);
         }
 
         Ok(())
     }
 
     /// Refresh file browser entries for current directory
-    fn refresh_file_browser(&mut self) -> Result<()> {
-        let state = &mut self.ui_state.dotfile_selection;
+    fn refresh_file_browser_into(
+        config: &crate::config::Config,
+        state: &mut crate::ui::DotfileSelectionState,
+    ) -> Result<()> {
         let path = &state.file_browser_path;
 
         let mut entries = Vec::new();
@@ -1819,7 +1776,7 @@ impl App {
         }
 
         // Add special marker for "add this folder" (only if it's a directory and safe to add)
-        let repo_path = &self.config.repo_path;
+        let repo_path = &config.repo_path;
         let (is_safe, _) = crate::utils::is_safe_to_add(path, repo_path);
         if is_safe && path.is_dir() {
             entries.push(PathBuf::from(".")); // Special marker for "add this folder"
