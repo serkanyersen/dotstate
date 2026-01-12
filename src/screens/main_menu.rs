@@ -184,26 +184,34 @@ impl Screen for MainMenuScreen {
         // Handle keyboard events
         if let Event::Key(key) = &event {
             if key.kind == KeyEventKind::Press {
-                // Get action from keymap (simplified - app will provide this)
-                // For now, handle raw key codes
-                use crossterm::event::KeyCode;
-
-                match key.code {
-                    KeyCode::Up | KeyCode::Char('k') => {
-                        self.component_mut().move_up();
-                        return Ok(ScreenAction::None);
+                // Use keymap from context
+                if let Some(action) = ctx.config.keymap.get_action(key.code, key.modifiers) {
+                    use crate::keymap::Action;
+                    match action {
+                        Action::MoveUp => {
+                            self.component_mut().move_up();
+                            return Ok(ScreenAction::None);
+                        }
+                        Action::MoveDown => {
+                            self.component_mut().move_down();
+                            return Ok(ScreenAction::None);
+                        }
+                        Action::Confirm => {
+                            // Check for update item selection
+                            if self.is_update_item_selected() {
+                                if let Some(info) = self.get_update_info() {
+                                    let (title, content) = Self::build_update_message(info);
+                                    return Ok(ScreenAction::ShowMessage { title, content });
+                                }
+                            } else {
+                                return self.handle_selection(ctx);
+                            }
+                        }
+                        Action::Quit | Action::Cancel => {
+                            return Ok(ScreenAction::Quit);
+                        }
+                        _ => {}
                     }
-                    KeyCode::Down | KeyCode::Char('j') => {
-                        self.component_mut().move_down();
-                        return Ok(ScreenAction::None);
-                    }
-                    KeyCode::Enter => {
-                        return self.handle_selection(ctx);
-                    }
-                    KeyCode::Char('q') | KeyCode::Esc => {
-                        return Ok(ScreenAction::Quit);
-                    }
-                    _ => {}
                 }
             }
         }

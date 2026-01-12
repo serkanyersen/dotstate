@@ -2,10 +2,10 @@ use crate::components::package_manager::PackageManagerComponent;
 use crate::components::profile_manager::ProfilePopupType;
 use crate::components::{
     Component, ComponentAction, DotfileSelectionComponent,
-    MenuItem, MessageComponent, ProfileManagerComponent,
+    MessageComponent, ProfileManagerComponent,
 };
 use crate::config::{Config, GitHubConfig};
-use crate::screens::{GitHubAuthScreen, MainMenuScreen, SyncWithRemoteScreen, ViewSyncedFilesScreen};
+use crate::screens::{GitHubAuthScreen, MainMenuScreen, Screen as ScreenTrait, SyncWithRemoteScreen, ViewSyncedFilesScreen};
 use crate::git::GitManager;
 use crate::github::GitHubClient;
 use crate::styles::LIST_HIGHLIGHT_SYMBOL;
@@ -847,65 +847,20 @@ impl App {
         // Let components handle events first (for mouse support)
         match self.ui_state.current_screen {
             Screen::MainMenu => {
-                // Handle keyboard events with keymap
-                if let Event::Key(key) = &event {
-                    if key.kind == KeyEventKind::Press {
-                        if let Some(action) = self.get_action(key.code, key.modifiers) {
-                            use crate::keymap::Action;
-                            match action {
-                                Action::MoveUp => {
-                                    self.main_menu_screen.move_up();
-                                    self.ui_state.selected_index =
-                                        self.main_menu_screen.selected_index();
-                                    return Ok(());
-                                }
-                                Action::MoveDown => {
-                                    self.main_menu_screen.move_down();
-                                    self.ui_state.selected_index =
-                                        self.main_menu_screen.selected_index();
-                                    return Ok(());
-                                }
-                                Action::Confirm => {
-                                    // Check for update item selection
-                                    if self.main_menu_screen.is_update_item_selected() {
-                                        self.show_update_info_popup();
-                                    } else {
-                                        self.handle_menu_selection()?;
-                                    }
-                                    return Ok(());
-                                }
-                                Action::Quit | Action::Cancel => {
-                                    self.should_quit = true;
-                                    return Ok(());
-                                }
-                                _ => {}
-                            }
-                        }
-                    }
+                // Router pattern - delegate to screen's handle_event method
+                use crate::screens::ScreenContext;
+                let ctx = ScreenContext::new(&self.config, &self.config_path);
+                let action = self.main_menu_screen.handle_event(event, &ctx)?;
+
+                // Sync selected_index from screen component
+                self.ui_state.selected_index = self.main_menu_screen.selected_index();
+
+                // Handle menu-specific navigation logic before processing action
+                if let crate::screens::ScreenAction::Navigate(target) = &action {
+                    self.handle_menu_navigation(*target)?;
                 }
 
-                // Pass mouse events to screen
-                if matches!(event, Event::Mouse(_)) {
-                    let comp_action = self.main_menu_screen.handle_mouse_event(event)?;
-                    match comp_action {
-                        ComponentAction::Update => {
-                            self.ui_state.selected_index =
-                                self.main_menu_screen.selected_index();
-                            // Mouse click also triggers selection
-                            if self.main_menu_screen.is_update_item_selected() {
-                                self.show_update_info_popup();
-                            } else {
-                                self.handle_menu_selection()?;
-                            }
-                        }
-                        ComponentAction::Custom(ref action_name)
-                            if action_name == "show_update_info" =>
-                        {
-                            self.show_update_info_popup();
-                        }
-                        _ => {}
-                    }
-                }
+                self.process_screen_action(action)?;
                 return Ok(());
             }
             Screen::GitHubAuth => {
@@ -932,11 +887,11 @@ impl App {
                 return Ok(());
             }
             Screen::ViewSyncedFiles => {
-                // This screen is fully self-contained - uses ScreenAction pattern
-                let action = self.view_synced_files_screen.handle_event_action(event)?;
-                if let crate::screens::ScreenAction::Navigate(target) = action {
-                    self.ui_state.current_screen = target;
-                }
+                // Router pattern - delegate to screen's handle_event method
+                use crate::screens::ScreenContext;
+                let ctx = ScreenContext::new(&self.config, &self.config_path);
+                let action = self.view_synced_files_screen.handle_event(event, &ctx)?;
+                self.process_screen_action(action)?;
                 return Ok(());
             }
             Screen::SyncWithRemote => {
@@ -3307,57 +3262,29 @@ impl App {
     }
 
     /// Show the update info popup when user selects the update notification
-    fn show_update_info_popup(&mut self) {
-        if let Some(ref update_info) = self.main_menu_screen.get_update_info().cloned() {
-            let message = format!(
-                "🎉 New version available: {} → {}\n\n\
-                Update options:\n\n\
-                1. Using install script:\n\
-                   curl -fsSL {} | bash\n\n\
-                2. Using Cargo:\n\
-                   cargo install dotstate --force\n\n\
-                3. Using Homebrew:\n\
-                   brew upgrade dotstate\n\n\
-                4. Using CLI (interactive):\n\
-                   dotstate upgrade\n\n\
-                Release notes:\n\
-                {}\n\n\
-                Press any key to close this popup.",
-                update_info.current_version,
-                update_info.latest_version,
-                crate::version_check::UpdateInfo::install_script_url(),
-                update_info.release_url
-            );
 
-            self.message_component = Some(MessageComponent::new(
-                "Update Available".to_string(),
-                message,
-                Screen::MainMenu,
-            ));
-        }
+    /// Check for changes to push and update UI state
+    fn check_changes_to_push(&mut self) {
+        use crate::services::GitService;
+        let result = GitService::check_changes_to_push(&self.config);
+        self.ui_state.has_changes_to_push = result.has_changes;
+        self.ui_state.sync_with_remote.changed_files = result.changed_files;
     }
 
-    fn handle_menu_selection(&mut self) -> Result<()> {
-        // Check for changes when returning to menu
-        if self.ui_state.current_screen == Screen::MainMenu {
-            self.check_changes_to_push();
-        }
-
-        // Get the selected menu item from the component
-        let selected_item = self.main_menu_screen.selected_item();
-        info!("Menu selection: {:?}", selected_item);
-
-        // Check if the selected menu item is enabled (not disabled)
-        let is_setup = self.config.is_repo_configured();
-        if !selected_item.is_enabled(is_setup) {
-            // Menu item is disabled, ignore the selection
-            return Ok(());
-        }
-
-        match selected_item {
-            MenuItem::SetupRepository => {
+    /// Handle navigation-specific logic when navigating from MainMenu
+    fn handle_menu_navigation(&mut self, target: Screen) -> Result<()> {
+        match target {
+            Screen::DotfileSelection => {
+                // Check for changes when returning to menu
+                self.check_changes_to_push();
+                self.scan_dotfiles()?;
+                // Reset state when entering the page
+                self.ui_state.dotfile_selection.status_message = None;
+                // Sync backup_enabled from config
+                self.ui_state.dotfile_selection.backup_enabled = self.config.backup_enabled;
+            }
+            Screen::GitHubAuth => {
                 // Setup git repository
-                // Check if repo is already configured (either GitHub or Local mode)
                 let is_configured = self.config.is_repo_configured();
 
                 // Initialize auth state with current config values
@@ -3365,14 +3292,13 @@ impl App {
                     self.ui_state.github_auth.repo_already_configured = true;
                     self.ui_state.github_auth.is_editing_token = false;
                     self.ui_state.github_auth.token_input = String::new(); // Clear for security
-                                                                           // Load existing values
                     self.ui_state.github_auth.repo_name_input = self.config.repo_name.clone();
                     self.ui_state.github_auth.repo_location_input =
                         self.config.repo_path.to_string_lossy().to_string();
                     self.ui_state.github_auth.local_repo_path_input =
                         self.config.repo_path.to_string_lossy().to_string();
                     self.ui_state.github_auth.is_private = true; // Default to private
-                                                                 // Set setup mode based on config
+                    // Set setup mode based on config
                     self.ui_state.github_auth.setup_mode = match self.config.repo_mode {
                         crate::config::RepoMode::GitHub => crate::ui::SetupMode::GitHub,
                         crate::config::RepoMode::Local => crate::ui::SetupMode::Local,
@@ -3384,27 +3310,12 @@ impl App {
                     self.ui_state.github_auth.setup_mode = crate::ui::SetupMode::Choosing;
                     self.ui_state.github_auth.mode_selection_index = 0;
                 }
-
-                self.ui_state.current_screen = Screen::GitHubAuth;
             }
-            MenuItem::ScanDotfiles => {
-                // Manage Files
-                self.scan_dotfiles()?;
-                // Reset state when entering the page
-                self.ui_state.dotfile_selection.status_message = None;
-                // Sync backup_enabled from config
-                self.ui_state.dotfile_selection.backup_enabled = self.config.backup_enabled;
-                self.ui_state.current_screen = Screen::DotfileSelection;
-            }
-            MenuItem::SyncWithRemote => {
-                // Sync with Remote - just navigate, don't sync yet
-                self.ui_state.current_screen = Screen::SyncWithRemote;
+            Screen::SyncWithRemote => {
                 // Reset sync state
                 self.ui_state.sync_with_remote = crate::ui::SyncWithRemoteState::default();
             }
-            MenuItem::ManageProfiles => {
-                // Manage Profiles
-                self.ui_state.current_screen = Screen::ManageProfiles;
+            Screen::ManageProfiles => {
                 // Initialize list state with first profile selected
                 if let Ok(profiles) = self.get_profiles() {
                     if !profiles.is_empty() {
@@ -3412,30 +3323,63 @@ impl App {
                     }
                 }
             }
-            MenuItem::ManagePackages => {
-                // Manage Packages
-                self.ui_state.current_screen = Screen::ManagePackages;
+            Screen::ManagePackages => {
                 // Load packages from active profile
                 if let Ok(Some(active_profile)) = self.get_active_profile_info() {
-                    let packages = active_profile.packages.clone();
-                    self.ui_state.package_manager.packages = packages;
-                    self.ui_state.package_manager.package_statuses =
-                        vec![PackageStatus::Unknown; self.ui_state.package_manager.packages.len()];
-                    if !self.ui_state.package_manager.packages.is_empty() {
-                        self.ui_state.package_manager.list_state.select(Some(0));
-                    }
+                    self.ui_state.package_manager.packages =
+                        active_profile.packages.clone();
+                } else {
+                    self.ui_state.package_manager.packages = Vec::new();
                 }
+                // Reset package manager state
+                self.ui_state.package_manager.installation_step = InstallationStep::NotStarted;
+                self.ui_state.package_manager.installation_output.clear();
+                self.ui_state.package_manager.popup_type = PackagePopupType::None;
             }
+            _ => {}
         }
         Ok(())
     }
 
-    /// Check for changes to push and update UI state
-    fn check_changes_to_push(&mut self) {
-        use crate::services::GitService;
-        let result = GitService::check_changes_to_push(&self.config);
-        self.ui_state.has_changes_to_push = result.has_changes;
-        self.ui_state.sync_with_remote.changed_files = result.changed_files;
+    /// Process a ScreenAction returned from a screen's handle_event method.
+    fn process_screen_action(&mut self, action: crate::screens::ScreenAction) -> Result<()> {
+        use crate::screens::ScreenAction;
+        match action {
+            ScreenAction::None => {
+                // No action needed
+            }
+            ScreenAction::Navigate(target) => {
+                self.ui_state.current_screen = target;
+            }
+            ScreenAction::NavigateWithMessage { screen, title: _, message: _ } => {
+                // TODO: Show message and navigate
+                self.ui_state.current_screen = screen;
+            }
+            ScreenAction::ShowMessage { title, content } => {
+                // Show message popup using MessageComponent
+                self.message_component = Some(MessageComponent::new(
+                    title,
+                    content,
+                    self.ui_state.current_screen,
+                ));
+            }
+            ScreenAction::Quit => {
+                self.should_quit = true;
+            }
+            ScreenAction::Refresh => {
+                // Trigger a redraw
+            }
+            ScreenAction::SetHasChanges(has_changes) => {
+                self.ui_state.has_changes_to_push = has_changes;
+            }
+            ScreenAction::ConfigUpdated => {
+                // Reload config if needed
+            }
+            ScreenAction::ShowHelp => {
+                self.ui_state.show_help_overlay = true;
+            }
+        }
+        Ok(())
     }
 
     fn handle_github_auth_input(&mut self, key: KeyEvent) -> Result<()> {
