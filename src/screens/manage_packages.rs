@@ -1,21 +1,27 @@
 
+use crate::components::footer::Footer;
+use crate::components::header::Header;
+use crate::components::input_field::InputField;
 use crate::config::Config;
 use crate::keymap::{Action, Keymap};
 use crate::screens::{RenderContext, Screen, ScreenAction, ScreenContext};
 use crate::services::{PackageCreationParams, PackageService};
+use crate::styles::{theme, LIST_HIGHLIGHT_SYMBOL};
 use crate::ui::{
     AddPackageField, InstallationStatus, InstallationStep, PackageManagerState, PackagePopupType,
     PackageStatus, Screen as ScreenEnum,
 };
 use crate::utils::package_installer::PackageInstaller;
 use crate::utils::package_manager::PackageManagerImpl;
-use crate::utils::profile_manifest::Package;
+use crate::utils::profile_manifest::{Package, PackageManager};
 use crate::utils::text_input::{
     handle_backspace, handle_char_insertion, handle_cursor_movement, handle_delete,
 };
+use crate::utils::{center_popup, create_standard_layout, focused_border_style, unfocused_border_style};
 use anyhow::Result;
 use crossterm::event::{Event, KeyCode, KeyModifiers};
 use ratatui::prelude::*;
+use ratatui::widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Wrap};
 use std::time::Duration;
 use tracing::{debug, error, info, warn};
 
@@ -416,9 +422,72 @@ impl ManagePackagesScreen {
 impl Screen for ManagePackagesScreen {
     fn render(&mut self, frame: &mut Frame, area: Rect, ctx: &RenderContext) -> Result<()> {
         let config = ctx.config;
-        let packages = self.state.packages.clone();
-        crate::components::package_manager::PackageManagerComponent::new()
-            .render_with_state(frame, area, &mut self.state, config, &packages)?;
+
+        // Ensure list state is initialized if we have packages
+        if !self.state.packages.is_empty() && self.state.list_state.selected().is_none() {
+            self.state.list_state.select(Some(0));
+        }
+
+        // Check if popup is active or installation is in progress
+        if self.state.popup_type != PackagePopupType::None {
+            // Render background to dim the screen
+            let background = Block::default().style(Style::default().bg(Color::Reset));
+            frame.render_widget(background, area);
+
+            // Render popup
+            self.render_popup(frame, area, config)?;
+        } else if !matches!(self.state.installation_step, InstallationStep::NotStarted) {
+            // Installation in progress - show progress screen
+            self.render_installation_progress(frame, area)?;
+        } else {
+            // Normal rendering when no popup
+            let layout = create_standard_layout(area, 5, 2);
+
+            // Header
+            let _header_height = Header::render(
+                frame,
+                layout.0,
+                "DotState - Manage Packages",
+                "Manage CLI tools and dependencies for your profile",
+            )?;
+
+            // Main content area
+            let main_area = layout.1;
+
+            // Split main area into left (list) and right (details) panels
+            let chunks = Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+                .split(main_area);
+
+            // Left panel: Package list
+            self.render_package_list(frame, chunks[0])?;
+
+            // Right panel: Package details
+            self.render_package_details(frame, chunks[1])?;
+
+            // Footer
+            let footer_text = if self.state.is_checking {
+                "Checking packages...".to_string()
+            } else if !matches!(self.state.installation_step, InstallationStep::NotStarted) {
+                "Installing packages...".to_string()
+            } else {
+                let k = |a| config.keymap.get_key_display_for_action(a);
+                format!(
+                    "{}: Navigate | {}: Add | {}: Edit | {}: Delete | {}: Check All | {}: Check Selected | {}: Install Missing | {}: Back",
+                    config.keymap.navigation_display(),
+                    k(crate::keymap::Action::Create),
+                    k(crate::keymap::Action::Edit),
+                    k(crate::keymap::Action::Delete),
+                    k(crate::keymap::Action::Refresh),
+                    k(crate::keymap::Action::Sync),
+                    k(crate::keymap::Action::Install),
+                    k(crate::keymap::Action::Cancel)
+                )
+            };
+            Footer::render(frame, layout.2, &footer_text)?;
+        }
+
         Ok(())
     }
 
@@ -1152,5 +1221,715 @@ impl ManagePackagesScreen {
         }
 
         Ok(ScreenAction::None)
+    }
+}
+
+// Rendering methods inlined from PackageManagerComponent
+impl ManagePackagesScreen {
+    fn render_package_list(&mut self, frame: &mut Frame, area: Rect) -> Result<()> {
+        let t = theme();
+
+        if self.state.packages.is_empty() {
+            // Show empty state message
+            let paragraph =
+                Paragraph::new("No packages yet.\n\nPress 'A' to add your first package.")
+                    .block(
+                        Block::default()
+                            .borders(Borders::ALL)
+                            .title("Packages")
+                            .border_style(unfocused_border_style())
+                            .padding(ratatui::widgets::Padding::new(1, 1, 1, 1)),
+                    )
+                    .wrap(Wrap { trim: true })
+                    .alignment(Alignment::Center);
+            frame.render_widget(paragraph, area);
+        } else {
+            let items: Vec<ListItem> = self.state
+                .packages
+                .iter()
+                .enumerate()
+                .map(|(idx, package)| {
+                    let status_icon = match self.state.package_statuses.get(idx) {
+                        Some(PackageStatus::Installed) => "✅",
+                        Some(PackageStatus::NotInstalled) => "❌",
+                        Some(PackageStatus::Error(_)) => "⚠️",
+                        _ => {
+                            if self.state.is_checking && self.state.checking_index == Some(idx) {
+                                "🔄"
+                            } else {
+                                "  "
+                            }
+                        }
+                    };
+
+                    let text = format!("{} {}", status_icon, package.name);
+                    let style = match self.state.package_statuses.get(idx) {
+                        Some(PackageStatus::Installed) => Style::default().fg(t.success),
+                        Some(PackageStatus::NotInstalled) => Style::default().fg(t.error),
+                        Some(PackageStatus::Error(_)) => Style::default().fg(t.warning),
+                        _ => Style::default(),
+                    };
+                    ListItem::new(text).style(style)
+                })
+                .collect();
+
+            let list = List::new(items)
+                .block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .title("Packages")
+                        .border_style(focused_border_style()),
+                )
+                .highlight_style(t.highlight_style())
+                .highlight_symbol(LIST_HIGHLIGHT_SYMBOL);
+
+            frame.render_stateful_widget(list, area, &mut self.state.list_state);
+        }
+
+        Ok(())
+    }
+
+    fn render_package_details(&mut self, frame: &mut Frame, area: Rect) -> Result<()> {
+        let selected = self.state.list_state.selected();
+        let details = if let Some(idx) = selected {
+            if let Some(package) = self.state.packages.get(idx) {
+                self.format_package_details(package, idx)
+            } else {
+                "No package selected".to_string()
+            }
+        } else {
+            "No package selected".to_string()
+        };
+
+        let paragraph = Paragraph::new(details)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title("Package Details"),
+            )
+            .wrap(Wrap { trim: true });
+
+        frame.render_widget(paragraph, area);
+
+        Ok(())
+    }
+
+    fn format_package_details(&self, package: &Package, idx: usize) -> String {
+        let mut details = format!("Name: {}\n", package.name);
+
+        if let Some(desc) = &package.description {
+            details.push_str(&format!("Description: {}\n", desc));
+        }
+
+        details.push_str(&format!("Manager: {:?}\n", package.manager));
+
+        if let Some(pkg_name) = &package.package_name {
+            details.push_str(&format!("Package Name: {}\n", pkg_name));
+        }
+
+        details.push_str(&format!("Binary Name: {}\n", package.binary_name));
+
+        // Status
+        let status = self.state.package_statuses.get(idx);
+        match status {
+            Some(PackageStatus::Installed) => details.push_str("\n\nStatus: ✅ Installed"),
+            Some(PackageStatus::NotInstalled) => {
+                details.push_str("\n\nStatus: ❌ Not Installed");
+                // Check if manager is installed for installation purposes
+                if !PackageManagerImpl::is_manager_installed(&package.manager) {
+                    details.push_str(&format!(
+                        "\n⚠️ Package manager '{:?}' is not installed",
+                        package.manager
+                    ));
+                    details.push_str(&format!(
+                        "\n\nInstallation instructions:\n{}",
+                        PackageManagerImpl::installation_instructions(&package.manager)
+                    ));
+                }
+            }
+            Some(PackageStatus::Error(msg)) => {
+                details.push_str(&format!("\n\nStatus: ⚠️ Error: {}", msg))
+            }
+            _ => details.push_str("\n\nStatus: ⏳ Unknown (press 'C' to check)"),
+        }
+
+        details
+    }
+
+    fn render_popup(&mut self, frame: &mut Frame, area: Rect, config: &Config) -> Result<()> {
+        match self.state.popup_type {
+            PackagePopupType::Add | PackagePopupType::Edit => {
+                self.render_add_edit_popup(frame, area, config)?;
+            }
+            PackagePopupType::Delete => {
+                self.render_delete_popup(frame, area, config)?;
+            }
+            PackagePopupType::InstallMissing => {
+                self.render_install_missing_popup(frame, area)?;
+            }
+            PackagePopupType::None => return Ok(()),
+        }
+        Ok(())
+    }
+
+    fn render_add_edit_popup(
+        &mut self,
+        frame: &mut Frame,
+        area: Rect,
+        config: &Config,
+    ) -> Result<()> {
+        let t = theme();
+        // Make popup larger to fit all fields, especially for custom packages
+        let popup_width = 80;
+        let popup_height = if self.state.add_is_custom { 60 } else { 50 };
+        let popup_area = center_popup(area, popup_width, popup_height);
+        frame.render_widget(Clear, popup_area);
+
+        let title = if self.state.add_editing_index.is_some() {
+            "Edit Package"
+        } else {
+            "Add Package"
+        };
+
+        // Build constraints dynamically based on package type
+        let mut constraints = vec![
+            Constraint::Length(1), // Title
+            Constraint::Length(3), // Name
+            Constraint::Length(3), // Description
+            Constraint::Length(4), // Manager selection
+        ];
+
+        if !self.state.add_is_custom {
+            // Managed packages: Package Name, Binary Name
+            constraints.push(Constraint::Length(3)); // Package name
+            constraints.push(Constraint::Length(3)); // Binary name
+        } else {
+            // Custom packages: Binary Name, Install Command, Existence Check
+            constraints.push(Constraint::Length(3)); // Binary name
+            constraints.push(Constraint::Length(3)); // Install command
+            constraints.push(Constraint::Length(3)); // Existence check
+        }
+
+        constraints.push(Constraint::Min(0)); // Spacer
+        constraints.push(Constraint::Length(2)); // Footer
+
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints(constraints)
+            .split(popup_area);
+
+        // Title (no border, just text)
+        let title_para = Paragraph::new(title)
+            .alignment(Alignment::Center)
+            .style(t.title_style());
+        frame.render_widget(title_para, chunks[0]);
+
+        // Name field
+        InputField::render(
+            frame,
+            chunks[1],
+            &self.state.add_name_input,
+            self.state.add_name_cursor,
+            self.state.add_focused_field == AddPackageField::Name,
+            "Name",
+            Some("Package display name"),
+            Alignment::Left,
+            false,
+        )?;
+
+        // Description field
+        InputField::render(
+            frame,
+            chunks[2],
+            &self.state.add_description_input,
+            self.state.add_description_cursor,
+            self.state.add_focused_field == AddPackageField::Description,
+            "Description (optional)",
+            Some("Package description"),
+            Alignment::Left,
+            false,
+        )?;
+
+        // Manager selection
+        self.render_manager_selection(frame, chunks[3])?;
+
+        let mut current_chunk = 4; // Start after title, name, description, manager
+
+        if !self.state.add_is_custom {
+            // Managed packages: Package Name, Binary Name
+            InputField::render(
+                frame,
+                chunks[current_chunk],
+                &self.state.add_package_name_input,
+                self.state.add_package_name_cursor,
+                self.state.add_focused_field == AddPackageField::PackageName,
+                "Package Name",
+                Some("Package name in manager (e.g., 'eza')"),
+                Alignment::Left,
+                false,
+            )?;
+            current_chunk += 1;
+
+            InputField::render(
+                frame,
+                chunks[current_chunk],
+                &self.state.add_binary_name_input,
+                self.state.add_binary_name_cursor,
+                self.state.add_focused_field == AddPackageField::BinaryName,
+                "Binary Name",
+                Some("Binary name to check (e.g., 'eza')"),
+                Alignment::Left,
+                false,
+            )?;
+        } else {
+            // Custom packages: Binary Name, Install Command, Existence Check
+            InputField::render(
+                frame,
+                chunks[current_chunk],
+                &self.state.add_binary_name_input,
+                self.state.add_binary_name_cursor,
+                self.state.add_focused_field == AddPackageField::BinaryName,
+                "Binary Name",
+                Some("Binary name to check (e.g., 'mytool')"),
+                Alignment::Left,
+                false,
+            )?;
+            current_chunk += 1;
+
+            InputField::render(
+                frame,
+                chunks[current_chunk],
+                &self.state.add_install_command_input,
+                self.state.add_install_command_cursor,
+                self.state.add_focused_field == AddPackageField::InstallCommand,
+                "Install Command",
+                Some("Install command (e.g., './install.sh')"),
+                Alignment::Left,
+                false,
+            )?;
+            current_chunk += 1;
+
+            InputField::render(
+                frame,
+                chunks[current_chunk],
+                &self.state.add_existence_check_input,
+                self.state.add_existence_check_cursor,
+                self.state.add_focused_field == AddPackageField::ExistenceCheck,
+                "Existence Check (optional)",
+                Some("Command to check if package exists (if empty, uses binary name check)"),
+                Alignment::Left,
+                false,
+            )?;
+            current_chunk += 1;
+
+            InputField::render(
+                frame,
+                chunks[current_chunk],
+                &self.state.add_manager_check_input,
+                self.state.add_manager_check_cursor,
+                self.state.add_focused_field == AddPackageField::ManagerCheck,
+                "Manager Check (optional)",
+                Some("Custom manager check command (optional fallback)"),
+                Alignment::Left,
+                false,
+            )?;
+        }
+
+        // Footer with instructions (always the last chunk)
+        let k = |a| config.keymap.get_key_display_for_action(a);
+        let footer_text = format!(
+            "{}: Next field | {}: Previous | {}: Save | {}: Cancel",
+            k(crate::keymap::Action::NextTab),
+            k(crate::keymap::Action::PrevTab),
+            k(crate::keymap::Action::Confirm),
+            k(crate::keymap::Action::Cancel)
+        );
+        Footer::render(frame, chunks[chunks.len() - 1], &footer_text)?;
+
+        Ok(())
+    }
+
+    fn render_manager_selection(&mut self, frame: &mut Frame, area: Rect) -> Result<()> {
+        // Initialize available managers if empty
+        if self.state.available_managers.is_empty() {
+            self.state.available_managers = PackageManagerImpl::get_available_managers();
+            if !self.state.available_managers.is_empty() {
+                self.state.add_manager = Some(self.state.available_managers[0].clone());
+                self.state.add_manager_selected = 0;
+            }
+        }
+
+        // Create manager labels with selection state
+        let manager_labels: Vec<(String, bool)> = self.state
+            .available_managers
+            .iter()
+            .enumerate()
+            .map(|(idx, manager)| {
+                let is_selected = self.state.add_manager_selected == idx;
+                let label = format!("{:?}", manager);
+                (label, is_selected)
+            })
+            .collect();
+
+        // Render checkboxes in a horizontal wrapping layout
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .title("Package Manager")
+            .border_style(if self.state.add_focused_field == AddPackageField::Manager {
+                focused_border_style()
+            } else {
+                unfocused_border_style()
+            });
+
+        let inner_area = block.inner(area);
+        frame.render_widget(block, area);
+
+        // Calculate how many checkboxes fit per row and render them
+        let available_width = inner_area.width as usize;
+        let mut current_x = 0;
+        let mut current_y = 0;
+        let line_height = 1;
+
+        let t = theme();
+        for (idx, (label, is_selected)) in manager_labels.iter().enumerate() {
+            // Checkbox format: "[x] Label " or "[ ] Label "
+            let checkbox_marker = if *is_selected { "[x]" } else { "[ ]" };
+            let full_text = format!("{} {} ", checkbox_marker, label);
+            let checkbox_width = full_text.len();
+
+            // Check if we need to wrap to next line
+            if current_x > 0 && (current_x + checkbox_width) > available_width {
+                current_x = 0;
+                current_y += line_height;
+            }
+
+            // Check if we have enough vertical space
+            if current_y >= inner_area.height as usize {
+                break; // Don't render if we're out of space
+            }
+
+            let checkbox_area = Rect::new(
+                inner_area.x + current_x as u16,
+                inner_area.y + current_y as u16,
+                checkbox_width.min(available_width - current_x) as u16,
+                line_height as u16,
+            );
+
+            // Create styled text for checkbox
+            let is_focused = self.state.add_focused_field == AddPackageField::Manager
+                && self.state.add_manager_selected == idx;
+            let checkbox_style = if is_focused {
+                Style::default()
+                    .fg(t.text_emphasis)
+                    .add_modifier(Modifier::BOLD)
+            } else if *is_selected {
+                Style::default().fg(t.success)
+            } else {
+                t.text_style()
+            };
+
+            let checkbox_text = Paragraph::new(full_text).style(checkbox_style);
+            frame.render_widget(checkbox_text, checkbox_area);
+
+            // Update selected manager if this checkbox is selected
+            if *is_selected {
+                self.state.add_manager = Some(self.state.available_managers[idx].clone());
+                self.state.add_manager_selected = idx;
+                // Auto-detect if custom
+                self.state.add_is_custom =
+                    matches!(self.state.available_managers[idx], PackageManager::Custom);
+            }
+
+            current_x += checkbox_width;
+        }
+
+        Ok(())
+    }
+
+    fn render_delete_popup(
+        &mut self,
+        frame: &mut Frame,
+        area: Rect,
+        config: &Config,
+    ) -> Result<()> {
+        let popup_area = center_popup(area, 50, 15);
+        frame.render_widget(Clear, popup_area);
+
+        let package_name = if let Some(idx) = self.state.delete_index {
+            self.state
+                .packages
+                .get(idx)
+                .map(|p| p.name.as_str())
+                .unwrap_or("Unknown")
+        } else {
+            "Unknown"
+        };
+
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(5), // Warning text
+                Constraint::Length(3), // Confirmation input
+                Constraint::Min(0),    // Spacer
+                Constraint::Length(2), // Footer
+            ])
+            .split(popup_area);
+
+        // Warning text
+        let warning_text = format!(
+            "⚠️  Delete Package\n\n\
+            Are you sure you want to delete '{}'?\n\n\
+            Type 'DELETE' to confirm:",
+            package_name
+        );
+
+        let paragraph = Paragraph::new(warning_text)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title("Delete Package"),
+            )
+            .wrap(Wrap { trim: true })
+            .alignment(Alignment::Center);
+
+        frame.render_widget(paragraph, chunks[0]);
+
+        // Confirmation input
+        InputField::render(
+            frame,
+            chunks[1],
+            &self.state.delete_confirm_input,
+            self.state.delete_confirm_cursor,
+            true,
+            "Confirmation",
+            Some("Type 'DELETE' to confirm"),
+            Alignment::Left,
+            false,
+        )?;
+
+        // Footer
+        let k = |a| config.keymap.get_key_display_for_action(a);
+        let footer_text = format!(
+            "{}: Confirm | {}: Cancel",
+            k(crate::keymap::Action::Confirm),
+            k(crate::keymap::Action::Quit)
+        );
+        Footer::render(frame, chunks[3], &footer_text)?;
+
+        Ok(())
+    }
+
+    fn render_installation_progress(&mut self, frame: &mut Frame, area: Rect) -> Result<()> {
+        // Render background
+        let background = Block::default().style(Style::default().bg(Color::Reset));
+        frame.render_widget(background, area);
+
+        match &self.state.installation_step {
+            InstallationStep::NotStarted => {
+                // Should not happen, but handle it
+            }
+            InstallationStep::Installing {
+                package_index: _package_index,
+                package_name,
+                total_packages,
+                packages_to_install,
+                installed,
+                failed,
+                ..
+            } => {
+                let popup_area = center_popup(area, 70, 40);
+                frame.render_widget(Clear, popup_area);
+
+                let chunks = Layout::default()
+                    .direction(Direction::Vertical)
+                    .constraints([
+                        Constraint::Length(1), // Title
+                        Constraint::Length(3), // Progress info
+                        Constraint::Min(10),   // Output area
+                        Constraint::Length(2), // Footer
+                    ])
+                    .split(popup_area);
+
+                let t = theme();
+                // Title
+                let title = Paragraph::new("Installing Packages")
+                    .alignment(Alignment::Center)
+                    .style(t.title_style());
+                frame.render_widget(title, chunks[0]);
+
+                // Progress info
+                let current_num = total_packages - packages_to_install.len();
+                let progress_text = format!(
+                    "Installing: {} ({}/{})\n\nPackages installed: {} | Failed: {}",
+                    package_name,
+                    current_num + 1,
+                    total_packages,
+                    installed.len(),
+                    failed.len()
+                );
+                let progress_para = Paragraph::new(progress_text)
+                    .alignment(Alignment::Center)
+                    .style(Style::default().fg(t.warning));
+                frame.render_widget(progress_para, chunks[1]);
+
+                // Output area (scrollable)
+                let output_text: String = if self.state.installation_output.is_empty() {
+                    "Installing...".to_string()
+                } else {
+                    self.state.installation_output.join("\n")
+                };
+
+                let output_para = Paragraph::new(output_text)
+                    .block(Block::default().borders(Borders::ALL).title("Output"))
+                    .wrap(Wrap { trim: true })
+                    .style(t.text_style());
+                frame.render_widget(output_para, chunks[2]);
+
+                // Footer
+                let footer_text = "Installing packages... (this may take a while)";
+                Footer::render(frame, chunks[3], footer_text)?;
+            }
+            InstallationStep::Complete { installed, failed } => {
+                // Show completion summary
+                let popup_area = center_popup(area, 60, 30);
+                frame.render_widget(Clear, popup_area);
+
+                let chunks = Layout::default()
+                    .direction(Direction::Vertical)
+                    .constraints([
+                        Constraint::Length(1), // Title
+                        Constraint::Min(15),   // Summary
+                        Constraint::Length(2), // Footer
+                    ])
+                    .split(popup_area);
+
+                let t = theme();
+                // Title
+                let title = Paragraph::new("Installation Complete")
+                    .alignment(Alignment::Center)
+                    .style(t.success_style().add_modifier(Modifier::BOLD));
+                frame.render_widget(title, chunks[0]);
+
+                // Summary
+                let mut summary = format!(
+                    "✅ Successfully installed: {} package(s)\n",
+                    installed.len()
+                );
+                if !failed.is_empty() {
+                    summary.push_str(&format!("❌ Failed: {} package(s)\n\n", failed.len()));
+                    summary.push_str("Failed packages:\n");
+                    for (idx, error) in failed {
+                        if let Some(pkg) = self.state.packages.get(*idx) {
+                            summary.push_str(&format!("  • {}: {}\n", pkg.name, error));
+                        }
+                    }
+                }
+
+                let summary_para = Paragraph::new(summary)
+                    .block(Block::default().borders(Borders::ALL).title("Summary"))
+                    .wrap(Wrap { trim: true })
+                    .style(t.text_style());
+                frame.render_widget(summary_para, chunks[1]);
+
+                // Footer
+                let footer_text = "Press any key to continue";
+                Footer::render(frame, chunks[2], footer_text)?;
+            }
+        }
+
+        Ok(())
+    }
+
+    fn render_install_missing_popup(&mut self, frame: &mut Frame, area: Rect) -> Result<()> {
+        let popup_area = center_popup(area, 60, 25);
+        frame.render_widget(Clear, popup_area);
+
+        // Count missing packages
+        let missing_count = self.state
+            .package_statuses
+            .iter()
+            .filter(|s| matches!(s, PackageStatus::NotInstalled))
+            .count();
+
+        let missing_packages: Vec<String> = self.state
+            .packages
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, pkg)| {
+                if matches!(
+                    self.state.package_statuses.get(idx),
+                    Some(PackageStatus::NotInstalled)
+                ) {
+                    Some(pkg.name.clone())
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(3), // Title
+                Constraint::Length(1), // Spacer
+                Constraint::Length(3), // Message
+                Constraint::Min(0),    // Package list
+                Constraint::Length(1), // Spacer
+                Constraint::Length(1), // Instructions
+            ])
+            .split(popup_area);
+
+        let t = theme();
+        // Title
+        let title = Paragraph::new("Install Missing Packages")
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title("Package Manager")
+                    .title_alignment(Alignment::Center)
+                    .style(t.background_style()),
+            )
+            .alignment(Alignment::Center)
+            .style(Style::default().fg(t.warning).add_modifier(Modifier::BOLD));
+        frame.render_widget(title, chunks[0]);
+
+        // Message
+        let message = if missing_count == 1 {
+            "1 package is missing. Do you want to install it?".to_string()
+        } else {
+            format!(
+                "{} packages are missing. Do you want to install them?",
+                missing_count
+            )
+        };
+        let message_para = Paragraph::new(message)
+            .wrap(Wrap { trim: true })
+            .style(t.text_style());
+        frame.render_widget(message_para, chunks[2]);
+
+        // Package list
+        if !missing_packages.is_empty() {
+            let package_list: Vec<ListItem> = missing_packages
+                .iter()
+                .map(|name| {
+                    ListItem::new(format!("  • {}", name)).style(Style::default().fg(t.primary))
+                })
+                .collect();
+            let list = List::new(package_list).block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title("Packages to Install")
+                    .border_style(t.border_style()),
+            );
+            frame.render_widget(list, chunks[3]);
+        }
+
+        // Instructions
+        let instructions = Paragraph::new("Press Y/Enter to install, N/Esc to cancel")
+            .alignment(Alignment::Center)
+            .style(t.muted_style());
+        frame.render_widget(instructions, chunks[5]);
+
+        Ok(())
     }
 }

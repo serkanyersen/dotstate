@@ -11,7 +11,6 @@ pub mod input_field;
 pub mod main_menu;
 pub mod message;
 pub mod message_box;
-pub mod package_manager;
 
 pub mod synced_files;
 
@@ -23,7 +22,5 @@ pub use component::{Component, ComponentAction};
 pub use github_auth::GitHubAuthComponent;
 pub use main_menu::{MainMenuComponent, MenuItem};
 pub use message::MessageComponent;
-pub use package_manager::PackageManagerComponent;
 
 pub use synced_files::SyncedFilesComponent;
-// PackageManagerComponent is used directly via module path in app.rs
