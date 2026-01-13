@@ -94,15 +94,13 @@ impl GitHubAuthComponent {
             if self.auth_state.repo_already_configured && !self.auth_state.is_editing_token {
                 "••••••••••••••••••••••••••••••••••••••••"
             } else {
-                &self.auth_state.token_input
+                self.auth_state.token_input.text()
             };
 
         let cursor_pos = if is_focused
             && (!self.auth_state.repo_already_configured || self.auth_state.is_editing_token)
         {
-            self.auth_state
-                .cursor_position
-                .min(self.auth_state.token_input.chars().count())
+            self.auth_state.token_input.cursor()
         } else {
             0
         };
@@ -134,9 +132,7 @@ impl GitHubAuthComponent {
         let is_disabled = self.auth_state.repo_already_configured;
 
         let cursor_pos = if is_focused && !is_disabled {
-            self.auth_state
-                .cursor_position
-                .min(self.auth_state.repo_name_input.chars().count())
+            self.auth_state.repo_name_input.cursor()
         } else {
             0
         };
@@ -148,7 +144,7 @@ impl GitHubAuthComponent {
         InputField::render(
             frame,
             area,
-            &self.auth_state.repo_name_input,
+            self.auth_state.repo_name_input.text(),
             cursor_pos,
             is_focused && !is_disabled,
             "Repository Name",
@@ -164,9 +160,7 @@ impl GitHubAuthComponent {
         let is_disabled = self.auth_state.repo_already_configured;
 
         let cursor_pos = if is_focused && !is_disabled {
-            self.auth_state
-                .cursor_position
-                .min(self.auth_state.repo_location_input.chars().count())
+            self.auth_state.repo_location_input.cursor()
         } else {
             0
         };
@@ -178,7 +172,7 @@ impl GitHubAuthComponent {
         InputField::render(
             frame,
             area,
-            &self.auth_state.repo_location_input,
+            self.auth_state.repo_location_input.text(),
             cursor_pos,
             is_focused && !is_disabled,
             "Local Path",
@@ -496,9 +490,7 @@ impl GitHubAuthComponent {
         // Path input field
         let is_disabled = self.auth_state.repo_already_configured;
         let cursor_pos = if !is_disabled {
-            self.auth_state
-                .local_repo_path_cursor
-                .min(self.auth_state.local_repo_path_input.chars().count())
+            self.auth_state.local_repo_path_input.cursor()
         } else {
             0
         };
@@ -510,7 +502,7 @@ impl GitHubAuthComponent {
         InputField::render(
             frame,
             left_layout[2],
-            &self.auth_state.local_repo_path_input,
+            self.auth_state.local_repo_path_input.text(),
             cursor_pos,
             self.auth_state.input_focused && !is_disabled,
             "Local Repository Path",
@@ -562,7 +554,7 @@ impl GitHubAuthComponent {
             frame.render_widget(error_para, area);
         } else if self.auth_state.repo_already_configured {
             // Show current configuration details when already configured
-            let path = &self.auth_state.local_repo_path_input;
+            let path = self.auth_state.local_repo_path_input.text();
             let expanded_path = crate::git::expand_path(path);
             let validation = crate::git::validate_local_repo(&expanded_path);
 

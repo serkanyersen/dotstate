@@ -8,7 +8,6 @@ use crate::styles::{theme, LIST_HIGHLIGHT_SYMBOL};
 use crate::ui::Screen as ScreenId;
 use crate::utils::{
     center_popup, create_standard_layout, focused_border_style, unfocused_border_style,
-    text_input::{handle_backspace, handle_char_insertion, handle_cursor_movement, handle_delete},
 };
 use anyhow::Result;
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
@@ -43,18 +42,14 @@ pub struct ProfileManagerState {
     pub clickable_areas: Vec<(Rect, usize)>, // (area, profile_index)
     pub popup_type: ProfilePopupType,
     // Create popup state
-    pub create_name_input: String,
-    pub create_name_cursor: usize,
-    pub create_description_input: String,
-    pub create_description_cursor: usize,
+    pub create_name_input: crate::utils::TextInput,
+    pub create_description_input: crate::utils::TextInput,
     pub create_copy_from: Option<usize>, // Index of profile to copy from
     pub create_focused_field: CreateField, // Which field is focused
     // Rename popup state
-    pub rename_input: String,
-    pub rename_cursor: usize,
+    pub rename_input: crate::utils::TextInput,
     // Delete popup state
-    pub delete_confirm_input: String,
-    pub delete_confirm_cursor: usize,
+    pub delete_confirm_input: crate::utils::TextInput,
     // Clickable areas for form fields (for mouse support)
     pub create_name_area: Option<Rect>,
     pub create_description_area: Option<Rect>,
@@ -68,16 +63,12 @@ impl Default for ProfileManagerState {
             list_state: ListState::default(),
             clickable_areas: Vec::new(),
             popup_type: ProfilePopupType::None,
-            create_name_input: String::new(),
-            create_name_cursor: 0,
-            create_description_input: String::new(),
-            create_description_cursor: 0,
+            create_name_input: crate::utils::TextInput::new(),
+            create_description_input: crate::utils::TextInput::new(),
             create_copy_from: None,
             create_focused_field: CreateField::Name,
-            rename_input: String::new(),
-            rename_cursor: 0,
-            delete_confirm_input: String::new(),
-            delete_confirm_cursor: 0,
+            rename_input: crate::utils::TextInput::new(),
+            delete_confirm_input: crate::utils::TextInput::new(),
             create_name_area: None,
             create_description_area: None,
             profiles: Vec::new(),
@@ -414,8 +405,8 @@ impl ManageProfilesScreen {
         InputField::render(
             frame,
             chunks[1],
-            &self.state.create_name_input,
-            self.state.create_name_cursor,
+            self.state.create_name_input.text(),
+            self.state.create_name_input.cursor(),
             self.state.create_focused_field == CreateField::Name, // Focused based on state
             "Profile Name",
             Some("e.g., Personal-Mac, Work-Linux"),
@@ -427,8 +418,8 @@ impl ManageProfilesScreen {
         InputField::render(
             frame,
             chunks[2],
-            &self.state.create_description_input,
-            self.state.create_description_cursor,
+            self.state.create_description_input.text(),
+            self.state.create_description_input.cursor(),
             self.state.create_focused_field == CreateField::Description, // Focused based on state
             "Description (optional)",
             None,
@@ -623,8 +614,8 @@ impl ManageProfilesScreen {
         InputField::render(
             frame,
             chunks[1],
-            &self.state.rename_input,
-            self.state.rename_cursor,
+            self.state.rename_input.text(),
+            self.state.rename_input.cursor(),
             true,
             "New Name",
             Some("Enter new profile name"),
@@ -695,8 +686,8 @@ impl ManageProfilesScreen {
                 InputField::render(
                     frame,
                     chunks[1],
-                    &self.state.delete_confirm_input,
-                    self.state.delete_confirm_cursor,
+                    self.state.delete_confirm_input.text(),
+                    self.state.delete_confirm_input.cursor(),
                     true,
                     "Type profile name to confirm",
                     Some(&p.name),
@@ -850,14 +841,14 @@ impl Screen for ManageProfilesScreen {
                                             // So we should just proceed to create.
                                         }
 
-                                        if !self.state.create_name_input.is_empty() {
-                                            let name = self.state.create_name_input.clone();
+                                        if !self.state.create_name_input.text().is_empty() {
+                                            let name = self.state.create_name_input.text().to_string();
                                             let description =
-                                                if self.state.create_description_input.is_empty() {
+                                                if self.state.create_description_input.text().is_empty() {
                                                     None
                                                 } else {
                                                     Some(
-                                                        self.state.create_description_input.clone(),
+                                                        self.state.create_description_input.text().to_string(),
                                                     )
                                                 };
                                             let copy_from = self.state.create_copy_from;
@@ -914,69 +905,56 @@ impl Screen for ManageProfilesScreen {
                                 }
                                 _ => {
                                     if let Some(act) = action {
-                                        let key_code = match act {
-                                            Action::MoveLeft => KeyCode::Left,
-                                            Action::MoveRight => KeyCode::Right,
-                                            Action::Home => KeyCode::Home,
-                                            Action::End => KeyCode::End,
-                                            Action::Backspace => KeyCode::Backspace,
-                                            Action::DeleteChar => KeyCode::Delete,
-                                            _ => KeyCode::Null,
-                                        };
-
-                                        if key_code != KeyCode::Null {
-                                            match self.state.create_focused_field {
-                                                CreateField::Name => {
-                                                    if act == Action::Backspace {
-                                                        handle_backspace(
-                                                            &mut self.state.create_name_input,
-                                                            &mut self.state.create_name_cursor,
-                                                        );
-                                                    } else if act == Action::DeleteChar {
-                                                        handle_delete(
-                                                            &mut self.state.create_name_input,
-                                                            &mut self.state.create_name_cursor,
-                                                        );
-                                                    } else {
-                                                        handle_cursor_movement(
-                                                            &self.state.create_name_input,
-                                                            &mut self.state.create_name_cursor,
-                                                            key_code,
-                                                        );
-                                                    }
+                                        match act {
+                                            Action::MoveLeft => {
+                                                match self.state.create_focused_field {
+                                                    CreateField::Name => self.state.create_name_input.move_left(),
+                                                    CreateField::Description => self.state.create_description_input.move_left(),
+                                                    _ => {}
                                                 }
-                                                CreateField::Description => {
-                                                    if act == Action::Backspace {
-                                                        handle_backspace(
-                                                            &mut self
-                                                                .state
-                                                                .create_description_input,
-                                                            &mut self
-                                                                .state
-                                                                .create_description_cursor,
-                                                        );
-                                                    } else if act == Action::DeleteChar {
-                                                        handle_delete(
-                                                            &mut self
-                                                                .state
-                                                                .create_description_input,
-                                                            &mut self
-                                                                .state
-                                                                .create_description_cursor,
-                                                        );
-                                                    } else {
-                                                        handle_cursor_movement(
-                                                            &self.state.create_description_input,
-                                                            &mut self
-                                                                .state
-                                                                .create_description_cursor,
-                                                            key_code,
-                                                        );
-                                                    }
-                                                }
-                                                _ => {}
+                                                return Ok(ScreenAction::Refresh);
                                             }
-                                            return Ok(ScreenAction::Refresh);
+                                            Action::MoveRight => {
+                                                match self.state.create_focused_field {
+                                                    CreateField::Name => self.state.create_name_input.move_right(),
+                                                    CreateField::Description => self.state.create_description_input.move_right(),
+                                                    _ => {}
+                                                }
+                                                return Ok(ScreenAction::Refresh);
+                                            }
+                                            Action::Home => {
+                                                match self.state.create_focused_field {
+                                                    CreateField::Name => self.state.create_name_input.move_home(),
+                                                    CreateField::Description => self.state.create_description_input.move_home(),
+                                                    _ => {}
+                                                }
+                                                return Ok(ScreenAction::Refresh);
+                                            }
+                                            Action::End => {
+                                                match self.state.create_focused_field {
+                                                    CreateField::Name => self.state.create_name_input.move_end(),
+                                                    CreateField::Description => self.state.create_description_input.move_end(),
+                                                    _ => {}
+                                                }
+                                                return Ok(ScreenAction::Refresh);
+                                            }
+                                            Action::Backspace => {
+                                                match self.state.create_focused_field {
+                                                    CreateField::Name => self.state.create_name_input.backspace(),
+                                                    CreateField::Description => self.state.create_description_input.backspace(),
+                                                    _ => {}
+                                                }
+                                                return Ok(ScreenAction::Refresh);
+                                            }
+                                            Action::DeleteChar => {
+                                                match self.state.create_focused_field {
+                                                    CreateField::Name => self.state.create_name_input.delete(),
+                                                    CreateField::Description => self.state.create_description_input.delete(),
+                                                    _ => {}
+                                                }
+                                                return Ok(ScreenAction::Refresh);
+                                            }
+                                            _ => {}
                                         }
                                     }
 
@@ -989,18 +967,10 @@ impl Screen for ManageProfilesScreen {
                                         ) {
                                             match self.state.create_focused_field {
                                                 CreateField::Name => {
-                                                    handle_char_insertion(
-                                                        &mut self.state.create_name_input,
-                                                        &mut self.state.create_name_cursor,
-                                                        c,
-                                                    );
+                                                    self.state.create_name_input.insert_char(c);
                                                 }
                                                 CreateField::Description => {
-                                                    handle_char_insertion(
-                                                        &mut self.state.create_description_input,
-                                                        &mut self.state.create_description_cursor,
-                                                        c,
-                                                    );
+                                                    self.state.create_description_input.insert_char(c);
                                                 }
                                                 _ => {}
                                             }
@@ -1018,12 +988,12 @@ impl Screen for ManageProfilesScreen {
                                         return Ok(ScreenAction::Refresh);
                                     }
                                     Action::Confirm => {
-                                        if !self.state.rename_input.is_empty() {
+                                        if !self.state.rename_input.text().is_empty() {
                                             if let Some(idx) = self.state.list_state.selected() {
                                                 let profiles = &self.state.profiles;
                                                 if let Some(profile) = profiles.get(idx) {
                                                     let old_name = profile.name.clone();
-                                                    let new_name = self.state.rename_input.clone();
+                                                    let new_name = self.state.rename_input.text().to_string();
                                                     self.state.popup_type = ProfilePopupType::None;
                                                     self.state.rename_input.clear();
                                                     return Ok(ScreenAction::RenameProfile {
@@ -1036,35 +1006,27 @@ impl Screen for ManageProfilesScreen {
                                         return Ok(ScreenAction::None);
                                     }
                                     Action::Backspace => {
-                                        handle_backspace(
-                                            &mut self.state.rename_input,
-                                            &mut self.state.rename_cursor,
-                                        );
+                                        self.state.rename_input.backspace();
                                         return Ok(ScreenAction::Refresh);
                                     }
                                     Action::DeleteChar => {
-                                        handle_delete(
-                                            &mut self.state.rename_input,
-                                            &mut self.state.rename_cursor,
-                                        );
+                                        self.state.rename_input.delete();
                                         return Ok(ScreenAction::Refresh);
                                     }
-                                    Action::MoveLeft
-                                    | Action::MoveRight
-                                    | Action::Home
-                                    | Action::End => {
-                                        let key_code = match action {
-                                            Action::MoveLeft => KeyCode::Left,
-                                            Action::MoveRight => KeyCode::Right,
-                                            Action::Home => KeyCode::Home,
-                                            Action::End => KeyCode::End,
-                                            _ => KeyCode::Null,
-                                        };
-                                        handle_cursor_movement(
-                                            &self.state.rename_input,
-                                            &mut self.state.rename_cursor,
-                                            key_code,
-                                        );
+                                    Action::MoveLeft => {
+                                        self.state.rename_input.move_left();
+                                        return Ok(ScreenAction::Refresh);
+                                    }
+                                    Action::MoveRight => {
+                                        self.state.rename_input.move_right();
+                                        return Ok(ScreenAction::Refresh);
+                                    }
+                                    Action::Home => {
+                                        self.state.rename_input.move_home();
+                                        return Ok(ScreenAction::Refresh);
+                                    }
+                                    Action::End => {
+                                        self.state.rename_input.move_end();
                                         return Ok(ScreenAction::Refresh);
                                     }
                                     _ => {}
@@ -1076,11 +1038,7 @@ impl Screen for ManageProfilesScreen {
                                 if !key.modifiers.intersects(
                                     KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SUPER,
                                 ) {
-                                    handle_char_insertion(
-                                        &mut self.state.rename_input,
-                                        &mut self.state.rename_cursor,
-                                        c,
-                                    );
+                                    self.state.rename_input.insert_char(c);
                                     return Ok(ScreenAction::Refresh);
                                 }
                             }
@@ -1096,7 +1054,7 @@ impl Screen for ManageProfilesScreen {
                                         if let Some(idx) = self.state.list_state.selected() {
                                             let profiles = &self.state.profiles;
                                             if let Some(profile) = profiles.get(idx) {
-                                                if self.state.delete_confirm_input == profile.name {
+                                                if self.state.delete_confirm_input.text() == profile.name {
                                                     let name = profile.name.clone();
                                                     self.state.popup_type = ProfilePopupType::None;
                                                     self.state.delete_confirm_input.clear();
@@ -1111,35 +1069,27 @@ impl Screen for ManageProfilesScreen {
                                         return Ok(ScreenAction::None);
                                     }
                                     Action::Backspace => {
-                                        handle_backspace(
-                                            &mut self.state.delete_confirm_input,
-                                            &mut self.state.delete_confirm_cursor,
-                                        );
+                                        self.state.delete_confirm_input.backspace();
                                         return Ok(ScreenAction::Refresh);
                                     }
                                     Action::DeleteChar => {
-                                        handle_delete(
-                                            &mut self.state.delete_confirm_input,
-                                            &mut self.state.delete_confirm_cursor,
-                                        );
+                                        self.state.delete_confirm_input.delete();
                                         return Ok(ScreenAction::Refresh);
                                     }
-                                    Action::MoveLeft
-                                    | Action::MoveRight
-                                    | Action::Home
-                                    | Action::End => {
-                                        let key_code = match action {
-                                            Action::MoveLeft => KeyCode::Left,
-                                            Action::MoveRight => KeyCode::Right,
-                                            Action::Home => KeyCode::Home,
-                                            Action::End => KeyCode::End,
-                                            _ => KeyCode::Null,
-                                        };
-                                        handle_cursor_movement(
-                                            &self.state.delete_confirm_input,
-                                            &mut self.state.delete_confirm_cursor,
-                                            key_code,
-                                        );
+                                    Action::MoveLeft => {
+                                        self.state.delete_confirm_input.move_left();
+                                        return Ok(ScreenAction::Refresh);
+                                    }
+                                    Action::MoveRight => {
+                                        self.state.delete_confirm_input.move_right();
+                                        return Ok(ScreenAction::Refresh);
+                                    }
+                                    Action::Home => {
+                                        self.state.delete_confirm_input.move_home();
+                                        return Ok(ScreenAction::Refresh);
+                                    }
+                                    Action::End => {
+                                        self.state.delete_confirm_input.move_end();
                                         return Ok(ScreenAction::Refresh);
                                     }
                                     _ => {}
@@ -1149,11 +1099,7 @@ impl Screen for ManageProfilesScreen {
                                 if !key.modifiers.intersects(
                                     KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SUPER,
                                 ) {
-                                    handle_char_insertion(
-                                        &mut self.state.delete_confirm_input,
-                                        &mut self.state.delete_confirm_cursor,
-                                        c,
-                                    );
+                                    self.state.delete_confirm_input.insert_char(c);
                                     return Ok(ScreenAction::Refresh);
                                 }
                             }
@@ -1227,9 +1173,7 @@ impl Screen for ManageProfilesScreen {
                                 let profiles = &self.state.profiles;
                                 if let Some(profile) = profiles.get(idx) {
                                     self.state.popup_type = ProfilePopupType::Rename;
-                                    self.state.rename_input = profile.name.clone();
-                                    self.state.rename_cursor =
-                                        self.state.rename_input.chars().count();
+                                    self.state.rename_input = crate::utils::TextInput::with_text(&profile.name);
                                     return Ok(ScreenAction::Refresh);
                                 }
                             }

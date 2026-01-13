@@ -14,9 +14,6 @@ use crate::ui::{
 use crate::utils::package_installer::PackageInstaller;
 use crate::utils::package_manager::PackageManagerImpl;
 use crate::utils::profile_manifest::{Package, PackageManager};
-use crate::utils::text_input::{
-    handle_backspace, handle_char_insertion, handle_cursor_movement, handle_delete,
-};
 use crate::utils::{center_popup, create_standard_layout, focused_border_style, unfocused_border_style};
 use anyhow::Result;
 use crossterm::event::{Event, KeyCode, KeyModifiers};
@@ -662,7 +659,6 @@ impl ManagePackagesScreen {
                             state.delete_index = Some(idx);
                             state.popup_type = PackagePopupType::Delete;
                             state.delete_confirm_input.clear();
-                            state.delete_confirm_cursor = 0;
                             return Ok(ScreenAction::Refresh);
                         }
                     }
@@ -688,19 +684,12 @@ impl ManagePackagesScreen {
         state.popup_type = PackagePopupType::Add;
         state.add_editing_index = None;
         state.add_name_input.clear();
-        state.add_name_cursor = 0;
         state.add_description_input.clear();
-        state.add_description_cursor = 0;
         state.add_package_name_input.clear();
-        state.add_package_name_cursor = 0;
         state.add_binary_name_input.clear();
-        state.add_binary_name_cursor = 0;
         state.add_install_command_input.clear();
-        state.add_install_command_cursor = 0;
         state.add_existence_check_input.clear();
-        state.add_existence_check_cursor = 0;
         state.add_manager_check_input.clear();
-        state.add_manager_check_cursor = 0;
         state.add_focused_field = AddPackageField::Name;
         // Initialize managers
         state.available_managers = PackageManagerImpl::get_available_managers();
@@ -721,20 +710,13 @@ impl ManagePackagesScreen {
         if let Some(pkg) = state.packages.get(index) {
             state.popup_type = PackagePopupType::Edit;
             state.add_editing_index = Some(index);
-            state.add_name_input = pkg.name.clone();
-            state.add_name_cursor = pkg.name.chars().count();
-            state.add_description_input = pkg.description.clone().unwrap_or_default();
-            state.add_description_cursor = state.add_description_input.chars().count();
-            state.add_package_name_input = pkg.package_name.clone().unwrap_or_default();
-            state.add_package_name_cursor = state.add_package_name_input.chars().count();
-            state.add_binary_name_input = pkg.binary_name.clone();
-            state.add_binary_name_cursor = pkg.binary_name.chars().count();
-            state.add_install_command_input = pkg.install_command.clone().unwrap_or_default();
-            state.add_install_command_cursor = state.add_install_command_input.chars().count();
-            state.add_existence_check_input = pkg.existence_check.clone().unwrap_or_default();
-            state.add_existence_check_cursor = state.add_existence_check_input.chars().count();
-            state.add_manager_check_input = pkg.manager_check.clone().unwrap_or_default();
-            state.add_manager_check_cursor = state.add_manager_check_input.chars().count();
+            state.add_name_input = crate::utils::TextInput::with_text(&pkg.name);
+            state.add_description_input = crate::utils::TextInput::with_text(pkg.description.clone().unwrap_or_default());
+            state.add_package_name_input = crate::utils::TextInput::with_text(pkg.package_name.clone().unwrap_or_default());
+            state.add_binary_name_input = crate::utils::TextInput::with_text(&pkg.binary_name);
+            state.add_install_command_input = crate::utils::TextInput::with_text(pkg.install_command.clone().unwrap_or_default());
+            state.add_existence_check_input = crate::utils::TextInput::with_text(pkg.existence_check.clone().unwrap_or_default());
+            state.add_manager_check_input = crate::utils::TextInput::with_text(pkg.manager_check.clone().unwrap_or_default());
 
             state.available_managers = PackageManagerImpl::get_available_managers();
             state.add_manager = Some(pkg.manager.clone());
@@ -855,13 +837,13 @@ impl ManagePackagesScreen {
                             is_custom,
                             edit_idx,
                         ) = (
-                            state.add_name_input.clone(),
-                            state.add_description_input.clone(),
-                            state.add_package_name_input.clone(),
-                            state.add_binary_name_input.clone(),
-                            state.add_install_command_input.clone(),
-                            state.add_existence_check_input.clone(),
-                            state.add_manager_check_input.clone(),
+                            state.add_name_input.text().to_string(),
+                            state.add_description_input.text().to_string(),
+                            state.add_package_name_input.text().to_string(),
+                            state.add_binary_name_input.text().to_string(),
+                            state.add_install_command_input.text().to_string(),
+                            state.add_existence_check_input.text().to_string(),
+                            state.add_manager_check_input.text().to_string(),
                             state.add_manager.clone(),
                             state.add_is_custom,
                             state.add_editing_index,
@@ -958,85 +940,86 @@ impl ManagePackagesScreen {
             }
         }
 
-        // Text input handling
-        let key_code = match action {
-            Some(Action::MoveLeft) => Some(KeyCode::Left),
-            Some(Action::MoveRight) => Some(KeyCode::Right),
-            Some(Action::Home) => Some(KeyCode::Home),
-            Some(Action::End) => Some(KeyCode::End),
-            _ => None,
-        };
-
-        if let Some(k) = key_code {
-            match state.add_focused_field {
-                AddPackageField::Name => {
-                    handle_cursor_movement(&state.add_name_input, &mut state.add_name_cursor, k)
+        // Text input handling - cursor movement
+        match action {
+            Some(Action::MoveLeft) => {
+                match state.add_focused_field {
+                    AddPackageField::Name => state.add_name_input.move_left(),
+                    AddPackageField::Description => state.add_description_input.move_left(),
+                    AddPackageField::PackageName => state.add_package_name_input.move_left(),
+                    AddPackageField::BinaryName => state.add_binary_name_input.move_left(),
+                    AddPackageField::InstallCommand => state.add_install_command_input.move_left(),
+                    AddPackageField::ExistenceCheck => state.add_existence_check_input.move_left(),
+                    _ => {}
                 }
-                AddPackageField::Description => handle_cursor_movement(
-                    &state.add_description_input,
-                    &mut state.add_description_cursor,
-                    k,
-                ),
-                AddPackageField::PackageName => handle_cursor_movement(
-                    &state.add_package_name_input,
-                    &mut state.add_package_name_cursor,
-                    k,
-                ),
-                AddPackageField::BinaryName => handle_cursor_movement(
-                    &state.add_binary_name_input,
-                    &mut state.add_binary_name_cursor,
-                    k,
-                ),
-                AddPackageField::InstallCommand => handle_cursor_movement(
-                    &state.add_install_command_input,
-                    &mut state.add_install_command_cursor,
-                    k,
-                ),
-                AddPackageField::ExistenceCheck => handle_cursor_movement(
-                    &state.add_existence_check_input,
-                    &mut state.add_existence_check_cursor,
-                    k,
-                ),
-                _ => {}
+                return Ok(ScreenAction::Refresh);
             }
-            return Ok(ScreenAction::Refresh);
+            Some(Action::MoveRight) => {
+                match state.add_focused_field {
+                    AddPackageField::Name => state.add_name_input.move_right(),
+                    AddPackageField::Description => state.add_description_input.move_right(),
+                    AddPackageField::PackageName => state.add_package_name_input.move_right(),
+                    AddPackageField::BinaryName => state.add_binary_name_input.move_right(),
+                    AddPackageField::InstallCommand => state.add_install_command_input.move_right(),
+                    AddPackageField::ExistenceCheck => state.add_existence_check_input.move_right(),
+                    _ => {}
+                }
+                return Ok(ScreenAction::Refresh);
+            }
+            Some(Action::Home) => {
+                match state.add_focused_field {
+                    AddPackageField::Name => state.add_name_input.move_home(),
+                    AddPackageField::Description => state.add_description_input.move_home(),
+                    AddPackageField::PackageName => state.add_package_name_input.move_home(),
+                    AddPackageField::BinaryName => state.add_binary_name_input.move_home(),
+                    AddPackageField::InstallCommand => state.add_install_command_input.move_home(),
+                    AddPackageField::ExistenceCheck => state.add_existence_check_input.move_home(),
+                    _ => {}
+                }
+                return Ok(ScreenAction::Refresh);
+            }
+            Some(Action::End) => {
+                match state.add_focused_field {
+                    AddPackageField::Name => state.add_name_input.move_end(),
+                    AddPackageField::Description => state.add_description_input.move_end(),
+                    AddPackageField::PackageName => state.add_package_name_input.move_end(),
+                    AddPackageField::BinaryName => state.add_binary_name_input.move_end(),
+                    AddPackageField::InstallCommand => state.add_install_command_input.move_end(),
+                    AddPackageField::ExistenceCheck => state.add_existence_check_input.move_end(),
+                    _ => {}
+                }
+                return Ok(ScreenAction::Refresh);
+            }
+            _ => {}
         }
 
         if let Some(Action::Backspace) = action {
             match state.add_focused_field {
                 AddPackageField::Name => {
-                    handle_backspace(&mut state.add_name_input, &mut state.add_name_cursor)
+                    state.add_name_input.backspace();
                 }
-                AddPackageField::Description => handle_backspace(
-                    &mut state.add_description_input,
-                    &mut state.add_description_cursor,
-                ),
+                AddPackageField::Description => {
+                    state.add_description_input.backspace();
+                }
                 AddPackageField::PackageName => {
-                    handle_backspace(
-                        &mut state.add_package_name_input,
-                        &mut state.add_package_name_cursor,
-                    );
+                    state.add_package_name_input.backspace();
                     // Update binary name suggestion
                     let new_suggestion =
-                        PackageManagerImpl::suggest_binary_name(&state.add_package_name_input);
-                    if state.add_binary_name_input.is_empty() {
+                        PackageManagerImpl::suggest_binary_name(state.add_package_name_input.text());
+                    if state.add_binary_name_input.text().is_empty() {
                         // Simplification: Only if empty for now, or elaborate logic if needed
-                        state.add_binary_name_input = new_suggestion;
-                        state.add_binary_name_cursor = state.add_binary_name_input.chars().count();
+                        state.add_binary_name_input = crate::utils::TextInput::with_text(new_suggestion);
                     }
                 }
-                AddPackageField::BinaryName => handle_backspace(
-                    &mut state.add_binary_name_input,
-                    &mut state.add_binary_name_cursor,
-                ),
-                AddPackageField::InstallCommand => handle_backspace(
-                    &mut state.add_install_command_input,
-                    &mut state.add_install_command_cursor,
-                ),
-                AddPackageField::ExistenceCheck => handle_backspace(
-                    &mut state.add_existence_check_input,
-                    &mut state.add_existence_check_cursor,
-                ),
+                AddPackageField::BinaryName => {
+                    state.add_binary_name_input.backspace();
+                }
+                AddPackageField::InstallCommand => {
+                    state.add_install_command_input.backspace();
+                }
+                AddPackageField::ExistenceCheck => {
+                    state.add_existence_check_input.backspace();
+                }
                 _ => {}
             }
             return Ok(ScreenAction::Refresh);
@@ -1045,28 +1028,23 @@ impl ManagePackagesScreen {
         if let Some(Action::DeleteChar) = action {
             match state.add_focused_field {
                 AddPackageField::Name => {
-                    handle_delete(&mut state.add_name_input, &mut state.add_name_cursor)
+                    state.add_name_input.delete();
                 }
-                AddPackageField::Description => handle_delete(
-                    &mut state.add_description_input,
-                    &mut state.add_description_cursor,
-                ),
-                AddPackageField::PackageName => handle_delete(
-                    &mut state.add_package_name_input,
-                    &mut state.add_package_name_cursor,
-                ),
-                AddPackageField::BinaryName => handle_delete(
-                    &mut state.add_binary_name_input,
-                    &mut state.add_binary_name_cursor,
-                ),
-                AddPackageField::InstallCommand => handle_delete(
-                    &mut state.add_install_command_input,
-                    &mut state.add_install_command_cursor,
-                ),
-                AddPackageField::ExistenceCheck => handle_delete(
-                    &mut state.add_existence_check_input,
-                    &mut state.add_existence_check_cursor,
-                ),
+                AddPackageField::Description => {
+                    state.add_description_input.delete();
+                }
+                AddPackageField::PackageName => {
+                    state.add_package_name_input.delete();
+                }
+                AddPackageField::BinaryName => {
+                    state.add_binary_name_input.delete();
+                }
+                AddPackageField::InstallCommand => {
+                    state.add_install_command_input.delete();
+                }
+                AddPackageField::ExistenceCheck => {
+                    state.add_existence_check_input.delete();
+                }
                 _ => {}
             }
             return Ok(ScreenAction::Refresh);
@@ -1079,46 +1057,30 @@ impl ManagePackagesScreen {
                 .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SUPER)
             {
                 match state.add_focused_field {
-                    AddPackageField::Name => handle_char_insertion(
-                        &mut state.add_name_input,
-                        &mut state.add_name_cursor,
-                        c,
-                    ),
-                    AddPackageField::Description => handle_char_insertion(
-                        &mut state.add_description_input,
-                        &mut state.add_description_cursor,
-                        c,
-                    ),
+                    AddPackageField::Name => {
+                        state.add_name_input.insert_char(c);
+                    }
+                    AddPackageField::Description => {
+                        state.add_description_input.insert_char(c);
+                    }
                     AddPackageField::PackageName => {
-                        handle_char_insertion(
-                            &mut state.add_package_name_input,
-                            &mut state.add_package_name_cursor,
-                            c,
-                        );
+                        state.add_package_name_input.insert_char(c);
                         // Update binary name suggestion
                         let new_suggestion =
-                            PackageManagerImpl::suggest_binary_name(&state.add_package_name_input);
-                        if state.add_binary_name_input.is_empty() {
-                            state.add_binary_name_input = new_suggestion;
-                            state.add_binary_name_cursor =
-                                state.add_binary_name_input.chars().count();
+                            PackageManagerImpl::suggest_binary_name(state.add_package_name_input.text());
+                        if state.add_binary_name_input.text().is_empty() {
+                            state.add_binary_name_input = crate::utils::TextInput::with_text(new_suggestion);
                         }
                     }
-                    AddPackageField::BinaryName => handle_char_insertion(
-                        &mut state.add_binary_name_input,
-                        &mut state.add_binary_name_cursor,
-                        c,
-                    ),
-                    AddPackageField::InstallCommand => handle_char_insertion(
-                        &mut state.add_install_command_input,
-                        &mut state.add_install_command_cursor,
-                        c,
-                    ),
-                    AddPackageField::ExistenceCheck => handle_char_insertion(
-                        &mut state.add_existence_check_input,
-                        &mut state.add_existence_check_cursor,
-                        c,
-                    ),
+                    AddPackageField::BinaryName => {
+                        state.add_binary_name_input.insert_char(c);
+                    }
+                    AddPackageField::InstallCommand => {
+                        state.add_install_command_input.insert_char(c);
+                    }
+                    AddPackageField::ExistenceCheck => {
+                        state.add_existence_check_input.insert_char(c);
+                    }
                     _ => {}
                 }
                 return Ok(ScreenAction::Refresh);
@@ -1143,7 +1105,7 @@ impl ManagePackagesScreen {
                     return Ok(ScreenAction::Refresh);
                 }
                 Action::Confirm => {
-                    if state.delete_confirm_input.trim() == "DELETE" {
+                    if state.delete_confirm_input.text().trim() == "DELETE" {
                         if let Some(idx) = state.delete_index {
                             let packages = PackageService::delete_package(
                                 &config.repo_path,
@@ -1157,49 +1119,27 @@ impl ManagePackagesScreen {
                     }
                 }
                 Action::Backspace => {
-                    handle_backspace(
-                        &mut state.delete_confirm_input,
-                        &mut state.delete_confirm_cursor,
-                    );
+                    state.delete_confirm_input.backspace();
                     return Ok(ScreenAction::Refresh);
                 }
                 Action::DeleteChar => {
-                    handle_delete(
-                        &mut state.delete_confirm_input,
-                        &mut state.delete_confirm_cursor,
-                    );
+                    state.delete_confirm_input.delete();
                     return Ok(ScreenAction::Refresh);
                 }
                 Action::MoveLeft => {
-                    handle_cursor_movement(
-                        &state.delete_confirm_input,
-                        &mut state.delete_confirm_cursor,
-                        KeyCode::Left,
-                    );
+                    state.delete_confirm_input.move_left();
                     return Ok(ScreenAction::Refresh);
                 }
                 Action::MoveRight => {
-                    handle_cursor_movement(
-                        &state.delete_confirm_input,
-                        &mut state.delete_confirm_cursor,
-                        KeyCode::Right,
-                    );
+                    state.delete_confirm_input.move_right();
                     return Ok(ScreenAction::Refresh);
                 }
                 Action::Home => {
-                    handle_cursor_movement(
-                        &state.delete_confirm_input,
-                        &mut state.delete_confirm_cursor,
-                        KeyCode::Home,
-                    );
+                    state.delete_confirm_input.move_home();
                     return Ok(ScreenAction::Refresh);
                 }
                 Action::End => {
-                    handle_cursor_movement(
-                        &state.delete_confirm_input,
-                        &mut state.delete_confirm_cursor,
-                        KeyCode::End,
-                    );
+                    state.delete_confirm_input.move_end();
                     return Ok(ScreenAction::Refresh);
                 }
                 _ => {}
@@ -1211,11 +1151,7 @@ impl ManagePackagesScreen {
                 .modifiers
                 .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SUPER)
             {
-                handle_char_insertion(
-                    &mut state.delete_confirm_input,
-                    &mut state.delete_confirm_cursor,
-                    c,
-                );
+                state.delete_confirm_input.insert_char(c);
                 return Ok(ScreenAction::Refresh);
             }
         }
@@ -1428,8 +1364,8 @@ impl ManagePackagesScreen {
         InputField::render(
             frame,
             chunks[1],
-            &self.state.add_name_input,
-            self.state.add_name_cursor,
+            self.state.add_name_input.text(),
+            self.state.add_name_input.cursor(),
             self.state.add_focused_field == AddPackageField::Name,
             "Name",
             Some("Package display name"),
@@ -1441,8 +1377,8 @@ impl ManagePackagesScreen {
         InputField::render(
             frame,
             chunks[2],
-            &self.state.add_description_input,
-            self.state.add_description_cursor,
+            self.state.add_description_input.text(),
+            self.state.add_description_input.cursor(),
             self.state.add_focused_field == AddPackageField::Description,
             "Description (optional)",
             Some("Package description"),
@@ -1460,8 +1396,8 @@ impl ManagePackagesScreen {
             InputField::render(
                 frame,
                 chunks[current_chunk],
-                &self.state.add_package_name_input,
-                self.state.add_package_name_cursor,
+                self.state.add_package_name_input.text(),
+                self.state.add_package_name_input.cursor(),
                 self.state.add_focused_field == AddPackageField::PackageName,
                 "Package Name",
                 Some("Package name in manager (e.g., 'eza')"),
@@ -1473,8 +1409,8 @@ impl ManagePackagesScreen {
             InputField::render(
                 frame,
                 chunks[current_chunk],
-                &self.state.add_binary_name_input,
-                self.state.add_binary_name_cursor,
+                self.state.add_binary_name_input.text(),
+                self.state.add_binary_name_input.cursor(),
                 self.state.add_focused_field == AddPackageField::BinaryName,
                 "Binary Name",
                 Some("Binary name to check (e.g., 'eza')"),
@@ -1486,8 +1422,8 @@ impl ManagePackagesScreen {
             InputField::render(
                 frame,
                 chunks[current_chunk],
-                &self.state.add_binary_name_input,
-                self.state.add_binary_name_cursor,
+                self.state.add_binary_name_input.text(),
+                self.state.add_binary_name_input.cursor(),
                 self.state.add_focused_field == AddPackageField::BinaryName,
                 "Binary Name",
                 Some("Binary name to check (e.g., 'mytool')"),
@@ -1499,8 +1435,8 @@ impl ManagePackagesScreen {
             InputField::render(
                 frame,
                 chunks[current_chunk],
-                &self.state.add_install_command_input,
-                self.state.add_install_command_cursor,
+                self.state.add_install_command_input.text(),
+                self.state.add_install_command_input.cursor(),
                 self.state.add_focused_field == AddPackageField::InstallCommand,
                 "Install Command",
                 Some("Install command (e.g., './install.sh')"),
@@ -1512,8 +1448,8 @@ impl ManagePackagesScreen {
             InputField::render(
                 frame,
                 chunks[current_chunk],
-                &self.state.add_existence_check_input,
-                self.state.add_existence_check_cursor,
+                self.state.add_existence_check_input.text(),
+                self.state.add_existence_check_input.cursor(),
                 self.state.add_focused_field == AddPackageField::ExistenceCheck,
                 "Existence Check (optional)",
                 Some("Command to check if package exists (if empty, uses binary name check)"),
@@ -1525,8 +1461,8 @@ impl ManagePackagesScreen {
             InputField::render(
                 frame,
                 chunks[current_chunk],
-                &self.state.add_manager_check_input,
-                self.state.add_manager_check_cursor,
+                self.state.add_manager_check_input.text(),
+                self.state.add_manager_check_input.cursor(),
                 self.state.add_focused_field == AddPackageField::ManagerCheck,
                 "Manager Check (optional)",
                 Some("Custom manager check command (optional fallback)"),
@@ -1698,8 +1634,8 @@ impl ManagePackagesScreen {
         InputField::render(
             frame,
             chunks[1],
-            &self.state.delete_confirm_input,
-            self.state.delete_confirm_cursor,
+            self.state.delete_confirm_input.text(),
+            self.state.delete_confirm_input.cursor(),
             true,
             "Confirmation",
             Some("Type 'DELETE' to confirm"),

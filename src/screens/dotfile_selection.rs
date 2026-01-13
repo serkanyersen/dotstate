@@ -14,7 +14,7 @@ use crate::styles::{theme as ui_theme, LIST_HIGHLIGHT_SYMBOL};
 use crate::ui::Screen as ScreenId;
 use crate::utils::{
     center_popup, create_split_layout, create_standard_layout, focused_border_style,
-    unfocused_border_style, list_navigation::ListStateExt,
+    unfocused_border_style, list_navigation::ListStateExt, TextInput,
 };
 use anyhow::Result;
 use crossterm::event::{Event, KeyCode, KeyEventKind};
@@ -51,8 +51,7 @@ pub struct DotfileSelectionState {
     pub dotfile_list_state: ListState, // ListState for main dotfile list (handles selection and scrolling)
     pub status_message: Option<String>, // For sync summary
     pub adding_custom_file: bool,      // Whether we're in "add custom file" mode
-    pub custom_file_input: String,     // Input for custom file path
-    pub custom_file_cursor: usize,     // Cursor position for custom file input
+    pub custom_file_input: TextInput,  // Input for custom file path
     pub custom_file_focused: bool,     // Whether custom file input is focused
     pub file_browser_mode: bool,       // Whether we're in file browser mode
     pub file_browser_path: PathBuf,    // Current directory in file browser
@@ -61,8 +60,7 @@ pub struct DotfileSelectionState {
     pub file_browser_scrollbar: ScrollbarState, // Scrollbar state for file browser
     pub file_browser_list_state: ListState, // ListState for file browser (handles selection and scrolling)
     pub file_browser_preview_scroll: usize, // Scroll offset for file browser preview
-    pub file_browser_path_input: String,    // Path input for file browser
-    pub file_browser_path_cursor: usize,    // Cursor position for path input
+    pub file_browser_path_input: TextInput, // Path input for file browser
     pub file_browser_path_focused: bool,    // Whether path input is focused
     pub focus: DotfileSelectionFocus,       // Which pane currently has focus
     pub backup_enabled: bool,               // Whether backups are enabled (tracks config value)
@@ -83,8 +81,7 @@ impl Default for DotfileSelectionState {
             dotfile_list_state: ListState::default(),
             status_message: None,
             adding_custom_file: false,
-            custom_file_input: String::new(),
-            custom_file_cursor: 0,
+            custom_file_input: TextInput::new(),
             custom_file_focused: true,
             file_browser_mode: false,
             file_browser_path: dirs::home_dir().unwrap_or_else(|| PathBuf::from("/")),
@@ -93,8 +90,7 @@ impl Default for DotfileSelectionState {
             file_browser_scrollbar: ScrollbarState::new(0),
             file_browser_list_state: ListState::default(),
             file_browser_preview_scroll: 0,
-            file_browser_path_input: String::new(),
-            file_browser_path_cursor: 0,
+            file_browser_path_input: TextInput::new(),
             file_browser_path_focused: false,
             focus: DotfileSelectionFocus::FilesList, // Start with files list focused
             backup_enabled: true,                    // Default to enabled
@@ -175,45 +171,29 @@ impl DotfileSelectionScreen {
 
         match key_code {
             KeyCode::Char(c) => {
-                crate::utils::handle_char_insertion(
-                    &mut self.state.file_browser_path_input,
-                    &mut self.state.file_browser_path_cursor,
-                    c,
-                );
+                self.state.file_browser_path_input.insert_char(c);
             }
             KeyCode::Left | KeyCode::Right | KeyCode::Home | KeyCode::End => {
-                let input = self.state.file_browser_path_input.clone();
-                crate::utils::handle_cursor_movement(
-                    &input,
-                    &mut self.state.file_browser_path_cursor,
-                    key_code,
-                );
+                self.state.file_browser_path_input.handle_key(key_code);
             }
             KeyCode::Backspace => {
-                crate::utils::handle_backspace(
-                    &mut self.state.file_browser_path_input,
-                    &mut self.state.file_browser_path_cursor,
-                );
+                self.state.file_browser_path_input.backspace();
             }
             KeyCode::Delete => {
-                crate::utils::handle_delete(
-                    &mut self.state.file_browser_path_input,
-                    &mut self.state.file_browser_path_cursor,
-                );
+                self.state.file_browser_path_input.delete();
             }
             KeyCode::Enter => {
                 // Load path from input
-                let path_str = self.state.file_browser_path_input.trim();
+                let path_str = self.state.file_browser_path_input.text_trimmed();
                 if !path_str.is_empty() {
                     let full_path = crate::utils::expand_path(path_str);
 
                     if full_path.exists() {
                         if full_path.is_dir() {
                             self.state.file_browser_path = full_path.clone();
-                            self.state.file_browser_path_input =
-                                self.state.file_browser_path.to_string_lossy().to_string();
-                            self.state.file_browser_path_cursor =
-                                self.state.file_browser_path_input.chars().count();
+                            self.state.file_browser_path_input.set_text(
+                                self.state.file_browser_path.to_string_lossy().to_string(),
+                            );
                             self.state.file_browser_list_state.select(Some(0));
                             self.state.focus = DotfileSelectionFocus::FileBrowserList;
                             return Ok(ScreenAction::RefreshFileBrowser);
@@ -229,7 +209,6 @@ impl DotfileSelectionScreen {
                             self.state.file_browser_mode = false;
                             self.state.adding_custom_file = false;
                             self.state.file_browser_path_input.clear();
-                            self.state.file_browser_path_cursor = 0;
                             self.state.focus = DotfileSelectionFocus::FilesList;
 
                             return Ok(ScreenAction::AddCustomFileToSync {
@@ -243,6 +222,13 @@ impl DotfileSelectionScreen {
             KeyCode::Tab => {
                 self.state.file_browser_path_focused = false;
                 self.state.focus = DotfileSelectionFocus::FileBrowserList;
+            }
+            KeyCode::Esc => {
+                // Close file browser modal
+                self.state.file_browser_mode = false;
+                self.state.adding_custom_file = false;
+                self.state.file_browser_path_input.clear();
+                self.state.focus = DotfileSelectionFocus::FilesList;
             }
             _ => {}
         }
@@ -266,7 +252,6 @@ impl DotfileSelectionScreen {
                 KeyCode::Esc => {
                     self.state.adding_custom_file = false;
                     self.state.custom_file_input.clear();
-                    self.state.custom_file_cursor = 0;
                     return Ok(ScreenAction::None);
                 }
                 _ => return Ok(ScreenAction::None),
@@ -276,37 +261,22 @@ impl DotfileSelectionScreen {
         // When focused, handle all input
         match key_code {
             KeyCode::Char(c) => {
-                crate::utils::handle_char_insertion(
-                    &mut self.state.custom_file_input,
-                    &mut self.state.custom_file_cursor,
-                    c,
-                );
+                self.state.custom_file_input.insert_char(c);
             }
             KeyCode::Left | KeyCode::Right | KeyCode::Home | KeyCode::End => {
-                let input = self.state.custom_file_input.clone();
-                crate::utils::handle_cursor_movement(
-                    &input,
-                    &mut self.state.custom_file_cursor,
-                    key_code,
-                );
+                self.state.custom_file_input.handle_key(key_code);
             }
             KeyCode::Backspace => {
-                crate::utils::handle_backspace(
-                    &mut self.state.custom_file_input,
-                    &mut self.state.custom_file_cursor,
-                );
+                self.state.custom_file_input.backspace();
             }
             KeyCode::Delete => {
-                crate::utils::handle_delete(
-                    &mut self.state.custom_file_input,
-                    &mut self.state.custom_file_cursor,
-                );
+                self.state.custom_file_input.delete();
             }
             KeyCode::Tab => {
                 self.state.custom_file_focused = false;
             }
             KeyCode::Enter => {
-                let path_str = self.state.custom_file_input.trim();
+                let path_str = self.state.custom_file_input.text_trimmed();
                 if path_str.is_empty() {
                     self.state.status_message =
                         Some("Error: File path cannot be empty".to_string());
@@ -327,7 +297,6 @@ impl DotfileSelectionScreen {
                         // Close input mode
                         self.state.adding_custom_file = false;
                         self.state.custom_file_input.clear();
-                        self.state.custom_file_cursor = 0;
                         self.state.focus = DotfileSelectionFocus::FilesList;
 
                         // Validate before showing confirmation
@@ -352,7 +321,7 @@ impl DotfileSelectionScreen {
             KeyCode::Esc => {
                 self.state.adding_custom_file = false;
                 self.state.custom_file_input.clear();
-                self.state.custom_file_cursor = 0;
+                self.state.focus = DotfileSelectionFocus::FilesList;
             }
             _ => {}
         }
@@ -389,10 +358,9 @@ impl DotfileSelectionScreen {
                                 // Go to parent directory
                                 if let Some(parent) = self.state.file_browser_path.parent() {
                                     self.state.file_browser_path = parent.to_path_buf();
-                                    self.state.file_browser_path_input =
-                                        self.state.file_browser_path.to_string_lossy().to_string();
-                                    self.state.file_browser_path_cursor =
-                                        self.state.file_browser_path_input.chars().count();
+                                    self.state.file_browser_path_input.set_text(
+                                        self.state.file_browser_path.to_string_lossy().to_string(),
+                                    );
                                     self.state.file_browser_list_state.select(Some(0));
                                     return Ok(ScreenAction::RefreshFileBrowser);
                                 }
@@ -438,7 +406,6 @@ impl DotfileSelectionScreen {
                                 self.state.file_browser_mode = false;
                                 self.state.adding_custom_file = false;
                                 self.state.file_browser_path_input.clear();
-                                self.state.file_browser_path_cursor = 0;
                                 self.state.focus = DotfileSelectionFocus::FilesList;
                             } else {
                                 // Regular file or directory
@@ -451,10 +418,9 @@ impl DotfileSelectionScreen {
                                 if full_path.is_dir() {
                                     // Navigate into directory
                                     self.state.file_browser_path = full_path.clone();
-                                    self.state.file_browser_path_input =
-                                        full_path.to_string_lossy().to_string();
-                                    self.state.file_browser_path_cursor =
-                                        self.state.file_browser_path_input.chars().count();
+                                    self.state
+                                        .file_browser_path_input
+                                        .set_text(full_path.to_string_lossy().to_string());
                                     self.state.file_browser_list_state.select(Some(0));
                                     return Ok(ScreenAction::RefreshFileBrowser);
                                 } else if full_path.is_file() {
@@ -471,7 +437,6 @@ impl DotfileSelectionScreen {
                                     self.state.file_browser_mode = false;
                                     self.state.adding_custom_file = false;
                                     self.state.file_browser_path_input.clear();
-                                    self.state.file_browser_path_cursor = 0;
                                     self.state.focus = DotfileSelectionFocus::FilesList;
 
                                     return Ok(ScreenAction::AddCustomFileToSync {
@@ -624,10 +589,9 @@ impl DotfileSelectionScreen {
                     self.state.file_browser_mode = true;
                     self.state.file_browser_path = crate::utils::get_home_dir();
                     self.state.file_browser_selected = 0;
-                    self.state.file_browser_path_input =
-                        self.state.file_browser_path.to_string_lossy().to_string();
-                    self.state.file_browser_path_cursor =
-                        self.state.file_browser_path_input.chars().count();
+                    self.state.file_browser_path_input.set_text(
+                        self.state.file_browser_path.to_string_lossy().to_string(),
+                    );
                     self.state.file_browser_path_focused = false;
                     self.state.file_browser_preview_scroll = 0;
                     self.state.focus = DotfileSelectionFocus::FileBrowserList;
@@ -737,7 +701,7 @@ impl DotfileSelectionScreen {
         )
         .block(
             Block::default()
-                .borders(Borders::ALL)
+                // .borders(Borders::ALL)
                 .title("Current Directory")
                 .title_alignment(Alignment::Center)
                 .style(Style::default().bg(Color::Reset)),
@@ -751,14 +715,15 @@ impl DotfileSelectionScreen {
                 .to_string_lossy()
                 .to_string()
         } else {
-            self.state.file_browser_path_input.clone()
+            self.state.file_browser_path_input.text().to_string()
         };
 
         let cursor_pos = if self.state.file_browser_path_input.is_empty() {
             path_input_text.chars().count()
         } else {
             self.state
-                .file_browser_path_cursor
+                .file_browser_path_input
+                .cursor()
                 .min(path_input_text.chars().count())
         };
 
@@ -926,7 +891,7 @@ impl DotfileSelectionScreen {
                 k(crate::keymap::Action::Cancel)
             );
             let footer = Paragraph::new(footer_text)
-                .style(Style::default().fg(t.text_muted))
+                .style(Style::default().fg(t.text))
                 .alignment(Alignment::Center);
             frame.render_widget(footer_block, browser_chunks[3]);
             frame.render_widget(footer, footer_inner);
@@ -958,15 +923,17 @@ impl DotfileSelectionScreen {
             ])
             .split(content_chunk);
 
-        let input_text = self.state.custom_file_input.clone();
-        let cursor_pos = self.state
-            .custom_file_cursor
+        let input_text = self.state.custom_file_input.text();
+        let cursor_pos = self
+            .state
+            .custom_file_input
+            .cursor()
             .min(input_text.chars().count());
 
         InputField::render(
             frame,
             input_chunks[1],
-            &input_text,
+            input_text,
             cursor_pos,
             self.state.custom_file_focused,
             "Custom File Path",

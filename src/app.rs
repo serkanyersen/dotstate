@@ -782,12 +782,13 @@ impl App {
                 if is_configured {
                     self.ui_state.github_auth.repo_already_configured = true;
                     self.ui_state.github_auth.is_editing_token = false;
-                    self.ui_state.github_auth.token_input = String::new(); // Clear for security
-                    self.ui_state.github_auth.repo_name_input = self.config.repo_name.clone();
+                    self.ui_state.github_auth.token_input = crate::utils::TextInput::new(); // Clear for security
+                    self.ui_state.github_auth.repo_name_input =
+                        crate::utils::TextInput::with_text(self.config.repo_name.clone());
                     self.ui_state.github_auth.repo_location_input =
-                        self.config.repo_path.to_string_lossy().to_string();
+                        crate::utils::TextInput::with_text(self.config.repo_path.to_string_lossy().to_string());
                     self.ui_state.github_auth.local_repo_path_input =
-                        self.config.repo_path.to_string_lossy().to_string();
+                        crate::utils::TextInput::with_text(self.config.repo_path.to_string_lossy().to_string());
                     self.ui_state.github_auth.is_private = true; // Default to private
                                                                  // Set setup mode based on config
                     self.ui_state.github_auth.setup_mode = match self.config.repo_mode {

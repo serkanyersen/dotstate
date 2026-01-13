@@ -21,15 +21,14 @@ pub struct GitHubAuthState {
     pub mode_selection_index: usize, // 0 = Create for me (GitHub), 1 = Use own repo (Local)
 
     // GitHub mode fields
-    pub token_input: String,
-    pub repo_name_input: String,
-    pub repo_location_input: String,
+    pub token_input: crate::utils::TextInput,
+    pub repo_name_input: crate::utils::TextInput,
+    pub repo_location_input: crate::utils::TextInput,
     pub is_private: bool,
     pub step: GitHubAuthStep,
     pub error_message: Option<String>,
     pub status_message: Option<String>,
     pub help_scroll: usize,
-    pub cursor_position: usize,         // For current input
     pub input_focused: bool,            // Whether input is currently focused
     pub focused_field: GitHubAuthField, // Which field is currently focused
     pub is_editing_token: bool,         // Whether we're in "edit token" mode
@@ -38,8 +37,7 @@ pub struct GitHubAuthState {
     pub setup_data: Option<GitHubSetupData>,
 
     // Local mode fields
-    pub local_repo_path_input: String, // Path to user's local repository
-    pub local_repo_path_cursor: usize, // Cursor position in local path input
+    pub local_repo_path_input: crate::utils::TextInput, // Path to user's local repository
     #[allow(dead_code)]
     pub local_step: LocalSetupStep, // Current step in local setup flow (reserved for future async flow)
 }
@@ -123,15 +121,14 @@ impl Default for GitHubAuthState {
             mode_selection_index: 0, // Default to "Create for me (GitHub)"
 
             // GitHub mode fields
-            token_input: String::new(),
-            repo_name_input: crate::config::default_repo_name(),
-            repo_location_input: default_repo_path.to_string_lossy().to_string(),
+            token_input: crate::utils::TextInput::new(),
+            repo_name_input: crate::utils::TextInput::with_text(crate::config::default_repo_name()),
+            repo_location_input: crate::utils::TextInput::with_text(default_repo_path.to_string_lossy().to_string()),
             is_private: true, // Private by default
             step: GitHubAuthStep::Input,
             error_message: None,
             status_message: None,
             help_scroll: 0,
-            cursor_position: 0,
             input_focused: true, // Input starts focused
             focused_field: GitHubAuthField::Token,
             is_editing_token: false,
@@ -139,8 +136,7 @@ impl Default for GitHubAuthState {
             setup_data: None,
 
             // Local mode fields
-            local_repo_path_input: default_repo_path.to_string_lossy().to_string(),
-            local_repo_path_cursor: 0,
+            local_repo_path_input: crate::utils::TextInput::with_text(default_repo_path.to_string_lossy().to_string()),
             local_step: LocalSetupStep::Input,
         }
     }
@@ -209,30 +205,22 @@ pub struct PackageManagerState {
     pub installation_output: Vec<String>, // Live output from installation
     pub installation_delay_until: Option<std::time::Instant>, // Delay between installation steps
     // Add/Edit popup state
-    pub add_name_input: String,
-    pub add_name_cursor: usize,
-    pub add_description_input: String,
-    pub add_description_cursor: usize,
+    pub add_name_input: crate::utils::TextInput,
+    pub add_description_input: crate::utils::TextInput,
     pub add_manager: Option<crate::utils::profile_manifest::PackageManager>,
     pub add_manager_selected: usize, // Index in available managers list
-    pub add_package_name_input: String,
-    pub add_package_name_cursor: usize,
-    pub add_binary_name_input: String,
-    pub add_binary_name_cursor: usize,
-    pub add_install_command_input: String, // For custom only
-    pub add_install_command_cursor: usize,
-    pub add_existence_check_input: String, // For custom only
-    pub add_existence_check_cursor: usize,
-    pub add_manager_check_input: String, // Optional fallback
-    pub add_manager_check_cursor: usize,
+    pub add_package_name_input: crate::utils::TextInput,
+    pub add_binary_name_input: crate::utils::TextInput,
+    pub add_install_command_input: crate::utils::TextInput, // For custom only
+    pub add_existence_check_input: crate::utils::TextInput, // For custom only
+    pub add_manager_check_input: crate::utils::TextInput, // Optional fallback
     pub add_is_custom: bool, // Whether in custom mode
     pub add_focused_field: AddPackageField,
     pub add_editing_index: Option<usize>, // None for add, Some(index) for edit
     pub available_managers: Vec<crate::utils::profile_manifest::PackageManager>, // OS-filtered list
     pub manager_list_state: ListState,    // For manager selection
     // Delete popup state
-    pub delete_confirm_input: String,
-    pub delete_confirm_cursor: usize,
+    pub delete_confirm_input: crate::utils::TextInput,
     pub delete_index: Option<usize>,
 }
 
@@ -278,29 +266,21 @@ impl Default for PackageManagerState {
             is_checking: false,
             checking_index: None,
             package_statuses: Vec::new(),
-            add_name_input: String::new(),
-            add_name_cursor: 0,
-            add_description_input: String::new(),
-            add_description_cursor: 0,
+            add_name_input: crate::utils::TextInput::new(),
+            add_description_input: crate::utils::TextInput::new(),
             add_manager: None,
             add_manager_selected: 0,
-            add_package_name_input: String::new(),
-            add_package_name_cursor: 0,
-            add_binary_name_input: String::new(),
-            add_binary_name_cursor: 0,
-            add_install_command_input: String::new(),
-            add_install_command_cursor: 0,
-            add_existence_check_input: String::new(),
-            add_existence_check_cursor: 0,
-            add_manager_check_input: String::new(),
-            add_manager_check_cursor: 0,
+            add_package_name_input: crate::utils::TextInput::new(),
+            add_binary_name_input: crate::utils::TextInput::new(),
+            add_install_command_input: crate::utils::TextInput::new(),
+            add_existence_check_input: crate::utils::TextInput::new(),
+            add_manager_check_input: crate::utils::TextInput::new(),
             add_is_custom: false,
             add_focused_field: AddPackageField::Name,
             add_editing_index: None,
             available_managers: Vec::new(),
             manager_list_state: ListState::default(),
-            delete_confirm_input: String::new(),
-            delete_confirm_cursor: 0,
+            delete_confirm_input: crate::utils::TextInput::new(),
             delete_index: None,
             checking_delay_until: None,
             installation_step: InstallationStep::NotStarted,

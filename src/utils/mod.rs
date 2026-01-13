@@ -30,5 +30,5 @@ pub use style::{
 pub use symlink_manager::SymlinkManager;
 pub use syntax_theme::get_current_syntax_theme;
 pub use text_input::{
-    handle_backspace, handle_char_insertion, handle_cursor_movement, handle_delete,
+    handle_backspace, handle_char_insertion, handle_cursor_movement, handle_delete, TextInput,
 };

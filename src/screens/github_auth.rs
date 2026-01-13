@@ -125,7 +125,7 @@ impl GitHubAuthScreen {
 
         // Check for Action::Confirm or Action::Save to validate and save
         if matches!(action, Some(Action::Confirm | Action::Save)) {
-            let path_str = self.state.local_repo_path_input.trim();
+            let path_str = self.state.local_repo_path_input.text_trimmed();
             if path_str.is_empty() {
                 self.state.error_message = Some("Please enter a repository path".to_string());
                 return Ok(ScreenAction::None);
@@ -171,30 +171,16 @@ impl GitHubAuthScreen {
                 self.state.status_message = None;
             }
             KeyCode::Char(c) => {
-                crate::utils::handle_char_insertion(
-                    &mut self.state.local_repo_path_input,
-                    &mut self.state.local_repo_path_cursor,
-                    c,
-                );
+                self.state.local_repo_path_input.insert_char(c);
             }
             KeyCode::Backspace => {
-                crate::utils::handle_backspace(
-                    &mut self.state.local_repo_path_input,
-                    &mut self.state.local_repo_path_cursor,
-                );
+                self.state.local_repo_path_input.backspace();
             }
             KeyCode::Delete => {
-                crate::utils::handle_delete(
-                    &mut self.state.local_repo_path_input,
-                    &mut self.state.local_repo_path_cursor,
-                );
+                self.state.local_repo_path_input.delete();
             }
             KeyCode::Left | KeyCode::Right | KeyCode::Home | KeyCode::End => {
-                crate::utils::handle_cursor_movement(
-                    &self.state.local_repo_path_input,
-                    &mut self.state.local_repo_path_cursor,
-                    key.code,
-                );
+                self.state.local_repo_path_input.handle_key(key.code);
             }
             _ => {}
         }
@@ -216,8 +202,7 @@ impl GitHubAuthScreen {
         if self.state.repo_already_configured && !self.state.is_editing_token {
             if let Some(Action::Edit) = action {
                 self.state.is_editing_token = true;
-                self.state.token_input = String::new();
-                self.state.cursor_position = 0;
+                self.state.token_input.clear();
                 self.state.focused_field = GitHubAuthField::Token;
                 return Ok(ScreenAction::None);
             }
@@ -231,11 +216,11 @@ impl GitHubAuthScreen {
         if matches!(action, Some(Action::Save) | Some(Action::Confirm)) {
             if self.state.repo_already_configured && self.state.is_editing_token {
                 // Just update the token
-                let token = self.state.token_input.trim().to_string();
+                let token = self.state.token_input.text_trimmed().to_string();
                 return Ok(ScreenAction::UpdateGitHubToken { token });
             } else if !self.state.repo_already_configured {
                 // Full setup - validate and start setup
-                let token = self.state.token_input.trim().to_string();
+                let token = self.state.token_input.text_trimmed().to_string();
                 let repo_name = ctx.config.repo_name.clone();
 
                 // Validate token format
@@ -285,7 +270,6 @@ impl GitHubAuthScreen {
                         GitHubAuthField::RepoLocation => GitHubAuthField::IsPrivate,
                         GitHubAuthField::IsPrivate => GitHubAuthField::Token,
                     };
-                    self.update_cursor_position();
                     return Ok(ScreenAction::None);
                 }
                 Action::PrevTab if !self.state.repo_already_configured => {
@@ -295,43 +279,48 @@ impl GitHubAuthScreen {
                         GitHubAuthField::RepoLocation => GitHubAuthField::RepoName,
                         GitHubAuthField::IsPrivate => GitHubAuthField::RepoLocation,
                     };
-                    self.update_cursor_position();
                     return Ok(ScreenAction::None);
                 }
                 Action::MoveLeft => {
-                    let current_input = self.get_current_input().to_string();
-                    crate::utils::handle_cursor_movement(
-                        &current_input,
-                        &mut self.state.cursor_position,
-                        KeyCode::Left,
-                    );
+                    match self.state.focused_field {
+                        GitHubAuthField::Token => self.state.token_input.move_left(),
+                        GitHubAuthField::RepoName => self.state.repo_name_input.move_left(),
+                        GitHubAuthField::RepoLocation => self.state.repo_location_input.move_left(),
+                        GitHubAuthField::IsPrivate if !self.state.repo_already_configured => {
+                            self.state.is_private = !self.state.is_private;
+                        }
+                        GitHubAuthField::IsPrivate => {}
+                    }
                     return Ok(ScreenAction::None);
                 }
                 Action::MoveRight => {
-                    let current_input = self.get_current_input().to_string();
-                    crate::utils::handle_cursor_movement(
-                        &current_input,
-                        &mut self.state.cursor_position,
-                        KeyCode::Right,
-                    );
+                    match self.state.focused_field {
+                        GitHubAuthField::Token => self.state.token_input.move_right(),
+                        GitHubAuthField::RepoName => self.state.repo_name_input.move_right(),
+                        GitHubAuthField::RepoLocation => self.state.repo_location_input.move_right(),
+                        GitHubAuthField::IsPrivate if !self.state.repo_already_configured => {
+                            self.state.is_private = !self.state.is_private;
+                        }
+                        GitHubAuthField::IsPrivate => {}
+                    }
                     return Ok(ScreenAction::None);
                 }
                 Action::Home => {
-                    let current_input = self.get_current_input().to_string();
-                    crate::utils::handle_cursor_movement(
-                        &current_input,
-                        &mut self.state.cursor_position,
-                        KeyCode::Home,
-                    );
+                    match self.state.focused_field {
+                        GitHubAuthField::Token => self.state.token_input.move_home(),
+                        GitHubAuthField::RepoName => self.state.repo_name_input.move_home(),
+                        GitHubAuthField::RepoLocation => self.state.repo_location_input.move_home(),
+                        GitHubAuthField::IsPrivate => {}
+                    }
                     return Ok(ScreenAction::None);
                 }
                 Action::End => {
-                    let current_input = self.get_current_input().to_string();
-                    crate::utils::handle_cursor_movement(
-                        &current_input,
-                        &mut self.state.cursor_position,
-                        KeyCode::End,
-                    );
+                    match self.state.focused_field {
+                        GitHubAuthField::Token => self.state.token_input.move_end(),
+                        GitHubAuthField::RepoName => self.state.repo_name_input.move_end(),
+                        GitHubAuthField::RepoLocation => self.state.repo_location_input.move_end(),
+                        GitHubAuthField::IsPrivate => {}
+                    }
                     return Ok(ScreenAction::None);
                 }
                 Action::Backspace => {
@@ -408,54 +397,28 @@ impl GitHubAuthScreen {
 
     fn get_current_input(&self) -> &str {
         match self.state.focused_field {
-            GitHubAuthField::Token => &self.state.token_input,
-            GitHubAuthField::RepoName => &self.state.repo_name_input,
-            GitHubAuthField::RepoLocation => &self.state.repo_location_input,
+            GitHubAuthField::Token => self.state.token_input.text(),
+            GitHubAuthField::RepoName => self.state.repo_name_input.text(),
+            GitHubAuthField::RepoLocation => self.state.repo_location_input.text(),
             GitHubAuthField::IsPrivate => "",
         }
     }
 
-    fn update_cursor_position(&mut self) {
-        self.state.cursor_position = match self.state.focused_field {
-            GitHubAuthField::Token => self.state.token_input.chars().count(),
-            GitHubAuthField::RepoName => self.state.repo_name_input.chars().count(),
-            GitHubAuthField::RepoLocation => self.state.repo_location_input.chars().count(),
-            GitHubAuthField::IsPrivate => 0,
-        };
-    }
 
     fn handle_backspace(&mut self) {
         match self.state.focused_field {
-            GitHubAuthField::Token => crate::utils::handle_backspace(
-                &mut self.state.token_input,
-                &mut self.state.cursor_position,
-            ),
-            GitHubAuthField::RepoName => crate::utils::handle_backspace(
-                &mut self.state.repo_name_input,
-                &mut self.state.cursor_position,
-            ),
-            GitHubAuthField::RepoLocation => crate::utils::handle_backspace(
-                &mut self.state.repo_location_input,
-                &mut self.state.cursor_position,
-            ),
+            GitHubAuthField::Token => self.state.token_input.backspace(),
+            GitHubAuthField::RepoName => self.state.repo_name_input.backspace(),
+            GitHubAuthField::RepoLocation => self.state.repo_location_input.backspace(),
             GitHubAuthField::IsPrivate => {}
         }
     }
 
     fn handle_delete(&mut self) {
         match self.state.focused_field {
-            GitHubAuthField::Token => crate::utils::handle_delete(
-                &mut self.state.token_input,
-                &mut self.state.cursor_position,
-            ),
-            GitHubAuthField::RepoName => crate::utils::handle_delete(
-                &mut self.state.repo_name_input,
-                &mut self.state.cursor_position,
-            ),
-            GitHubAuthField::RepoLocation => crate::utils::handle_delete(
-                &mut self.state.repo_location_input,
-                &mut self.state.cursor_position,
-            ),
+            GitHubAuthField::Token => self.state.token_input.delete(),
+            GitHubAuthField::RepoName => self.state.repo_name_input.delete(),
+            GitHubAuthField::RepoLocation => self.state.repo_location_input.delete(),
             GitHubAuthField::IsPrivate => {}
         }
     }
@@ -465,25 +428,13 @@ impl GitHubAuthScreen {
 
         match self.state.focused_field {
             GitHubAuthField::Token if can_edit_token => {
-                crate::utils::handle_char_insertion(
-                    &mut self.state.token_input,
-                    &mut self.state.cursor_position,
-                    c,
-                );
+                self.state.token_input.insert_char(c);
             }
             GitHubAuthField::RepoName if !self.state.repo_already_configured => {
-                crate::utils::handle_char_insertion(
-                    &mut self.state.repo_name_input,
-                    &mut self.state.cursor_position,
-                    c,
-                );
+                self.state.repo_name_input.insert_char(c);
             }
             GitHubAuthField::RepoLocation if !self.state.repo_already_configured => {
-                crate::utils::handle_char_insertion(
-                    &mut self.state.repo_location_input,
-                    &mut self.state.cursor_position,
-                    c,
-                );
+                self.state.repo_location_input.insert_char(c);
             }
             _ => {}
         }
@@ -584,7 +535,7 @@ mod tests {
     #[test]
     fn test_reset() {
         let mut screen = GitHubAuthScreen::new();
-        screen.state.token_input = "test_token".to_string();
+        screen.state.token_input = crate::utils::TextInput::with_text("test_token");
         screen.state.setup_mode = SetupMode::GitHub;
         screen.reset();
         assert!(screen.state.token_input.is_empty());
