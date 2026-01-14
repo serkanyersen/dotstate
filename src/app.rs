@@ -9,8 +9,8 @@ use crate::screens::{
 use crate::tui::Tui;
 use crate::ui::{GitHubAuthStep, GitHubSetupStep, Screen, UiState};
 
-use anyhow::{Context, Result};
 use crate::screens::dotfile_selection::DotfileSelectionState;
+use anyhow::{Context, Result};
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -808,8 +808,6 @@ impl App {
         }
     }
 
-
-
     /// Trigger an async check for git status/updates
     ///
     /// # Arguments
@@ -836,7 +834,8 @@ impl App {
 
         // Spawn on thread
         thread::spawn(move || {
-            let status = crate::services::git_service::GitService::fetch_and_check_status(&config_clone);
+            let status =
+                crate::services::git_service::GitService::fetch_and_check_status(&config_clone);
             // Ignore send error
             let _ = tx.send(status);
         });
@@ -868,9 +867,13 @@ impl App {
                     self.ui_state.github_auth.repo_name_input =
                         crate::utils::TextInput::with_text(self.config.repo_name.clone());
                     self.ui_state.github_auth.repo_location_input =
-                        crate::utils::TextInput::with_text(self.config.repo_path.to_string_lossy().to_string());
+                        crate::utils::TextInput::with_text(
+                            self.config.repo_path.to_string_lossy().to_string(),
+                        );
                     self.ui_state.github_auth.local_repo_path_input =
-                        crate::utils::TextInput::with_text(self.config.repo_path.to_string_lossy().to_string());
+                        crate::utils::TextInput::with_text(
+                            self.config.repo_path.to_string_lossy().to_string(),
+                        );
                     self.ui_state.github_auth.is_private = true; // Default to private
                                                                  // Set setup mode based on config
                     self.ui_state.github_auth.setup_mode = match self.config.repo_mode {
@@ -1683,12 +1686,7 @@ impl App {
         let backup_enabled = state.backup_enabled;
 
         // Use service to add file to sync
-        match SyncService::add_file_to_sync(
-            config,
-            &full_path,
-            &relative_str,
-            backup_enabled,
-        )? {
+        match SyncService::add_file_to_sync(config, &full_path, &relative_str, backup_enabled)? {
             crate::services::sync_service::AddFileResult::Success => {
                 state.selected_for_sync.insert(file_index);
                 state.dotfiles[file_index].synced = true;

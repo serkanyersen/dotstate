@@ -13,7 +13,8 @@ use anyhow::Result;
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
 use ratatui::prelude::*;
 use ratatui::widgets::{
-    Block, BorderType, Borders, Clear, List, ListItem, ListState, Paragraph, Scrollbar, ScrollbarOrientation, Wrap
+    Block, BorderType, Borders, Clear, List, ListItem, ListState, Paragraph, Scrollbar,
+    ScrollbarOrientation, Wrap,
 };
 
 /// Profile manager popup types
@@ -178,22 +179,22 @@ impl ManageProfilesScreen {
         ScreenAction::None
     }
     /// Render the profiles list on the left
-    fn render_profiles_list(
-        &self,
-        frame: &mut Frame,
-        area: Rect,
-        config: &Config,
-    ) -> Result<()> {
+    fn render_profiles_list(&self, frame: &mut Frame, area: Rect, config: &Config) -> Result<()> {
         let t = theme();
         let icons = crate::icons::Icons::from_config(config);
         let active_profile = &config.active_profile;
 
-        let items: Vec<ListItem> = self.state
+        let items: Vec<ListItem> = self
+            .state
             .profiles
             .iter()
             .map(|profile| {
                 let is_active = profile.name == *active_profile;
-                let icon = if is_active { icons.active_profile() } else { " " };
+                let icon = if is_active {
+                    icons.active_profile()
+                } else {
+                    " "
+                };
                 let name_style = if is_active {
                     Style::default()
                         .fg(t.text_emphasis)
@@ -232,21 +233,22 @@ impl ManageProfilesScreen {
     }
 
     /// Render profile details on the right
-    fn render_profile_details(
-        &self,
-        frame: &mut Frame,
-        area: Rect,
-        config: &Config,
-    ) -> Result<()> {
+    fn render_profile_details(&self, frame: &mut Frame, area: Rect, config: &Config) -> Result<()> {
         let active_profile = &config.active_profile;
         let icons = crate::icons::Icons::from_config(config);
 
         // Find selected profile (use selected index, fallback to active, then first)
-        let profile = self.state
+        let profile = self
+            .state
             .list_state
             .selected()
             .and_then(|idx| self.state.profiles.get(idx))
-            .or_else(|| self.state.profiles.iter().find(|p| p.name == *active_profile))
+            .or_else(|| {
+                self.state
+                    .profiles
+                    .iter()
+                    .find(|p| p.name == *active_profile)
+            })
             .or_else(|| self.state.profiles.first());
 
         let t = theme();
@@ -255,7 +257,10 @@ impl ManageProfilesScreen {
             let status = if is_active {
                 (format!("{} Active", icons.active_profile()), t.success)
             } else {
-                (format!("{} Inactive", icons.inactive_profile()), t.text_emphasis)
+                (
+                    format!("{} Inactive", icons.inactive_profile()),
+                    t.text_emphasis,
+                )
             };
 
             let description = profile.description.as_deref().unwrap_or("No description");
@@ -265,8 +270,7 @@ impl ManageProfilesScreen {
             } else {
                 format!("{} files synced:", profile.synced_files.len())
             };
-// ... (rest of the function is unchanged, I'll only replace the top part)
-
+            // ... (rest of the function is unchanged, I'll only replace the top part)
 
             let files_list = if profile.synced_files.is_empty() {
                 String::new()
@@ -365,12 +369,7 @@ impl ManageProfilesScreen {
     }
 
     /// Render the active popup
-    fn render_popup(
-        &self,
-        frame: &mut Frame,
-        area: Rect,
-        config: &Config,
-    ) -> Result<()> {
+    fn render_popup(&self, frame: &mut Frame, area: Rect, config: &Config) -> Result<()> {
         match self.state.popup_type {
             ProfilePopupType::Create => self.render_create_popup(frame, area, config),
             ProfilePopupType::Switch => self.render_switch_popup(frame, area, config),
@@ -381,12 +380,7 @@ impl ManageProfilesScreen {
     }
 
     /// Render create profile popup
-    fn render_create_popup(
-        &self,
-        frame: &mut Frame,
-        area: Rect,
-        config: &Config,
-    ) -> Result<()> {
+    fn render_create_popup(&self, frame: &mut Frame, area: Rect, config: &Config) -> Result<()> {
         let popup_area = center_popup(area, 60, 50);
         let icons = crate::icons::Icons::from_config(config);
         frame.render_widget(Clear, popup_area);
@@ -535,17 +529,13 @@ impl ManageProfilesScreen {
     }
 
     /// Render switch profile confirmation popup
-    fn render_switch_popup(
-        &self,
-        frame: &mut Frame,
-        area: Rect,
-        config: &Config,
-    ) -> Result<()> {
+    fn render_switch_popup(&self, frame: &mut Frame, area: Rect, config: &Config) -> Result<()> {
         let popup_area = center_popup(area, 70, 40);
         frame.render_widget(Clear, popup_area);
 
         let selected_idx = self.state.list_state.selected();
-        let current_profile = self.state
+        let current_profile = self
+            .state
             .profiles
             .iter()
             .find(|p| p.name == config.active_profile);
@@ -580,11 +570,7 @@ impl ManageProfilesScreen {
     }
 
     /// Render rename profile popup
-    fn render_rename_popup(
-        &self,
-        frame: &mut Frame,
-        area: Rect,
-    ) -> Result<()> {
+    fn render_rename_popup(&self, frame: &mut Frame, area: Rect) -> Result<()> {
         let t = theme();
         let popup_area = center_popup(area, 60, 30);
         frame.render_widget(Clear, popup_area);
@@ -621,12 +607,7 @@ impl ManageProfilesScreen {
     }
 
     /// Render delete profile confirmation popup
-    fn render_delete_popup(
-        &self,
-        frame: &mut Frame,
-        area: Rect,
-        config: &Config,
-    ) -> Result<()> {
+    fn render_delete_popup(&self, frame: &mut Frame, area: Rect, config: &Config) -> Result<()> {
         let popup_area = center_popup(area, 70, 60);
         let icons = crate::icons::Icons::from_config(config);
         frame.render_widget(Clear, popup_area);
@@ -673,7 +654,11 @@ impl ManageProfilesScreen {
         };
 
         let warning = Paragraph::new(warning_text)
-            .block(Block::default().borders(Borders::ALL).border_type(BorderType::Rounded))
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_type(BorderType::Rounded),
+            )
             .wrap(Wrap { trim: false });
         frame.render_widget(warning, chunks[0]);
 
@@ -833,15 +818,23 @@ impl Screen for ManageProfilesScreen {
                                         }
 
                                         if !self.state.create_name_input.text().is_empty() {
-                                            let name = self.state.create_name_input.text().to_string();
-                                            let description =
-                                                if self.state.create_description_input.text().is_empty() {
-                                                    None
-                                                } else {
-                                                    Some(
-                                                        self.state.create_description_input.text().to_string(),
-                                                    )
-                                                };
+                                            let name =
+                                                self.state.create_name_input.text().to_string();
+                                            let description = if self
+                                                .state
+                                                .create_description_input
+                                                .text()
+                                                .is_empty()
+                                            {
+                                                None
+                                            } else {
+                                                Some(
+                                                    self.state
+                                                        .create_description_input
+                                                        .text()
+                                                        .to_string(),
+                                                )
+                                            };
                                             let copy_from = self.state.create_copy_from;
 
                                             // Reset state
@@ -899,48 +892,77 @@ impl Screen for ManageProfilesScreen {
                                         match act {
                                             Action::MoveLeft => {
                                                 match self.state.create_focused_field {
-                                                    CreateField::Name => self.state.create_name_input.move_left(),
-                                                    CreateField::Description => self.state.create_description_input.move_left(),
+                                                    CreateField::Name => {
+                                                        self.state.create_name_input.move_left()
+                                                    }
+                                                    CreateField::Description => self
+                                                        .state
+                                                        .create_description_input
+                                                        .move_left(),
                                                     _ => {}
                                                 }
                                                 return Ok(ScreenAction::Refresh);
                                             }
                                             Action::MoveRight => {
                                                 match self.state.create_focused_field {
-                                                    CreateField::Name => self.state.create_name_input.move_right(),
-                                                    CreateField::Description => self.state.create_description_input.move_right(),
+                                                    CreateField::Name => {
+                                                        self.state.create_name_input.move_right()
+                                                    }
+                                                    CreateField::Description => self
+                                                        .state
+                                                        .create_description_input
+                                                        .move_right(),
                                                     _ => {}
                                                 }
                                                 return Ok(ScreenAction::Refresh);
                                             }
                                             Action::Home => {
                                                 match self.state.create_focused_field {
-                                                    CreateField::Name => self.state.create_name_input.move_home(),
-                                                    CreateField::Description => self.state.create_description_input.move_home(),
+                                                    CreateField::Name => {
+                                                        self.state.create_name_input.move_home()
+                                                    }
+                                                    CreateField::Description => self
+                                                        .state
+                                                        .create_description_input
+                                                        .move_home(),
                                                     _ => {}
                                                 }
                                                 return Ok(ScreenAction::Refresh);
                                             }
                                             Action::End => {
                                                 match self.state.create_focused_field {
-                                                    CreateField::Name => self.state.create_name_input.move_end(),
-                                                    CreateField::Description => self.state.create_description_input.move_end(),
+                                                    CreateField::Name => {
+                                                        self.state.create_name_input.move_end()
+                                                    }
+                                                    CreateField::Description => self
+                                                        .state
+                                                        .create_description_input
+                                                        .move_end(),
                                                     _ => {}
                                                 }
                                                 return Ok(ScreenAction::Refresh);
                                             }
                                             Action::Backspace => {
                                                 match self.state.create_focused_field {
-                                                    CreateField::Name => self.state.create_name_input.backspace(),
-                                                    CreateField::Description => self.state.create_description_input.backspace(),
+                                                    CreateField::Name => {
+                                                        self.state.create_name_input.backspace()
+                                                    }
+                                                    CreateField::Description => self
+                                                        .state
+                                                        .create_description_input
+                                                        .backspace(),
                                                     _ => {}
                                                 }
                                                 return Ok(ScreenAction::Refresh);
                                             }
                                             Action::DeleteChar => {
                                                 match self.state.create_focused_field {
-                                                    CreateField::Name => self.state.create_name_input.delete(),
-                                                    CreateField::Description => self.state.create_description_input.delete(),
+                                                    CreateField::Name => {
+                                                        self.state.create_name_input.delete()
+                                                    }
+                                                    CreateField::Description => {
+                                                        self.state.create_description_input.delete()
+                                                    }
                                                     _ => {}
                                                 }
                                                 return Ok(ScreenAction::Refresh);
@@ -961,7 +983,9 @@ impl Screen for ManageProfilesScreen {
                                                     self.state.create_name_input.insert_char(c);
                                                 }
                                                 CreateField::Description => {
-                                                    self.state.create_description_input.insert_char(c);
+                                                    self.state
+                                                        .create_description_input
+                                                        .insert_char(c);
                                                 }
                                                 _ => {}
                                             }
@@ -984,7 +1008,8 @@ impl Screen for ManageProfilesScreen {
                                                 let profiles = &self.state.profiles;
                                                 if let Some(profile) = profiles.get(idx) {
                                                     let old_name = profile.name.clone();
-                                                    let new_name = self.state.rename_input.text().to_string();
+                                                    let new_name =
+                                                        self.state.rename_input.text().to_string();
                                                     self.state.popup_type = ProfilePopupType::None;
                                                     self.state.rename_input.clear();
                                                     return Ok(ScreenAction::RenameProfile {
@@ -1045,7 +1070,9 @@ impl Screen for ManageProfilesScreen {
                                         if let Some(idx) = self.state.list_state.selected() {
                                             let profiles = &self.state.profiles;
                                             if let Some(profile) = profiles.get(idx) {
-                                                if self.state.delete_confirm_input.text() == profile.name {
+                                                if self.state.delete_confirm_input.text()
+                                                    == profile.name
+                                                {
                                                     let name = profile.name.clone();
                                                     self.state.popup_type = ProfilePopupType::None;
                                                     self.state.delete_confirm_input.clear();
@@ -1164,7 +1191,8 @@ impl Screen for ManageProfilesScreen {
                                 let profiles = &self.state.profiles;
                                 if let Some(profile) = profiles.get(idx) {
                                     self.state.popup_type = ProfilePopupType::Rename;
-                                    self.state.rename_input = crate::utils::TextInput::with_text(&profile.name);
+                                    self.state.rename_input =
+                                        crate::utils::TextInput::with_text(&profile.name);
                                     return Ok(ScreenAction::Refresh);
                                 }
                             }

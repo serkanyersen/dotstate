@@ -939,9 +939,7 @@ impl SymlinkManager {
 
         // Remove the specific symlink from tracking
         let initial_count = self.tracking.symlinks.len();
-        self.tracking
-            .symlinks
-            .retain(|s| s.source != source_path);
+        self.tracking.symlinks.retain(|s| s.source != source_path);
         let removed_count = initial_count - self.tracking.symlinks.len();
 
         if removed_count > 0 {

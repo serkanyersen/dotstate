@@ -403,8 +403,10 @@ impl MainMenuScreen {
         let default_index = default_item.to_index();
         menu_state.select(Some(default_index));
 
-        let mut git_status = GitStatus::default();
-        git_status.has_changes = has_changes;
+        let git_status = GitStatus {
+            has_changes,
+            ..Default::default()
+        };
 
         Self {
             selected_item: default_item,
@@ -633,10 +635,16 @@ impl MainMenuScreen {
             if status.ahead > 0 || status.behind > 0 {
                 stats.push_str("\n\nRemote Status:");
                 if status.behind > 0 {
-                    stats.push_str(&format!("\n  ↓ {} commit(s) behind (pull needed)", status.behind));
+                    stats.push_str(&format!(
+                        "\n  ↓ {} commit(s) behind (pull needed)",
+                        status.behind
+                    ));
                 }
                 if status.ahead > 0 {
-                    stats.push_str(&format!("\n  ↑ {} commit(s) ahead (push needed)", status.ahead));
+                    stats.push_str(&format!(
+                        "\n  ↑ {} commit(s) ahead (push needed)",
+                        status.ahead
+                    ));
                 }
             }
 
@@ -664,8 +672,8 @@ impl MainMenuScreen {
                     ));
                 }
             } else if status.ahead == 0 && status.behind == 0 && status.has_changes {
-                 // Fallback if has_changes is true but list is empty (shouldn't happen but safe to handle)
-                 stats.push_str("\n\nPending Changes: Yes");
+                // Fallback if has_changes is true but list is empty (shouldn't happen but safe to handle)
+                stats.push_str("\n\nPending Changes: Yes");
             }
 
             stats
@@ -714,16 +722,15 @@ impl MainMenuScreen {
                 let icon = menu_item.icon(&self.icons);
                 let text = menu_item.text();
                 let is_enabled = menu_item.is_enabled(is_setup);
-                let has_action_needed = self.git_status.has_changes || self.git_status.ahead > 0 || self.git_status.behind > 0;
+                let has_action_needed = self.git_status.has_changes
+                    || self.git_status.ahead > 0
+                    || self.git_status.behind > 0;
                 let color = menu_item.color(has_action_needed);
 
                 let mut item = MenuWidgetItem::new(icon, text, color).enabled(is_enabled);
 
                 // Add info for sync item if there are pending changes
-                if *menu_item == MenuItem::SyncWithRemote
-                    && has_action_needed
-                    && is_enabled
-                {
+                if *menu_item == MenuItem::SyncWithRemote && has_action_needed && is_enabled {
                     let mut info_parts = Vec::new();
                     if self.git_status.behind > 0 {
                         info_parts.push(format!("↓{}", self.git_status.behind));
@@ -732,12 +739,12 @@ impl MainMenuScreen {
                         info_parts.push(format!("↑{}", self.git_status.ahead));
                     }
                     if self.git_status.has_changes {
-                         let count = self.git_status.uncommitted_files.len();
-                         if count > 0 {
-                             info_parts.push(format!("+{}", count));
-                         } else {
-                             info_parts.push("*".to_string());
-                         }
+                        let count = self.git_status.uncommitted_files.len();
+                        if count > 0 {
+                            info_parts.push(format!("+{}", count));
+                        } else {
+                            info_parts.push("*".to_string());
+                        }
                     }
 
                     if !info_parts.is_empty() {
@@ -756,12 +763,8 @@ impl MainMenuScreen {
                 update_info.current_version, update_info.latest_version
             );
             widget_items.push(
-                MenuWidgetItem::new(
-                    self.icons.update(),
-                    &update_text,
-                    t.text_emphasis,
-                )
-                .enabled(true),
+                MenuWidgetItem::new(self.icons.update(), &update_text, t.text_emphasis)
+                    .enabled(true),
             );
         }
 
@@ -794,12 +797,7 @@ impl MainMenuScreen {
         frame.render_widget(menu_block, content_split[0]);
 
         // Render the menu inside the block
-        StatefulWidget::render(
-            menu,
-            menu_inner,
-            frame.buffer_mut(),
-            &mut self.menu_state,
-        );
+        StatefulWidget::render(menu, menu_inner, frame.buffer_mut(), &mut self.menu_state);
 
         // Right panel: Explanation and stats
         let right_split = Layout::default()
@@ -836,9 +834,14 @@ impl MainMenuScreen {
         frame.render_widget(explanation_para, right_split[0]);
 
         // Stats block with colorful styling
-        let has_pending = self.git_status.has_changes || self.git_status.ahead > 0 || self.git_status.behind > 0;
+        let has_pending =
+            self.git_status.has_changes || self.git_status.ahead > 0 || self.git_status.behind > 0;
         let stats_color = if has_pending { t.warning } else { t.success };
-        let stats_icon = if has_pending { self.icons.warning() } else { self.icons.success() };
+        let stats_icon = if has_pending {
+            self.icons.warning()
+        } else {
+            self.icons.success()
+        };
 
         let stats_block = Block::default()
             .borders(Borders::ALL)
@@ -963,7 +966,11 @@ impl MainMenuScreen {
 
     /// Build the update message from UpdateInfo.
     fn build_update_message(&self, info: &UpdateInfo) -> (String, String) {
-        let title = format!("{} Version {} Available!", self.icons.update(), info.latest_version);
+        let title = format!(
+            "{} Version {} Available!",
+            self.icons.update(),
+            info.latest_version
+        );
         let content = format!(
             "{} New version available: {} → {}\n\n\
             Update options:\n\n\
@@ -1090,11 +1097,9 @@ impl Screen for MainMenuScreen {
         }
 
         // Handle mouse events
-        if matches!(event, Event::Mouse(_)) {
-            if self.handle_mouse_event(event)? {
-                // Mouse click triggered selection
-                return self.handle_selection(ctx);
-            }
+        if matches!(event, Event::Mouse(_)) && self.handle_mouse_event(event)? {
+            // Mouse click triggered selection
+            return self.handle_selection(ctx);
         }
 
         Ok(ScreenAction::None)

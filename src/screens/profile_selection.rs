@@ -68,12 +68,15 @@ impl ProfileSelectionScreen {
             ])
             .split(popup_area);
 
-        let warning_text = format!("{} Profile Selection Required\n\n\
+        let warning_text = format!(
+            "{} Profile Selection Required\n\n\
             You MUST select a profile before continuing.\n\
             Activating a profile will replace your current dotfiles with symlinks.\n\
             This action cannot be undone without restoring from backups.\n\n\
             Please select a profile or create a new one.\n\
-            Press Esc again to cancel and return to main menu.", icons.warning());
+            Press Esc again to cancel and return to main menu.",
+            icons.warning()
+        );
 
         let warning = Paragraph::new(warning_text)
             .block(
@@ -88,8 +91,12 @@ impl ProfileSelectionScreen {
 
         frame.render_widget(warning, chunks[0]);
 
-        let footer_text = format!("{}: Cancel & Return to Main Menu",
-            config.keymap.get_key_display_for_action(crate::keymap::Action::Cancel));
+        let footer_text = format!(
+            "{}: Cancel & Return to Main Menu",
+            config
+                .keymap
+                .get_key_display_for_action(crate::keymap::Action::Cancel)
+        );
         let _ = Footer::render(frame, chunks[2], &footer_text);
     }
 
@@ -123,9 +130,15 @@ impl ProfileSelectionScreen {
 
         frame.render_text_input_widget(widget, chunks[0]);
 
-        let footer_text = format!("{}: Create  |  {}: Cancel",
-            config.keymap.get_key_display_for_action(crate::keymap::Action::Confirm),
-            config.keymap.get_key_display_for_action(crate::keymap::Action::Cancel));
+        let footer_text = format!(
+            "{}: Create  |  {}: Cancel",
+            config
+                .keymap
+                .get_key_display_for_action(crate::keymap::Action::Confirm),
+            config
+                .keymap
+                .get_key_display_for_action(crate::keymap::Action::Cancel)
+        );
         let _ = Footer::render(frame, chunks[2], &footer_text);
     }
 
@@ -156,7 +169,10 @@ impl ProfileSelectionScreen {
             .collect();
 
         // Add "Create New Profile" option
-        items.push(ListItem::new(format!("  {} Create New Profile", icons.create())).style(Style::default().fg(Color::Cyan)));
+        items.push(
+            ListItem::new(format!("  {} Create New Profile", icons.create()))
+                .style(Style::default().fg(Color::Cyan)),
+        );
 
         let list = List::new(items)
             .block(
@@ -175,15 +191,17 @@ impl ProfileSelectionScreen {
         frame.render_stateful_widget(list, content_area, &mut self.state.list_state);
 
         // Footer
-        let footer_text = format!("{}: Navigate | {}: Activate/Create | {}: Cancel",
+        let footer_text = format!(
+            "{}: Navigate | {}: Activate/Create | {}: Cancel",
             config.keymap.navigation_display(),
-            config.keymap.get_key_display_for_action(crate::keymap::Action::Confirm),
-            config.keymap.get_key_display_for_action(crate::keymap::Action::Cancel));
-        let _ = Footer::render(
-            frame,
-            footer_area,
-            &footer_text,
+            config
+                .keymap
+                .get_key_display_for_action(crate::keymap::Action::Confirm),
+            config
+                .keymap
+                .get_key_display_for_action(crate::keymap::Action::Cancel)
         );
+        let _ = Footer::render(frame, footer_area, &footer_text);
     }
 }
 
@@ -249,7 +267,7 @@ impl Screen for ProfileSelectionScreen {
                     }
                     Action::MoveDown => {
                         if self.state.show_create_popup {
-                             self.state.create_name_input.handle_action(Action::MoveDown);
+                            self.state.create_name_input.handle_action(Action::MoveDown);
                         } else if let Some(current) = self.state.list_state.selected() {
                             if current < self.state.profiles.len() {
                                 self.state.list_state.select(Some(current + 1));
@@ -263,7 +281,8 @@ impl Screen for ProfileSelectionScreen {
                     }
                     Action::Confirm => {
                         if self.state.show_create_popup {
-                            let profile_name = self.state.create_name_input.text_trimmed().to_string();
+                            let profile_name =
+                                self.state.create_name_input.text_trimmed().to_string();
                             if !profile_name.is_empty() {
                                 self.state.show_create_popup = false;
                                 return Ok(ScreenAction::CreateAndActivateProfile {

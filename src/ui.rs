@@ -123,7 +123,9 @@ impl Default for GitHubAuthState {
             // GitHub mode fields
             token_input: crate::utils::TextInput::new(),
             repo_name_input: crate::utils::TextInput::with_text(crate::config::default_repo_name()),
-            repo_location_input: crate::utils::TextInput::with_text(default_repo_path.to_string_lossy().to_string()),
+            repo_location_input: crate::utils::TextInput::with_text(
+                default_repo_path.to_string_lossy().to_string(),
+            ),
             is_private: true, // Private by default
             step: GitHubAuthStep::Input,
             error_message: None,
@@ -136,13 +138,13 @@ impl Default for GitHubAuthState {
             setup_data: None,
 
             // Local mode fields
-            local_repo_path_input: crate::utils::TextInput::with_text(default_repo_path.to_string_lossy().to_string()),
+            local_repo_path_input: crate::utils::TextInput::with_text(
+                default_repo_path.to_string_lossy().to_string(),
+            ),
             local_step: LocalSetupStep::Input,
         }
     }
 }
-
-
 
 /// Sync with remote state
 #[derive(Debug, Clone)]
@@ -214,8 +216,8 @@ pub struct PackageManagerState {
     pub add_binary_name_input: crate::utils::TextInput,
     pub add_install_command_input: crate::utils::TextInput, // For custom only
     pub add_existence_check_input: crate::utils::TextInput, // For custom only
-    pub add_manager_check_input: crate::utils::TextInput, // Optional fallback
-    pub add_is_custom: bool, // Whether in custom mode
+    pub add_manager_check_input: crate::utils::TextInput,   // Optional fallback
+    pub add_is_custom: bool,                                // Whether in custom mode
     pub add_focused_field: AddPackageField,
     pub add_editing_index: Option<usize>, // None for add, Some(index) for edit
     pub available_managers: Vec<crate::utils::profile_manifest::PackageManager>, // OS-filtered list

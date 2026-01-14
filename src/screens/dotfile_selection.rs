@@ -3,17 +3,17 @@
 //! This screen handles selecting and managing dotfiles for syncing.
 //! It owns all state and rendering logic (self-contained screen).
 
-use crate::file_manager::Dotfile;
 use crate::components::file_preview::FilePreview;
 use crate::components::footer::Footer;
 use crate::components::header::Header;
 use crate::config::Config;
+use crate::file_manager::Dotfile;
 use crate::screens::screen_trait::{RenderContext, Screen, ScreenAction, ScreenContext};
 use crate::styles::{theme as ui_theme, LIST_HIGHLIGHT_SYMBOL};
 use crate::ui::Screen as ScreenId;
 use crate::utils::{
     center_popup, create_split_layout, create_standard_layout, focused_border_style,
-    unfocused_border_style, list_navigation::ListStateExt, TextInput,
+    list_navigation::ListStateExt, unfocused_border_style, TextInput,
 };
 use crate::widgets::{TextInputWidget, TextInputWidgetExt};
 use anyhow::Result;
@@ -22,7 +22,8 @@ use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 
 use ratatui::widgets::{
-    Block, BorderType, Borders, Clear, List, ListItem, ListState, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, StatefulWidget, Wrap
+    Block, BorderType, Borders, Clear, List, ListItem, ListState, Paragraph, Scrollbar,
+    ScrollbarOrientation, ScrollbarState, StatefulWidget, Wrap,
 };
 use ratatui::Frame;
 use std::path::{Path, PathBuf};
@@ -588,9 +589,9 @@ impl DotfileSelectionScreen {
                     self.state.file_browser_mode = true;
                     self.state.file_browser_path = crate::utils::get_home_dir();
                     self.state.file_browser_selected = 0;
-                    self.state.file_browser_path_input.set_text(
-                        self.state.file_browser_path.to_string_lossy().to_string(),
-                    );
+                    self.state
+                        .file_browser_path_input
+                        .set_text(self.state.file_browser_path.to_string_lossy().to_string());
                     self.state.file_browser_path_focused = false;
                     self.state.file_browser_preview_scroll = 0;
                     self.state.focus = DotfileSelectionFocus::FileBrowserList;
@@ -692,19 +693,14 @@ impl DotfileSelectionScreen {
             .split(popup_area);
 
         // Current path display
-        let path_display = Paragraph::new(
-            self.state
-                .file_browser_path
-                .to_string_lossy()
-                .to_string(),
-        )
-        .block(
-            Block::default()
-                // .borders(Borders::ALL)
-                .title("Current Directory")
-                .title_alignment(Alignment::Center)
-                .style(Style::default().bg(Color::Reset)),
-        );
+        let path_display =
+            Paragraph::new(self.state.file_browser_path.to_string_lossy().to_string()).block(
+                Block::default()
+                    // .borders(Borders::ALL)
+                    .title("Current Directory")
+                    .title_alignment(Alignment::Center)
+                    .style(Style::default().bg(Color::Reset)),
+            );
         frame.render_widget(path_display, browser_chunks[0]);
 
         // Path input field
@@ -717,7 +713,8 @@ impl DotfileSelectionScreen {
         let list_preview_chunks = create_split_layout(browser_chunks[2], &[50, 50]);
 
         // File list using ListState
-        let items: Vec<ListItem> = self.state
+        let items: Vec<ListItem> = self
+            .state
             .file_browser_entries
             .iter()
             .map(|path| {
@@ -757,11 +754,9 @@ impl DotfileSelectionScreen {
 
         // Update scrollbar state
         let total_items = self.state.file_browser_entries.len();
-        let selected_index = self.state
-            .file_browser_list_state
-            .selected()
-            .unwrap_or(0);
-        self.state.file_browser_scrollbar = self.state
+        let selected_index = self.state.file_browser_list_state.selected().unwrap_or(0);
+        self.state.file_browser_scrollbar = self
+            .state
             .file_browser_scrollbar
             .content_length(total_items)
             .position(selected_index);
@@ -955,7 +950,8 @@ impl DotfileSelectionScreen {
 
         // File list using ListState - simplified, no descriptions inline
         let t = ui_theme();
-        let items: Vec<ListItem> = self.state
+        let items: Vec<ListItem> = self
+            .state
             .dotfiles
             .iter()
             .enumerate()
@@ -975,7 +971,8 @@ impl DotfileSelectionScreen {
         // Update scrollbar state
         let total_dotfiles = self.state.dotfiles.len();
         let selected_index = self.state.dotfile_list_state.selected().unwrap_or(0);
-        self.state.dotfile_list_scrollbar = self.state
+        self.state.dotfile_list_scrollbar = self
+            .state
             .dotfile_list_scrollbar
             .content_length(total_dotfiles)
             .position(selected_index);
@@ -1173,7 +1170,8 @@ impl DotfileSelectionScreen {
         let popup_area = crate::utils::center_popup(area, 70, 40);
         frame.render_widget(Clear, popup_area);
 
-        let path = self.state
+        let path = self
+            .state
             .custom_file_confirm_path
             .as_ref()
             .map(|p| p.display().to_string())
@@ -1284,12 +1282,7 @@ impl Screen for DotfileSelectionScreen {
                 ctx.syntax_theme,
             )?;
         } else if self.state.adding_custom_file {
-            self.render_custom_file_input(
-                frame,
-                content_chunk,
-                footer_chunk,
-                ctx.config,
-            )?;
+            self.render_custom_file_input(frame, content_chunk, footer_chunk, ctx.config)?;
         } else {
             self.render_dotfile_list(
                 frame,
@@ -1303,7 +1296,6 @@ impl Screen for DotfileSelectionScreen {
 
         Ok(())
     }
-
 
     fn handle_event(&mut self, event: Event, ctx: &ScreenContext) -> Result<ScreenAction> {
         // 1. Modal first - captures all events

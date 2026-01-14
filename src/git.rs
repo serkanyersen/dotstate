@@ -827,7 +827,7 @@ impl GitManager {
             // Fallback to finding the remote tracking branch ref
             // Note: This might be stale if we didn't just fetch
             let remote_ref_name = format!("refs/remotes/{}/{}", remote_name, branch);
-             match self.repo.refname_to_id(&remote_ref_name) {
+            match self.repo.refname_to_id(&remote_ref_name) {
                 Ok(oid) => oid,
                 Err(_) => return Ok((0, 0)), // Remote branch doesn't exist
             }

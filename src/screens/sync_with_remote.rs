@@ -9,13 +9,16 @@ use crate::components::message_box::MessageBox;
 use crate::screens::screen_trait::{RenderContext, Screen, ScreenAction, ScreenContext};
 use crate::styles::{theme as ui_theme, LIST_HIGHLIGHT_SYMBOL};
 use crate::ui::{Screen as ScreenId, SyncWithRemoteState};
-use crate::utils::{center_popup, create_split_layout, create_standard_layout, focused_border_style};
+use crate::utils::{
+    center_popup, create_split_layout, create_standard_layout, focused_border_style,
+};
 use anyhow::Result;
 use crossterm::event::Event;
 use ratatui::layout::{Alignment, Rect};
 use ratatui::prelude::*;
 use ratatui::widgets::{
-    Block, BorderType, Borders, Clear, List, ListItem, Paragraph, Scrollbar, ScrollbarOrientation, StatefulWidget, Wrap
+    Block, BorderType, Borders, Clear, List, ListItem, Paragraph, Scrollbar, ScrollbarOrientation,
+    StatefulWidget, Wrap,
 };
 use ratatui::Frame;
 
@@ -141,7 +144,11 @@ impl SyncWithRemoteScreen {
     /// Render the syncing progress indicator
     fn render_progress(&self, frame: &mut Frame, content_chunk: Rect) {
         let t = ui_theme();
-        let progress_text = self.state.sync_progress.as_deref().unwrap_or("Processing...");
+        let progress_text = self
+            .state
+            .sync_progress
+            .as_deref()
+            .unwrap_or("Processing...");
         let progress_para = Paragraph::new(progress_text)
             .style(Style::default().fg(t.warning))
             .alignment(Alignment::Center)
@@ -159,7 +166,12 @@ impl SyncWithRemoteScreen {
     }
 
     /// Render the changed files list and diff preview
-    fn render_changes_list(&mut self, frame: &mut Frame, content_chunk: Rect, ctx: &RenderContext) -> Result<()> {
+    fn render_changes_list(
+        &mut self,
+        frame: &mut Frame,
+        content_chunk: Rect,
+        ctx: &RenderContext,
+    ) -> Result<()> {
         let t = ui_theme();
 
         let has_remote_changes = if let Some(status) = &self.state.git_status {
@@ -188,16 +200,22 @@ impl SyncWithRemoteScreen {
 
         // If we have remote changes but no local file changes, show status summary
         if self.state.changed_files.is_empty() && has_remote_changes {
-             let status = self.state.git_status.as_ref().unwrap();
-             let mut msg = String::from("Ready to Sync:\n\n");
-             if status.behind > 0 {
-                 msg.push_str(&format!("• {} commit(s) behind remote (will pull)\n", status.behind));
-             }
-             if status.ahead > 0 {
-                 msg.push_str(&format!("• {} commit(s) ahead of remote (will push)\n", status.ahead));
-             }
+            let status = self.state.git_status.as_ref().unwrap();
+            let mut msg = String::from("Ready to Sync:\n\n");
+            if status.behind > 0 {
+                msg.push_str(&format!(
+                    "• {} commit(s) behind remote (will pull)\n",
+                    status.behind
+                ));
+            }
+            if status.ahead > 0 {
+                msg.push_str(&format!(
+                    "• {} commit(s) ahead of remote (will push)\n",
+                    status.ahead
+                ));
+            }
 
-             let status_para = Paragraph::new(msg)
+            let status_para = Paragraph::new(msg)
                 .style(t.text_style())
                 .wrap(Wrap { trim: true })
                 .block(
@@ -220,12 +238,14 @@ impl SyncWithRemoteScreen {
         // Update scrollbar state
         let total_items = self.state.changed_files.len();
         let selected_index = self.state.list_state.selected().unwrap_or(0);
-        self.state.scrollbar_state = self.state
+        self.state.scrollbar_state = self
+            .state
             .scrollbar_state
             .content_length(total_items)
             .position(selected_index);
 
-        let items: Vec<ListItem> = self.state
+        let items: Vec<ListItem> = self
+            .state
             .changed_files
             .iter()
             .map(|file| {
@@ -248,14 +268,22 @@ impl SyncWithRemoteScreen {
                     .borders(Borders::ALL)
                     .border_style(focused_border_style())
                     .border_type(BorderType::Rounded)
-                    .title(format!("Changed Files ({})", self.state.changed_files.len()))
+                    .title(format!(
+                        "Changed Files ({})",
+                        self.state.changed_files.len()
+                    ))
                     .title_alignment(Alignment::Center)
                     .padding(ratatui::widgets::Padding::new(1, 1, 1, 1)),
             )
             .highlight_style(t.highlight_style())
             .highlight_symbol(LIST_HIGHLIGHT_SYMBOL);
 
-        StatefulWidget::render(list, list_area, frame.buffer_mut(), &mut self.state.list_state);
+        StatefulWidget::render(
+            list,
+            list_area,
+            frame.buffer_mut(),
+            &mut self.state.list_state,
+        );
 
         // Render scrollbar
         frame.render_stateful_widget(
@@ -385,7 +413,9 @@ impl Screen for SyncWithRemoteScreen {
                                 false
                             };
 
-                            if !self.state.is_syncing && (!self.state.changed_files.is_empty() || has_remote_changes) {
+                            if !self.state.is_syncing
+                                && (!self.state.changed_files.is_empty() || has_remote_changes)
+                            {
                                 self.start_sync(ctx)?;
                             }
                             return Ok(ScreenAction::None);

@@ -266,7 +266,7 @@ impl Config {
             "nerd" | "nerdfont" | "nerdfonts" => IconSet::NerdFonts,
             "unicode" | "emoji" => IconSet::Unicode,
             "ascii" | "plain" => IconSet::Ascii,
-            "auto" | _ => IconSet::detect(), // Auto-detect or fallback to detection
+            _ => IconSet::detect(), // Auto-detect or fallback to detection
         }
     }
 

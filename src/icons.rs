@@ -97,7 +97,7 @@ impl Icons {
 
     pub fn folder(&self) -> &'static str {
         match self.icon_set {
-            IconSet::NerdFonts => "\u{ea83}",  //
+            IconSet::NerdFonts => "\u{ea83}", //
             IconSet::Unicode => "📁",
             IconSet::Ascii => "[DIR]",
         }
@@ -105,7 +105,7 @@ impl Icons {
 
     pub fn file(&self) -> &'static str {
         match self.icon_set {
-            IconSet::NerdFonts => "\u{f15b}",  //
+            IconSet::NerdFonts => "\u{f15b}", //
             IconSet::Unicode => "📄",
             IconSet::Ascii => "[FILE]",
         }
@@ -113,7 +113,7 @@ impl Icons {
 
     pub fn sync(&self) -> &'static str {
         match self.icon_set {
-            IconSet::NerdFonts => "\u{f14ce}",  //
+            IconSet::NerdFonts => "\u{f14ce}", //
             IconSet::Unicode => "🔄",
             IconSet::Ascii => "[SYNC]",
         }
@@ -121,7 +121,7 @@ impl Icons {
 
     pub fn loading(&self) -> &'static str {
         match self.icon_set {
-            IconSet::NerdFonts => "\u{f021}",  //
+            IconSet::NerdFonts => "\u{f021}", //
             IconSet::Unicode => "⏳",
             IconSet::Ascii => "[LD]",
         }
@@ -129,7 +129,7 @@ impl Icons {
 
     pub fn profile(&self) -> &'static str {
         match self.icon_set {
-            IconSet::NerdFonts => "\u{f007}",  //
+            IconSet::NerdFonts => "\u{f007}", //
             IconSet::Unicode => "👤",
             IconSet::Ascii => "[USER]",
         }
@@ -137,7 +137,7 @@ impl Icons {
 
     pub fn package(&self) -> &'static str {
         match self.icon_set {
-            IconSet::NerdFonts => "\u{eb29}",  //
+            IconSet::NerdFonts => "\u{eb29}", //
             IconSet::Unicode => "📦",
             IconSet::Ascii => "[PKG]",
         }
@@ -145,7 +145,7 @@ impl Icons {
 
     pub fn git(&self) -> &'static str {
         match self.icon_set {
-            IconSet::NerdFonts => "\u{f1d2}",  //
+            IconSet::NerdFonts => "\u{f1d2}", //
             IconSet::Unicode => "🔧",
             IconSet::Ascii => "[GIT]",
         }
@@ -153,7 +153,7 @@ impl Icons {
 
     pub fn update(&self) -> &'static str {
         match self.icon_set {
-            IconSet::NerdFonts => "\u{f06b0}",  //
+            IconSet::NerdFonts => "\u{f06b0}", //
             IconSet::Unicode => "🎉",
             IconSet::Ascii => "[UPD]",
         }
@@ -161,7 +161,7 @@ impl Icons {
 
     pub fn menu(&self) -> &'static str {
         match self.icon_set {
-            IconSet::NerdFonts => "\u{f0c9}",  //
+            IconSet::NerdFonts => "\u{f0c9}", //
             IconSet::Unicode => "📋",
             IconSet::Ascii => "[MENU]",
         }
@@ -171,7 +171,7 @@ impl Icons {
 
     pub fn success(&self) -> &'static str {
         match self.icon_set {
-            IconSet::NerdFonts => "\u{f00c}",  //
+            IconSet::NerdFonts => "\u{f00c}", //
             IconSet::Unicode => "✅",
             IconSet::Ascii => "[OK]",
         }
@@ -179,7 +179,7 @@ impl Icons {
 
     pub fn warning(&self) -> &'static str {
         match self.icon_set {
-            IconSet::NerdFonts => "\u{f071}",  //
+            IconSet::NerdFonts => "\u{f071}", //
             IconSet::Unicode => "⚠️",
             IconSet::Ascii => "[!]",
         }
@@ -187,7 +187,7 @@ impl Icons {
 
     pub fn error(&self) -> &'static str {
         match self.icon_set {
-            IconSet::NerdFonts => "\u{ebfb}",  //
+            IconSet::NerdFonts => "\u{ebfb}", //
             IconSet::Unicode => "❌",
             IconSet::Ascii => "[X]",
         }
@@ -195,7 +195,7 @@ impl Icons {
 
     pub fn info(&self) -> &'static str {
         match self.icon_set {
-            IconSet::NerdFonts => "\u{f05a}",  //
+            IconSet::NerdFonts => "\u{f05a}", //
             IconSet::Unicode => "ℹ️",
             IconSet::Ascii => "[i]",
         }
@@ -203,7 +203,7 @@ impl Icons {
 
     pub fn lightbulb(&self) -> &'static str {
         match self.icon_set {
-            IconSet::NerdFonts => "\u{f0eb}",  //
+            IconSet::NerdFonts => "\u{f0eb}", //
             IconSet::Unicode => "💡",
             IconSet::Ascii => "[IDEA]",
         }

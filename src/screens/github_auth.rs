@@ -297,7 +297,9 @@ impl GitHubAuthScreen {
                     match self.state.focused_field {
                         GitHubAuthField::Token => self.state.token_input.move_right(),
                         GitHubAuthField::RepoName => self.state.repo_name_input.move_right(),
-                        GitHubAuthField::RepoLocation => self.state.repo_location_input.move_right(),
+                        GitHubAuthField::RepoLocation => {
+                            self.state.repo_location_input.move_right()
+                        }
                         GitHubAuthField::IsPrivate if !self.state.repo_already_configured => {
                             self.state.is_private = !self.state.is_private;
                         }
