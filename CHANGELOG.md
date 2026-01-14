@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Added
+
+### Changed
+
+### Fixed
+
+---
+## [0.2.4] - 2026-01-14
 
 ### Added
 - **Configurable Keymap System**: Complete refactor of keyboard command handling to use a configurable keymap system
@@ -20,16 +28,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Support for modifier keys in overrides (e.g., `ctrl+h`, `ctrl+shift+j`)
   - Support for special keys in overrides (e.g., `f1`, `enter`, `esc`, `tab`)
 
+- **Enhanced Git Sync Status**: Detailed tracking of ahead/behind counts and pending changes
+- **Icon System**: Native support for NerdFonts, Emojis, and ASCII icons with configurable settings
+- **New Main Menu**: Redesigned main menu interface for better usability
+- **Enhanced Status UI**: Improved detailed Git status display for sync operations
+
 ### Changed
 - **Keyboard Event Handling**: All keyboard commands now use the configurable keymap system instead of hardcoded key checks
 - **Component Event Handling**: Components now use keymap actions instead of hardcoded key codes
 - **Footer Display**: Footers dynamically show actual key bindings based on current keymap configuration
 - **Help Overlay**: Help overlay now displays all bindings from keymap (preset + overrides) instead of hardcoded values
+- **Architectural Refactor**: Major migration to a Screen-based architecture for better state management and UI responsiveness
+- **Text Input Handling**: Unified and improved text input behavior across all screens
+- **Sync Efficiency**: Improved efficiency of file syncing operations
+- **Performance**: Optimized profile checks to reduce IO operations
+- **UI Components**: Refactored UI components for consistency and better performance
 
 ### Fixed
 - Removed redundant hardcoded key fallbacks that were no longer needed after keymap migration
 - Fixed component event handling to properly use keymap system
 - Fixed display functions to reflect actual key bindings instead of preset-only values
+- **Keymap Display**: Fixed display issues for keymaps and footers
+- **Profile Selection**: Fixed bug with initial profile selection logic
 
 ---
 ## [0.2.2] - 2026-01-09

@@ -337,6 +337,7 @@ See `examples/keymap_override_example.toml` for a complete example configuration
 - **Rust**: Latest stable version (for building from source)
 - **Git**: For repository operations
 - **Git Account**: GitHub, GitLab, Bitbucket, or any git host (optional, for cloud sync)
+- **(Recommended) Nerd Fonts**: For the best visual experience, we recommend using a [Nerd Font](https://www.nerdfonts.com/) to see all icons correctly.
 
 ## Project Status
 
