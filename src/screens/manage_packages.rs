@@ -456,7 +456,7 @@ impl Screen for ManagePackagesScreen {
                     k(crate::keymap::Action::Edit),
                     k(crate::keymap::Action::Delete),
                     k(crate::keymap::Action::Refresh),
-                    k(crate::keymap::Action::Sync),
+                    k(crate::keymap::Action::CheckStatus),
                     k(crate::keymap::Action::Install),
                     k(crate::keymap::Action::Cancel)
                 )
@@ -575,7 +575,7 @@ impl ManagePackagesScreen {
                     return Ok(ScreenAction::Refresh);
                 }
             }
-            Action::Sync => {
+            Action::CheckStatus => {
                 // Check Selected
                 if state.popup_type == PackagePopupType::None && !state.is_checking {
                     if let Some(idx) = state.list_state.selected() {
@@ -1169,7 +1169,8 @@ impl ManagePackagesScreen {
         if self.state.packages.is_empty() {
             // Show empty state message
             let paragraph =
-                Paragraph::new("No packages yet.\n\nPress 'A' to add your first package.")
+                Paragraph::new(format!("No packages yet.\n\nPress '{}' to add your first package.",
+                    config.keymap.get_key_display_for_action(crate::keymap::Action::Create)))
                     .block(
                         Block::default()
                             .borders(Borders::ALL)
@@ -1293,7 +1294,9 @@ impl ManagePackagesScreen {
             Some(PackageStatus::Error(msg)) => {
                 details.push_str(&format!("\n\nStatus: {} Error: {}", icons.warning(), msg))
             }
-            _ => details.push_str("\n\nStatus: ⏳ Unknown (press 'C' to check)"),
+            _ => details.push_str(&format!("\n\nStatus: {} Unknown (press '{}' to check)",
+                icons.loading(),
+                config.keymap.get_key_display_for_action(crate::keymap::Action::CheckStatus))),
         }
 
         details
@@ -1308,7 +1311,7 @@ impl ManagePackagesScreen {
                 self.render_delete_popup(frame, area, config)?;
             }
             PackagePopupType::InstallMissing => {
-                self.render_install_missing_popup(frame, area)?;
+                self.render_install_missing_popup(frame, area, config)?;
             }
             PackagePopupType::None => return Ok(()),
         }
@@ -1731,7 +1734,7 @@ impl ManagePackagesScreen {
         Ok(())
     }
 
-    fn render_install_missing_popup(&mut self, frame: &mut Frame, area: Rect) -> Result<()> {
+    fn render_install_missing_popup(&mut self, frame: &mut Frame, area: Rect, config: &Config) -> Result<()> {
         let popup_area = center_popup(area, 60, 25);
         frame.render_widget(Clear, popup_area);
 
@@ -1818,7 +1821,9 @@ impl ManagePackagesScreen {
         }
 
         // Instructions
-        let instructions = Paragraph::new("Press Y/Enter to install, N/Esc to cancel")
+        let instructions = Paragraph::new(format!("Press {} to install, {} to cancel",
+            config.keymap.get_key_display_for_action(crate::keymap::Action::Confirm),
+            config.keymap.get_key_display_for_action(crate::keymap::Action::Cancel)))
             .alignment(Alignment::Center)
             .style(t.muted_style());
         frame.render_widget(instructions, chunks[5]);

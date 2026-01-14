@@ -66,7 +66,8 @@ fn standard_bindings() -> Vec<KeyBinding> {
         KeyBinding::new("c", Action::Create),
         KeyBinding::new("/", Action::Search),
         KeyBinding::new("r", Action::Refresh),
-        KeyBinding::new("s", Action::Sync),
+        KeyBinding::new("s", Action::CheckStatus),
+        KeyBinding::new("shift+s", Action::Sync),
         KeyBinding::new("i", Action::Install),
         KeyBinding::new("ctrl+s", Action::Save),
         KeyBinding::new("b", Action::ToggleBackup),
@@ -121,7 +122,8 @@ fn vim_bindings() -> Vec<KeyBinding> {
         KeyBinding::new("o", Action::Create), // 'o' for open/new in vim style
         KeyBinding::new("/", Action::Search),
         KeyBinding::new("r", Action::Refresh),
-        KeyBinding::new("s", Action::Sync),
+        KeyBinding::new("s", Action::CheckStatus),
+        KeyBinding::new("shift+s", Action::Sync),
         KeyBinding::new("i", Action::Install),
         KeyBinding::new("ctrl+s", Action::Save),
         KeyBinding::new("b", Action::ToggleBackup),
@@ -180,8 +182,9 @@ fn emacs_bindings() -> Vec<KeyBinding> {
         KeyBinding::new("ctrl+o", Action::Create),
         KeyBinding::new("/", Action::Search), // Use / for search (Ctrl+S is used for Save)
         KeyBinding::new("ctrl+r", Action::Refresh),
+        KeyBinding::new("ctrl+r", Action::Refresh),
         KeyBinding::new("ctrl+x s", Action::Sync), // Note: multi-key not supported yet
-        KeyBinding::new("s", Action::Sync),
+        KeyBinding::new("s", Action::CheckStatus),
         KeyBinding::new("i", Action::Install),
         KeyBinding::new("ctrl+s", Action::Save),
         KeyBinding::new("b", Action::ToggleBackup), // Use 'b' since Ctrl+B is MoveLeft in Emacs

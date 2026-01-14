@@ -88,11 +88,13 @@ impl ProfileSelectionScreen {
 
         frame.render_widget(warning, chunks[0]);
 
-        let _ = Footer::render(frame, chunks[2], "Esc: Cancel & Return to Main Menu");
+        let footer_text = format!("{}: Cancel & Return to Main Menu",
+            config.keymap.get_key_display_for_action(crate::keymap::Action::Cancel));
+        let _ = Footer::render(frame, chunks[2], &footer_text);
     }
 
     /// Render the create profile popup.
-    fn render_create_popup(&mut self, frame: &mut Frame, area: Rect, _config: &Config) {
+    fn render_create_popup(&mut self, frame: &mut Frame, area: Rect, config: &Config) {
         use crate::components::footer::Footer;
         use crate::utils::center_popup;
 
@@ -121,7 +123,10 @@ impl ProfileSelectionScreen {
 
         frame.render_text_input_widget(widget, chunks[0]);
 
-        let _ = Footer::render(frame, chunks[2], "Enter: Create  |  Esc: Cancel");
+        let footer_text = format!("{}: Create  |  {}: Cancel",
+            config.keymap.get_key_display_for_action(crate::keymap::Action::Confirm),
+            config.keymap.get_key_display_for_action(crate::keymap::Action::Cancel));
+        let _ = Footer::render(frame, chunks[2], &footer_text);
     }
 
     /// Render the main profile list.
@@ -170,10 +175,14 @@ impl ProfileSelectionScreen {
         frame.render_stateful_widget(list, content_area, &mut self.state.list_state);
 
         // Footer
+        let footer_text = format!("{}: Navigate | {}: Activate/Create | {}: Cancel",
+            config.keymap.navigation_display(),
+            config.keymap.get_key_display_for_action(crate::keymap::Action::Confirm),
+            config.keymap.get_key_display_for_action(crate::keymap::Action::Cancel));
         let _ = Footer::render(
             frame,
             footer_area,
-            "↑↓: Navigate | Enter: Activate/Create | Esc: Cancel",
+            &footer_text,
         );
     }
 }
