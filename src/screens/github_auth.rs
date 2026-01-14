@@ -395,16 +395,6 @@ impl GitHubAuthScreen {
 
     // Helper methods
 
-    fn get_current_input(&self) -> &str {
-        match self.state.focused_field {
-            GitHubAuthField::Token => self.state.token_input.text(),
-            GitHubAuthField::RepoName => self.state.repo_name_input.text(),
-            GitHubAuthField::RepoLocation => self.state.repo_location_input.text(),
-            GitHubAuthField::IsPrivate => "",
-        }
-    }
-
-
     fn handle_backspace(&mut self) {
         match self.state.focused_field {
             GitHubAuthField::Token => self.state.token_input.backspace(),

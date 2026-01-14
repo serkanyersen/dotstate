@@ -2,7 +2,7 @@ use crate::styles::theme;
 use crate::widgets::DotstateLogo;
 use anyhow::Result;
 use ratatui::prelude::*;
-use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
+use ratatui::widgets::{Block, BorderType, Borders, Paragraph, Wrap};
 
 /// Common header component for all screens
 pub struct Header;
@@ -29,6 +29,7 @@ impl Header {
         let header_block = Block::default()
             .borders(Borders::ALL)
             .border_style(t.border_focused_style())
+            .border_type(BorderType::Rounded)
             .title(title)
             .title_style(t.title_style())
             .title_alignment(Alignment::Center)

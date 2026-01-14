@@ -6,11 +6,12 @@
 use crate::config::Config;
 use crate::screens::screen_trait::{RenderContext, Screen, ScreenAction, ScreenContext};
 use crate::ui::{ProfileSelectionState, Screen as ScreenId};
+use crate::widgets::{TextInputWidget, TextInputWidgetExt};
 use anyhow::Result;
 use crossterm::event::{Event, KeyCode, KeyEventKind};
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::prelude::*;
-use ratatui::widgets::{Block, Borders, Clear, List, ListItem, Paragraph};
+use ratatui::widgets::{Block, BorderType, Borders, Clear, List, ListItem, Paragraph};
 use ratatui::Frame;
 
 /// Profile selection screen controller.
@@ -79,6 +80,7 @@ impl ProfileSelectionScreen {
                 Block::default()
                     .title(" Warning ")
                     .borders(Borders::ALL)
+                    .border_type(BorderType::Rounded)
                     .border_style(Style::default().fg(Color::Yellow)),
             )
             .style(Style::default().fg(Color::Yellow))
@@ -106,36 +108,18 @@ impl ProfileSelectionScreen {
             ])
             .split(popup_area);
 
-        let input_style = if self.state.create_name_input.is_empty() {
-            Style::default().fg(Color::DarkGray)
-        } else {
-            Style::default().fg(Color::White)
-        };
+        let custom_block = Block::default()
+            .title(" Create New Profile ")
+            .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
+            .border_style(Style::default().fg(Color::Cyan));
 
-        let display_text = if self.state.create_name_input.is_empty() {
-            "Enter profile name...".to_string()
-        } else {
-            self.state.create_name_input.clone()
-        };
+        let widget = TextInputWidget::new(&self.state.create_name_input)
+            .placeholder("Enter profile name...")
+            .focused(true)
+            .block(custom_block);
 
-        let input = Paragraph::new(display_text)
-            .block(
-                Block::default()
-                    .title(" Create New Profile ")
-                    .borders(Borders::ALL)
-                    .border_style(Style::default().fg(Color::Cyan)),
-            )
-            .style(input_style);
-
-        frame.render_widget(input, chunks[0]);
-
-        // Set cursor position
-        if !self.state.create_name_input.is_empty() || self.state.create_name_cursor > 0 {
-            frame.set_cursor_position((
-                chunks[0].x + 1 + self.state.create_name_cursor as u16,
-                chunks[0].y + 1,
-            ));
-        }
+        frame.render_text_input_widget(widget, chunks[0]);
 
         let _ = Footer::render(frame, chunks[2], "Enter: Create  |  Esc: Cancel");
     }
@@ -172,7 +156,8 @@ impl ProfileSelectionScreen {
             .block(
                 Block::default()
                     .title(" Available Profiles ")
-                    .borders(Borders::ALL),
+                    .borders(Borders::ALL)
+                    .border_type(BorderType::Rounded),
             )
             .highlight_style(
                 Style::default()
@@ -236,11 +221,7 @@ impl Screen for ProfileSelectionScreen {
                     Action::MoveUp => {
                         if self.state.show_create_popup {
                             // In popup, handle cursor movement
-                            crate::utils::handle_cursor_movement(
-                                &self.state.create_name_input,
-                                &mut self.state.create_name_cursor,
-                                key.code,
-                            );
+                            self.state.create_name_input.handle_action(Action::MoveUp);
                         } else if let Some(current) = self.state.list_state.selected() {
                             if current > 0 {
                                 self.state.list_state.select(Some(current - 1));
@@ -258,11 +239,7 @@ impl Screen for ProfileSelectionScreen {
                     }
                     Action::MoveDown => {
                         if self.state.show_create_popup {
-                            crate::utils::handle_cursor_movement(
-                                &self.state.create_name_input,
-                                &mut self.state.create_name_cursor,
-                                key.code,
-                            );
+                             self.state.create_name_input.handle_action(Action::MoveDown);
                         } else if let Some(current) = self.state.list_state.selected() {
                             if current < self.state.profiles.len() {
                                 self.state.list_state.select(Some(current + 1));
@@ -276,7 +253,7 @@ impl Screen for ProfileSelectionScreen {
                     }
                     Action::Confirm => {
                         if self.state.show_create_popup {
-                            let profile_name = self.state.create_name_input.trim().to_string();
+                            let profile_name = self.state.create_name_input.text_trimmed().to_string();
                             if !profile_name.is_empty() {
                                 self.state.show_create_popup = false;
                                 return Ok(ScreenAction::CreateAndActivateProfile {
@@ -288,7 +265,6 @@ impl Screen for ProfileSelectionScreen {
                                 // "Create New Profile" selected
                                 self.state.show_create_popup = true;
                                 self.state.create_name_input.clear();
-                                self.state.create_name_cursor = 0;
                             } else if let Some(name) = self.state.profiles.get(idx) {
                                 let name = name.clone();
                                 return Ok(ScreenAction::ActivateProfile { name });
@@ -303,16 +279,17 @@ impl Screen for ProfileSelectionScreen {
                             self.state.show_exit_warning = true;
                         }
                     }
-                    _ => {}
+                    _ => {
+                        // Forward other actions (like Backspace, etc.) to input if focused
+                        if self.state.show_create_popup {
+                            self.state.create_name_input.handle_action(action);
+                        }
+                    }
                 }
             } else {
                 // Raw input for create popup
                 if self.state.show_create_popup {
-                    crate::utils::text_input::handle_input(
-                        &mut self.state.create_name_input,
-                        &mut self.state.create_name_cursor,
-                        key.code,
-                    );
+                    self.state.create_name_input.handle_key(key.code);
                 }
             }
         }

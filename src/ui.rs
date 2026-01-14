@@ -185,8 +185,7 @@ pub struct ProfileSelectionState {
     pub selected_profile: Option<String>, // Selected profile to activate
     pub show_exit_warning: bool, // Show warning when user tries to exit without selecting
     pub show_create_popup: bool, // Show create new profile popup
-    pub create_name_input: String, // Input for new profile name
-    pub create_name_cursor: usize, // Cursor position in name input
+    pub create_name_input: crate::utils::TextInput, // Input for new profile name
 }
 
 /// Package manager state

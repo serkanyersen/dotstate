@@ -1,7 +1,6 @@
 
 use crate::components::footer::Footer;
 use crate::components::header::Header;
-use crate::components::input_field::InputField;
 use crate::config::Config;
 use crate::keymap::{Action, Keymap};
 use crate::screens::{RenderContext, Screen, ScreenAction, ScreenContext};
@@ -15,10 +14,11 @@ use crate::utils::package_installer::PackageInstaller;
 use crate::utils::package_manager::PackageManagerImpl;
 use crate::utils::profile_manifest::{Package, PackageManager};
 use crate::utils::{center_popup, create_standard_layout, focused_border_style, unfocused_border_style};
+use crate::widgets::{TextInputWidget, TextInputWidgetExt};
 use anyhow::Result;
 use crossterm::event::{Event, KeyCode, KeyModifiers};
 use ratatui::prelude::*;
-use ratatui::widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Wrap};
+use ratatui::widgets::{Block, BorderType, Borders, Clear, List, ListItem, Paragraph, Wrap};
 use std::time::Duration;
 use tracing::{debug, error, info, warn};
 
@@ -901,11 +901,11 @@ impl ManagePackagesScreen {
                     }
                     return Ok(ScreenAction::Refresh);
                 }
-                Action::MoveUp | Action::MoveDown => {
+                Action::MoveUp | Action::MoveDown | Action::MoveLeft | Action::MoveRight => {
                     if state.add_focused_field == AddPackageField::Manager {
                         let count = state.available_managers.len();
                         if count > 0 {
-                            if matches!(action, Action::MoveDown) {
+                            if matches!(action, Action::MoveDown | Action::MoveRight) {
                                 state.add_manager_selected =
                                     (state.add_manager_selected + 1) % count;
                             } else {
@@ -928,9 +928,7 @@ impl ManagePackagesScreen {
                         return Ok(ScreenAction::Refresh);
                     }
                 }
-                Action::MoveLeft
-                | Action::MoveRight
-                | Action::Home
+                Action::Home
                 | Action::End
                 | Action::Backspace
                 | Action::DeleteChar => {
@@ -1002,12 +1000,17 @@ impl ManagePackagesScreen {
                     state.add_description_input.backspace();
                 }
                 AddPackageField::PackageName => {
+                    // Before backspacing, check if binary name should be auto-updated
+                    let old_suggestion = PackageManagerImpl::suggest_binary_name(state.add_package_name_input.text());
+                    let should_auto_update = state.add_binary_name_input.text().is_empty()
+                        || state.add_binary_name_input.text() == old_suggestion;
+
                     state.add_package_name_input.backspace();
-                    // Update binary name suggestion
-                    let new_suggestion =
-                        PackageManagerImpl::suggest_binary_name(state.add_package_name_input.text());
-                    if state.add_binary_name_input.text().is_empty() {
-                        // Simplification: Only if empty for now, or elaborate logic if needed
+
+                    // Update binary name suggestion if user hasn't manually edited it
+                    if should_auto_update {
+                        let new_suggestion =
+                            PackageManagerImpl::suggest_binary_name(state.add_package_name_input.text());
                         state.add_binary_name_input = crate::utils::TextInput::with_text(new_suggestion);
                     }
                 }
@@ -1034,7 +1037,19 @@ impl ManagePackagesScreen {
                     state.add_description_input.delete();
                 }
                 AddPackageField::PackageName => {
+                    // Before deleting, check if binary name should be auto-updated
+                    let old_suggestion = PackageManagerImpl::suggest_binary_name(state.add_package_name_input.text());
+                    let should_auto_update = state.add_binary_name_input.text().is_empty()
+                        || state.add_binary_name_input.text() == old_suggestion;
+
                     state.add_package_name_input.delete();
+
+                    // Update binary name suggestion if user hasn't manually edited it
+                    if should_auto_update {
+                        let new_suggestion =
+                            PackageManagerImpl::suggest_binary_name(state.add_package_name_input.text());
+                        state.add_binary_name_input = crate::utils::TextInput::with_text(new_suggestion);
+                    }
                 }
                 AddPackageField::BinaryName => {
                     state.add_binary_name_input.delete();
@@ -1064,11 +1079,18 @@ impl ManagePackagesScreen {
                         state.add_description_input.insert_char(c);
                     }
                     AddPackageField::PackageName => {
+                        // Before inserting the new character, check if binary name should be auto-updated
+                        // Get the current suggestion (before the new char)
+                        let old_suggestion = PackageManagerImpl::suggest_binary_name(state.add_package_name_input.text());
+                        let should_auto_update = state.add_binary_name_input.text().is_empty()
+                            || state.add_binary_name_input.text() == old_suggestion;
+
                         state.add_package_name_input.insert_char(c);
-                        // Update binary name suggestion
-                        let new_suggestion =
-                            PackageManagerImpl::suggest_binary_name(state.add_package_name_input.text());
-                        if state.add_binary_name_input.text().is_empty() {
+
+                        // Update binary name suggestion if user hasn't manually edited it
+                        if should_auto_update {
+                            let new_suggestion =
+                                PackageManagerImpl::suggest_binary_name(state.add_package_name_input.text());
                             state.add_binary_name_input = crate::utils::TextInput::with_text(new_suggestion);
                         }
                     }
@@ -1172,6 +1194,7 @@ impl ManagePackagesScreen {
                     .block(
                         Block::default()
                             .borders(Borders::ALL)
+                            .border_type(BorderType::Rounded)
                             .title("Packages")
                             .border_style(unfocused_border_style())
                             .padding(ratatui::widgets::Padding::new(1, 1, 1, 1)),
@@ -1213,6 +1236,7 @@ impl ManagePackagesScreen {
                 .block(
                     Block::default()
                         .borders(Borders::ALL)
+                        .border_type(BorderType::Rounded)
                         .title("Packages")
                         .border_style(focused_border_style()),
                 )
@@ -1241,6 +1265,7 @@ impl ManagePackagesScreen {
             .block(
                 Block::default()
                     .borders(Borders::ALL)
+                    .border_type(BorderType::Rounded)
                     .title("Package Details"),
             )
             .wrap(Wrap { trim: true });
@@ -1361,30 +1386,18 @@ impl ManagePackagesScreen {
         frame.render_widget(title_para, chunks[0]);
 
         // Name field
-        InputField::render(
-            frame,
-            chunks[1],
-            self.state.add_name_input.text(),
-            self.state.add_name_input.cursor(),
-            self.state.add_focused_field == AddPackageField::Name,
-            "Name",
-            Some("Package display name"),
-            Alignment::Left,
-            false,
-        )?;
+        let widget = TextInputWidget::new(&self.state.add_name_input)
+            .title("Name")
+            .placeholder("Package display name")
+            .focused(self.state.add_focused_field == AddPackageField::Name);
+        frame.render_text_input_widget(widget, chunks[1]);
 
         // Description field
-        InputField::render(
-            frame,
-            chunks[2],
-            self.state.add_description_input.text(),
-            self.state.add_description_input.cursor(),
-            self.state.add_focused_field == AddPackageField::Description,
-            "Description (optional)",
-            Some("Package description"),
-            Alignment::Left,
-            false,
-        )?;
+        let widget = TextInputWidget::new(&self.state.add_description_input)
+            .title("Description (optional)")
+            .placeholder("Package description")
+            .focused(self.state.add_focused_field == AddPackageField::Description);
+        frame.render_text_input_widget(widget, chunks[2]);
 
         // Manager selection
         self.render_manager_selection(frame, chunks[3])?;
@@ -1393,82 +1406,46 @@ impl ManagePackagesScreen {
 
         if !self.state.add_is_custom {
             // Managed packages: Package Name, Binary Name
-            InputField::render(
-                frame,
-                chunks[current_chunk],
-                self.state.add_package_name_input.text(),
-                self.state.add_package_name_input.cursor(),
-                self.state.add_focused_field == AddPackageField::PackageName,
-                "Package Name",
-                Some("Package name in manager (e.g., 'eza')"),
-                Alignment::Left,
-                false,
-            )?;
+            let widget = TextInputWidget::new(&self.state.add_package_name_input)
+                .title("Package Name")
+                .placeholder("Package name in manager (e.g., 'eza')")
+                .focused(self.state.add_focused_field == AddPackageField::PackageName);
+            frame.render_text_input_widget(widget, chunks[current_chunk]);
             current_chunk += 1;
 
-            InputField::render(
-                frame,
-                chunks[current_chunk],
-                self.state.add_binary_name_input.text(),
-                self.state.add_binary_name_input.cursor(),
-                self.state.add_focused_field == AddPackageField::BinaryName,
-                "Binary Name",
-                Some("Binary name to check (e.g., 'eza')"),
-                Alignment::Left,
-                false,
-            )?;
+            let widget = TextInputWidget::new(&self.state.add_binary_name_input)
+                .title("Binary Name")
+                .placeholder("Binary name to check (e.g., 'eza')")
+                .focused(self.state.add_focused_field == AddPackageField::BinaryName);
+            frame.render_text_input_widget(widget, chunks[current_chunk]);
         } else {
             // Custom packages: Binary Name, Install Command, Existence Check
-            InputField::render(
-                frame,
-                chunks[current_chunk],
-                self.state.add_binary_name_input.text(),
-                self.state.add_binary_name_input.cursor(),
-                self.state.add_focused_field == AddPackageField::BinaryName,
-                "Binary Name",
-                Some("Binary name to check (e.g., 'mytool')"),
-                Alignment::Left,
-                false,
-            )?;
+            let widget = TextInputWidget::new(&self.state.add_binary_name_input)
+                .title("Binary Name")
+                .placeholder("Binary name to check (e.g., 'mytool')")
+                .focused(self.state.add_focused_field == AddPackageField::BinaryName);
+            frame.render_text_input_widget(widget, chunks[current_chunk]);
             current_chunk += 1;
 
-            InputField::render(
-                frame,
-                chunks[current_chunk],
-                self.state.add_install_command_input.text(),
-                self.state.add_install_command_input.cursor(),
-                self.state.add_focused_field == AddPackageField::InstallCommand,
-                "Install Command",
-                Some("Install command (e.g., './install.sh')"),
-                Alignment::Left,
-                false,
-            )?;
+            let widget = TextInputWidget::new(&self.state.add_install_command_input)
+                .title("Install Command")
+                .placeholder("Install command (e.g., './install.sh')")
+                .focused(self.state.add_focused_field == AddPackageField::InstallCommand);
+            frame.render_text_input_widget(widget, chunks[current_chunk]);
             current_chunk += 1;
 
-            InputField::render(
-                frame,
-                chunks[current_chunk],
-                self.state.add_existence_check_input.text(),
-                self.state.add_existence_check_input.cursor(),
-                self.state.add_focused_field == AddPackageField::ExistenceCheck,
-                "Existence Check (optional)",
-                Some("Command to check if package exists (if empty, uses binary name check)"),
-                Alignment::Left,
-                false,
-            )?;
+            let widget = TextInputWidget::new(&self.state.add_existence_check_input)
+                .title("Existence Check (optional)")
+                .placeholder("Command to check if package exists (if empty, uses binary name check)")
+                .focused(self.state.add_focused_field == AddPackageField::ExistenceCheck);
+            frame.render_text_input_widget(widget, chunks[current_chunk]);
             current_chunk += 1;
 
-            InputField::render(
-                frame,
-                chunks[current_chunk],
-                self.state.add_manager_check_input.text(),
-                self.state.add_manager_check_input.cursor(),
-                self.state.add_focused_field == AddPackageField::ManagerCheck,
-                "Manager Check (optional)",
-                Some("Custom manager check command (optional fallback)"),
-                Alignment::Left,
-                false,
-            )?;
+            let widget = TextInputWidget::new(&self.state.add_manager_check_input)
+                .title("Manager Check (optional)")
+                .placeholder("Custom manager check command (optional fallback)")
+                .focused(self.state.add_focused_field == AddPackageField::ManagerCheck);
+            frame.render_text_input_widget(widget, chunks[current_chunk]);
         }
 
         // Footer with instructions (always the last chunk)
@@ -1510,6 +1487,7 @@ impl ManagePackagesScreen {
         // Render checkboxes in a horizontal wrapping layout
         let block = Block::default()
             .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
             .title("Package Manager")
             .border_style(if self.state.add_focused_field == AddPackageField::Manager {
                 focused_border_style()
@@ -1588,7 +1566,7 @@ impl ManagePackagesScreen {
         area: Rect,
         config: &Config,
     ) -> Result<()> {
-        let popup_area = center_popup(area, 50, 15);
+        let popup_area = center_popup(area, 50, 35);
         frame.render_widget(Clear, popup_area);
 
         let package_name = if let Some(idx) = self.state.delete_index {
@@ -1604,7 +1582,7 @@ impl ManagePackagesScreen {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Length(5), // Warning text
+                Constraint::Length(8), // Warning text (5 lines + 2 borders + padding)
                 Constraint::Length(3), // Confirmation input
                 Constraint::Min(0),    // Spacer
                 Constraint::Length(2), // Footer
@@ -1623,6 +1601,7 @@ impl ManagePackagesScreen {
             .block(
                 Block::default()
                     .borders(Borders::ALL)
+                    .border_type(BorderType::Rounded)
                     .title("Delete Package"),
             )
             .wrap(Wrap { trim: true })
@@ -1631,17 +1610,11 @@ impl ManagePackagesScreen {
         frame.render_widget(paragraph, chunks[0]);
 
         // Confirmation input
-        InputField::render(
-            frame,
-            chunks[1],
-            self.state.delete_confirm_input.text(),
-            self.state.delete_confirm_input.cursor(),
-            true,
-            "Confirmation",
-            Some("Type 'DELETE' to confirm"),
-            Alignment::Left,
-            false,
-        )?;
+        let widget = TextInputWidget::new(&self.state.delete_confirm_input)
+            .title("Confirmation")
+            .placeholder("Type 'DELETE' to confirm")
+            .focused(true);
+        frame.render_text_input_widget(widget, chunks[1]);
 
         // Footer
         let k = |a| config.keymap.get_key_display_for_action(a);
@@ -1716,7 +1689,7 @@ impl ManagePackagesScreen {
                 };
 
                 let output_para = Paragraph::new(output_text)
-                    .block(Block::default().borders(Borders::ALL).title("Output"))
+                    .block(Block::default().borders(Borders::ALL).border_type(BorderType::Rounded).title("Output"))
                     .wrap(Wrap { trim: true })
                     .style(t.text_style());
                 frame.render_widget(output_para, chunks[2]);
@@ -1762,7 +1735,7 @@ impl ManagePackagesScreen {
                 }
 
                 let summary_para = Paragraph::new(summary)
-                    .block(Block::default().borders(Borders::ALL).title("Summary"))
+                    .block(Block::default().borders(Borders::ALL).border_type(BorderType::Rounded).title("Summary"))
                     .wrap(Wrap { trim: true })
                     .style(t.text_style());
                 frame.render_widget(summary_para, chunks[1]);
@@ -1821,6 +1794,7 @@ impl ManagePackagesScreen {
             .block(
                 Block::default()
                     .borders(Borders::ALL)
+                    .border_type(BorderType::Rounded)
                     .title("Package Manager")
                     .title_alignment(Alignment::Center)
                     .style(t.background_style()),
@@ -1854,6 +1828,7 @@ impl ManagePackagesScreen {
             let list = List::new(package_list).block(
                 Block::default()
                     .borders(Borders::ALL)
+                    .border_type(BorderType::Rounded)
                     .title("Packages to Install")
                     .border_style(t.border_style()),
             );

@@ -1,6 +1,5 @@
 use crate::components::footer::Footer;
 use crate::components::header::Header;
-use crate::components::input_field::InputField;
 use crate::config::Config;
 use crate::keymap::{Action, Keymap};
 use crate::screens::{RenderContext, Screen, ScreenAction, ScreenContext};
@@ -9,12 +8,12 @@ use crate::ui::Screen as ScreenId;
 use crate::utils::{
     center_popup, create_standard_layout, focused_border_style, unfocused_border_style,
 };
+use crate::widgets::{TextInputWidget, TextInputWidgetExt};
 use anyhow::Result;
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
 use ratatui::prelude::*;
 use ratatui::widgets::{
-    Block, Borders, Clear, List, ListItem, ListState, Paragraph, Scrollbar, ScrollbarOrientation,
-    Wrap,
+    Block, BorderType, Borders, Clear, List, ListItem, ListState, Paragraph, Scrollbar, ScrollbarOrientation, Wrap
 };
 
 /// Profile manager popup types
@@ -218,6 +217,7 @@ impl ManageProfilesScreen {
             .block(
                 Block::default()
                     .borders(Borders::ALL)
+                    .border_type(BorderType::Rounded)
                     .title("Profiles")
                     .border_style(focused_border_style()),
             )
@@ -335,6 +335,7 @@ impl ManageProfilesScreen {
                     Block::default()
                         .borders(Borders::ALL)
                         .title("Profile Details")
+                        .border_type(BorderType::Rounded)
                         .border_style(unfocused_border_style())
                         .padding(ratatui::widgets::Padding::new(1, 1, 1, 1)),
                 )
@@ -348,6 +349,7 @@ impl ManageProfilesScreen {
                         Block::default()
                             .borders(Borders::ALL)
                             .title("Profile Details")
+                            .border_type(BorderType::Rounded)
                             .border_style(unfocused_border_style())
                             .padding(ratatui::widgets::Padding::new(1, 1, 1, 1)),
                     )
@@ -402,30 +404,17 @@ impl ManageProfilesScreen {
         frame.render_widget(title, chunks[0]);
 
         // Name input
-        InputField::render(
-            frame,
-            chunks[1],
-            self.state.create_name_input.text(),
-            self.state.create_name_input.cursor(),
-            self.state.create_focused_field == CreateField::Name, // Focused based on state
-            "Profile Name",
-            Some("e.g., Personal-Mac, Work-Linux"),
-            Alignment::Left,
-            false,
-        )?;
+        let widget = TextInputWidget::new(&self.state.create_name_input)
+            .title("Profile Name")
+            .placeholder("e.g., Personal-Mac, Work-Linux")
+            .focused(self.state.create_focused_field == CreateField::Name);
+        frame.render_text_input_widget(widget, chunks[1]);
 
         // Description input
-        InputField::render(
-            frame,
-            chunks[2],
-            self.state.create_description_input.text(),
-            self.state.create_description_input.cursor(),
-            self.state.create_focused_field == CreateField::Description, // Focused based on state
-            "Description (optional)",
-            None,
-            Alignment::Left,
-            false,
-        )?;
+        let widget = TextInputWidget::new(&self.state.create_description_input)
+            .title("Description (optional)")
+            .focused(self.state.create_focused_field == CreateField::Description);
+        frame.render_text_input_widget(widget, chunks[2]);
 
         // Copy from option - show list of profiles to select from
         let is_focused = self.state.create_focused_field == CreateField::CopyFrom;
@@ -492,6 +481,7 @@ impl ManageProfilesScreen {
                     Block::default()
                         .borders(Borders::ALL)
                         .title("Copy From")
+                        .border_type(BorderType::Rounded)
                         .border_style(border_style),
                 )
                 .highlight_style(t.highlight_style())
@@ -611,17 +601,11 @@ impl ManageProfilesScreen {
         frame.render_widget(title, chunks[0]);
 
         // Name input
-        InputField::render(
-            frame,
-            chunks[1],
-            self.state.rename_input.text(),
-            self.state.rename_input.cursor(),
-            true,
-            "New Name",
-            Some("Enter new profile name"),
-            Alignment::Left,
-            false,
-        )?;
+        let widget = TextInputWidget::new(&self.state.rename_input)
+            .title("New Name")
+            .placeholder("Enter new profile name")
+            .focused(true);
+        frame.render_text_input_widget(widget, chunks[1]);
 
         Ok(())
     }
@@ -633,7 +617,7 @@ impl ManageProfilesScreen {
         area: Rect,
         config: &Config,
     ) -> Result<()> {
-        let popup_area = center_popup(area, 70, 40);
+        let popup_area = center_popup(area, 70, 60);
         frame.render_widget(Clear, popup_area);
 
         let selected_idx = self.state.list_state.selected();
@@ -644,9 +628,9 @@ impl ManageProfilesScreen {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Length(5), // Warning text
-                Constraint::Length(3), // Confirmation input
-                Constraint::Min(0),    // Spacer
+                Constraint::Length(11), // Warning text (8 lines + 2 for borders + 1 padding)
+                Constraint::Length(3),  // Confirmation input
+                Constraint::Min(0),     // Spacer
             ])
             .split(popup_area);
 
@@ -676,24 +660,18 @@ impl ManageProfilesScreen {
         };
 
         let warning = Paragraph::new(warning_text)
-            .block(Block::default().borders(Borders::ALL))
-            .wrap(Wrap { trim: true });
+            .block(Block::default().borders(Borders::ALL).border_type(BorderType::Rounded))
+            .wrap(Wrap { trim: false });
         frame.render_widget(warning, chunks[0]);
 
         // Confirmation input (only if not active)
         if let Some(p) = profile {
             if !is_active {
-                InputField::render(
-                    frame,
-                    chunks[1],
-                    self.state.delete_confirm_input.text(),
-                    self.state.delete_confirm_input.cursor(),
-                    true,
-                    "Type profile name to confirm",
-                    Some(&p.name),
-                    Alignment::Left,
-                    false,
-                )?;
+                let widget = TextInputWidget::new(&self.state.delete_confirm_input)
+                    .title("Type profile name to confirm")
+                    .placeholder(&p.name)
+                    .focused(true);
+                frame.render_text_input_widget(widget, chunks[1]);
             }
         }
 

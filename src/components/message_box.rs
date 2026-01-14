@@ -1,7 +1,7 @@
 use crate::styles::theme;
 use anyhow::Result;
 use ratatui::prelude::*;
-use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
+use ratatui::widgets::{Block, BorderType, Borders, Paragraph, Wrap};
 
 /// Message box component for displaying status/error/info messages
 pub struct MessageBox;
@@ -40,6 +40,7 @@ impl MessageBox {
 
         let message_block = Block::default()
             .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
             .title(final_title)
             .title_alignment(Alignment::Center)
             .border_style(Style::default().fg(final_color))

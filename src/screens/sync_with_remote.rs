@@ -15,8 +15,7 @@ use crossterm::event::Event;
 use ratatui::layout::{Alignment, Rect};
 use ratatui::prelude::*;
 use ratatui::widgets::{
-    Block, Borders, Clear, List, ListItem, Paragraph, Scrollbar, ScrollbarOrientation,
-    StatefulWidget, Wrap,
+    Block, BorderType, Borders, Clear, List, ListItem, Paragraph, Scrollbar, ScrollbarOrientation, StatefulWidget, Wrap
 };
 use ratatui::Frame;
 
@@ -150,6 +149,7 @@ impl SyncWithRemoteScreen {
             .block(
                 Block::default()
                     .borders(Borders::ALL)
+                    .border_type(BorderType::Rounded)
                     .title("Progress")
                     .title_alignment(Alignment::Center)
                     .border_style(focused_border_style())
@@ -171,6 +171,7 @@ impl SyncWithRemoteScreen {
             .block(
                 Block::default()
                     .borders(Borders::ALL)
+                    .border_type(BorderType::Rounded)
                     .title("No Changes")
                     .title_alignment(Alignment::Center)
                     .padding(ratatui::widgets::Padding::new(2, 2, 2, 2)),
@@ -214,6 +215,7 @@ impl SyncWithRemoteScreen {
                 Block::default()
                     .borders(Borders::ALL)
                     .border_style(focused_border_style())
+                    .border_type(BorderType::Rounded)
                     .title(format!("Changed Files ({})", self.state.changed_files.len()))
                     .title_alignment(Alignment::Center)
                     .padding(ratatui::widgets::Padding::new(1, 1, 1, 1)),

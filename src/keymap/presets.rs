@@ -75,7 +75,7 @@ fn standard_bindings() -> Vec<KeyBinding> {
         KeyBinding::new("delete", Action::DeleteChar),
         // Tab navigation
         KeyBinding::new("tab", Action::NextTab),
-        KeyBinding::new("shift+tab", Action::PrevTab),
+        KeyBinding::new("shift+backtab", Action::PrevTab),
         // Scroll (with shift modifier for preview panes)
         KeyBinding::new("shift+up", Action::ScrollUp),
         KeyBinding::new("shift+down", Action::ScrollDown),
@@ -131,7 +131,7 @@ fn vim_bindings() -> Vec<KeyBinding> {
         KeyBinding::new("delete", Action::DeleteChar),
         // Tab navigation
         KeyBinding::new("tab", Action::NextTab),
-        KeyBinding::new("shift+tab", Action::PrevTab),
+        KeyBinding::new("shift+backtab", Action::PrevTab),
         // Scroll (vim style)
         KeyBinding::new("ctrl+y", Action::ScrollUp),
         KeyBinding::new("ctrl+e", Action::ScrollDown),
@@ -191,7 +191,7 @@ fn emacs_bindings() -> Vec<KeyBinding> {
         KeyBinding::new("delete", Action::DeleteChar),
         // Tab navigation
         KeyBinding::new("tab", Action::NextTab),
-        KeyBinding::new("shift+tab", Action::PrevTab),
+        KeyBinding::new("shift+backtab", Action::PrevTab),
         // Scroll
         KeyBinding::new("alt+p", Action::ScrollUp),
         KeyBinding::new("alt+n", Action::ScrollDown),

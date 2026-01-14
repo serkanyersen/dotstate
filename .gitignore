@@ -28,3 +28,6 @@ Thumbs.db
 .llm_docs/
 
 homebrew-dotstate
+notes/
+.claude/
+CLAUDE.md

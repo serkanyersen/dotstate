@@ -3,7 +3,7 @@ use anyhow::Result;
 use ratatui::prelude::*;
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{
-    Block, Borders, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Wrap,
+    Block, BorderType, Borders, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Wrap
 };
 use std::path::PathBuf;
 use syntect::easy::HighlightLines;
@@ -181,6 +181,7 @@ impl FilePreview {
                             Block::default()
                                 .borders(Borders::ALL)
                                 .title(preview_title)
+                                .border_type(BorderType::Rounded)
                                 .title_alignment(Alignment::Center)
                                 .border_style(border_style),
                         )
@@ -206,6 +207,7 @@ impl FilePreview {
                         Block::default()
                             .borders(Borders::ALL)
                             .title(preview_title)
+                            .border_type(BorderType::Rounded)
                             .title_alignment(Alignment::Center)
                             .border_style(border_style),
                     );
@@ -218,6 +220,7 @@ impl FilePreview {
                 Block::default()
                     .borders(Borders::ALL)
                     .title(preview_title)
+                    .border_type(BorderType::Rounded)
                     .title_alignment(Alignment::Center)
                     .border_style(border_style),
             );
@@ -228,6 +231,7 @@ impl FilePreview {
                 Block::default()
                     .borders(Borders::ALL)
                     .title(preview_title)
+                    .border_type(BorderType::Rounded)
                     .title_alignment(Alignment::Center)
                     .border_style(border_style),
             );

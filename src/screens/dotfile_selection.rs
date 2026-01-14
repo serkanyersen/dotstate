@@ -7,7 +7,6 @@ use crate::file_manager::Dotfile;
 use crate::components::file_preview::FilePreview;
 use crate::components::footer::Footer;
 use crate::components::header::Header;
-use crate::components::input_field::InputField;
 use crate::config::Config;
 use crate::screens::screen_trait::{RenderContext, Screen, ScreenAction, ScreenContext};
 use crate::styles::{theme as ui_theme, LIST_HIGHLIGHT_SYMBOL};
@@ -16,14 +15,14 @@ use crate::utils::{
     center_popup, create_split_layout, create_standard_layout, focused_border_style,
     unfocused_border_style, list_navigation::ListStateExt, TextInput,
 };
+use crate::widgets::{TextInputWidget, TextInputWidgetExt};
 use anyhow::Result;
 use crossterm::event::{Event, KeyCode, KeyEventKind};
 use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 
 use ratatui::widgets::{
-    Block, Borders, Clear, List, ListItem, ListState, Paragraph, Scrollbar, ScrollbarOrientation,
-    ScrollbarState, StatefulWidget, Wrap,
+    Block, BorderType, Borders, Clear, List, ListItem, ListState, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, StatefulWidget, Wrap
 };
 use ratatui::Frame;
 use std::path::{Path, PathBuf};
@@ -708,36 +707,11 @@ impl DotfileSelectionScreen {
         );
         frame.render_widget(path_display, browser_chunks[0]);
 
-        // Path input field - use InputField component
-        let path_input_text = if self.state.file_browser_path_input.is_empty() {
-            self.state
-                .file_browser_path
-                .to_string_lossy()
-                .to_string()
-        } else {
-            self.state.file_browser_path_input.text().to_string()
-        };
-
-        let cursor_pos = if self.state.file_browser_path_input.is_empty() {
-            path_input_text.chars().count()
-        } else {
-            self.state
-                .file_browser_path_input
-                .cursor()
-                .min(path_input_text.chars().count())
-        };
-
-        InputField::render(
-            frame,
-            browser_chunks[1],
-            &path_input_text,
-            cursor_pos,
-            self.state.file_browser_path_focused,
-            "Path Input",
-            None,
-            Alignment::Left,
-            false, // Not disabled
-        )?;
+        // Path input field
+        let widget = TextInputWidget::new(&self.state.file_browser_path_input)
+            .title("Path Input")
+            .focused(self.state.file_browser_path_focused);
+        frame.render_text_input_widget(widget, browser_chunks[1]);
 
         // Split list and preview
         let list_preview_chunks = create_split_layout(browser_chunks[2], &[50, 50]);
@@ -801,6 +775,7 @@ impl DotfileSelectionScreen {
                 Block::default()
                     .borders(Borders::ALL)
                     .title(list_title)
+                    .border_type(BorderType::Rounded)
                     .title_alignment(Alignment::Center)
                     .border_style(list_border_style),
             )
@@ -860,6 +835,7 @@ impl DotfileSelectionScreen {
                 let empty_preview = Paragraph::new("No selection").block(
                     Block::default()
                         .borders(Borders::ALL)
+                        .border_type(BorderType::Rounded)
                         .title("Preview")
                         .title_alignment(Alignment::Center),
                 );
@@ -869,6 +845,7 @@ impl DotfileSelectionScreen {
             let empty_preview = Paragraph::new("No selection").block(
                 Block::default()
                     .borders(Borders::ALL)
+                    .border_type(BorderType::Rounded)
                     .title("Preview")
                     .title_alignment(Alignment::Center),
             );
@@ -923,24 +900,12 @@ impl DotfileSelectionScreen {
             ])
             .split(content_chunk);
 
-        let input_text = self.state.custom_file_input.text();
-        let cursor_pos = self
-            .state
-            .custom_file_input
-            .cursor()
-            .min(input_text.chars().count());
-
-        InputField::render(
-            frame,
-            input_chunks[1],
-            input_text,
-            cursor_pos,
-            self.state.custom_file_focused,
-            "Custom File Path",
-            Some("Enter file path (e.g., ~/.myconfig or /path/to/file)"),
-            Alignment::Center,
-            false, // Not disabled
-        )?;
+        let widget = TextInputWidget::new(&self.state.custom_file_input)
+            .title("Custom File Path")
+            .placeholder("Enter file path (e.g., ~/.myconfig or /path/to/file)")
+            .title_alignment(Alignment::Center)
+            .focused(self.state.custom_file_focused);
+        frame.render_text_input_widget(widget, input_chunks[1]);
 
         let k = |a| config.keymap.get_key_display_for_action(a);
         let footer_text = format!(
@@ -1024,6 +989,7 @@ impl DotfileSelectionScreen {
                     .borders(Borders::ALL)
                     .title(list_title)
                     .title_alignment(Alignment::Center)
+                    .border_type(BorderType::Rounded)
                     .border_style(list_border_style),
             )
             .highlight_style(t.highlight_style())
@@ -1063,6 +1029,7 @@ impl DotfileSelectionScreen {
                         Block::default()
                             .borders(Borders::ALL)
                             .title("Description")
+                            .border_type(BorderType::Rounded)
                             .title_alignment(Alignment::Center)
                             .border_style(unfocused_border_style()),
                     )
@@ -1074,6 +1041,7 @@ impl DotfileSelectionScreen {
                     Block::default()
                         .borders(Borders::ALL)
                         .title("Description")
+                        .border_type(BorderType::Rounded)
                         .title_alignment(Alignment::Center)
                         .border_style(unfocused_border_style()),
                 );
@@ -1084,6 +1052,7 @@ impl DotfileSelectionScreen {
                 Block::default()
                     .borders(Borders::ALL)
                     .title("Description")
+                    .border_type(BorderType::Rounded)
                     .title_alignment(Alignment::Center)
                     .border_style(unfocused_border_style()),
             );
@@ -1114,6 +1083,7 @@ impl DotfileSelectionScreen {
                     let empty_preview = Paragraph::new("No file selected").block(
                         Block::default()
                             .borders(Borders::ALL)
+                            .border_type(BorderType::Rounded)
                             .title("Preview")
                             .title_alignment(Alignment::Center),
                     );
@@ -1124,6 +1094,7 @@ impl DotfileSelectionScreen {
                     Block::default()
                         .borders(Borders::ALL)
                         .title("Preview")
+                        .border_type(BorderType::Rounded)
                         .title_alignment(Alignment::Center),
                 );
                 frame.render_widget(empty_preview, preview_rect);
@@ -1145,6 +1116,7 @@ impl DotfileSelectionScreen {
 
             let status_block = Block::default()
                 .borders(Borders::ALL)
+                .border_type(BorderType::Rounded)
                 .title("Sync Summary")
                 .title_alignment(Alignment::Center)
                 .style(Style::default().bg(t.background));
@@ -1221,6 +1193,7 @@ impl DotfileSelectionScreen {
             .block(
                 Block::default()
                     .borders(Borders::ALL)
+                    .border_type(BorderType::Rounded)
                     .title("Confirmation")
                     .title_alignment(Alignment::Center)
                     .style(Style::default().bg(Color::Reset)),

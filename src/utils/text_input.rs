@@ -44,16 +44,6 @@ impl TextInput {
         self.cursor
     }
 
-    /// Get a mutable reference to the text (for backward compatibility).
-    pub fn text_mut(&mut self) -> &mut String {
-        &mut self.text
-    }
-
-    /// Get a mutable reference to the cursor (for backward compatibility).
-    pub fn cursor_mut(&mut self) -> &mut usize {
-        &mut self.cursor
-    }
-
     /// Get the trimmed text.
     pub fn text_trimmed(&self) -> &str {
         self.text.trim()
@@ -195,7 +185,7 @@ impl TextInput {
 /// * `text` - Mutable reference to the text string
 /// * `cursor_pos` - Mutable reference to cursor position
 /// * `c` - Character to insert
-pub fn handle_char_insertion(text: &mut String, cursor_pos: &mut usize, c: char) {
+fn handle_char_insertion(text: &mut String, cursor_pos: &mut usize, c: char) {
     if c.is_ascii() && !c.is_control() {
         let byte_index = text
             .char_indices()
@@ -213,7 +203,7 @@ pub fn handle_char_insertion(text: &mut String, cursor_pos: &mut usize, c: char)
 /// * `text` - The text string
 /// * `cursor_pos` - Mutable reference to cursor position
 /// * `key_code` - Key code (Left, Right, Home, End)
-pub fn handle_cursor_movement(text: &str, cursor_pos: &mut usize, key_code: KeyCode) {
+fn handle_cursor_movement(text: &str, cursor_pos: &mut usize, key_code: KeyCode) {
     match key_code {
         KeyCode::Left => {
             if *cursor_pos > 0 {
@@ -241,7 +231,7 @@ pub fn handle_cursor_movement(text: &str, cursor_pos: &mut usize, key_code: KeyC
 /// # Arguments
 /// * `text` - Mutable reference to the text string
 /// * `cursor_pos` - Mutable reference to cursor position
-pub fn handle_backspace(text: &mut String, cursor_pos: &mut usize) {
+fn handle_backspace(text: &mut String, cursor_pos: &mut usize) {
     if *cursor_pos > 0 {
         let before_cursor = text.chars().take(*cursor_pos - 1);
         let after_cursor = text.chars().skip(*cursor_pos);
@@ -255,7 +245,7 @@ pub fn handle_backspace(text: &mut String, cursor_pos: &mut usize) {
 /// # Arguments
 /// * `text` - Mutable reference to the text string
 /// * `cursor_pos` - Mutable reference to cursor position
-pub fn handle_delete(text: &mut String, cursor_pos: &mut usize) {
+fn handle_delete(text: &mut String, cursor_pos: &mut usize) {
     let char_count = text.chars().count();
     if *cursor_pos < char_count {
         let before_cursor = text.chars().take(*cursor_pos);
@@ -269,7 +259,7 @@ pub fn handle_delete(text: &mut String, cursor_pos: &mut usize) {
 /// * `text` - Mutable reference to the text string
 /// * `cursor_pos` - Mutable reference to cursor position
 /// * `key_code` - Key code from event
-pub fn handle_input(text: &mut String, cursor_pos: &mut usize, key_code: KeyCode) {
+fn handle_input(text: &mut String, cursor_pos: &mut usize, key_code: KeyCode) {
     match key_code {
         KeyCode::Char(c) => handle_char_insertion(text, cursor_pos, c),
         KeyCode::Backspace => handle_backspace(text, cursor_pos),
@@ -507,18 +497,6 @@ mod tests {
     fn test_text_input_is_empty_whitespace() {
         let input = TextInput::with_text("   ");
         assert!(input.is_empty());
-    }
-
-    #[test]
-    fn test_text_input_backward_compat() {
-        let mut input = TextInput::with_text("hello");
-
-        // Test backward compatibility methods
-        *input.text_mut() = "world".to_string();
-        *input.cursor_mut() = 3;
-
-        assert_eq!(input.text(), "world");
-        assert_eq!(input.cursor(), 3);
     }
 
     #[test]

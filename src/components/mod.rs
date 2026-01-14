@@ -7,7 +7,6 @@ pub mod footer;
 pub mod github_auth;
 pub mod header;
 pub mod help_overlay;
-pub mod input_field;
 pub mod main_menu;
 pub mod message;
 pub mod message_box;

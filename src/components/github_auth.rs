@@ -1,18 +1,18 @@
 use crate::components::component::{Component, ComponentAction};
 use crate::components::footer::Footer;
 use crate::components::header::Header;
-use crate::components::input_field::InputField;
 use crate::styles::{theme, LIST_HIGHLIGHT_SYMBOL};
 use crate::ui::{GitHubAuthField, GitHubAuthState, SetupMode};
 use crate::utils::{
     create_standard_layout, disabled_border_style, disabled_text_style, focused_border_style,
     unfocused_border_style,
 };
+use crate::widgets::{TextInputWidget, TextInputWidgetExt};
 use anyhow::Result;
 use crossterm::event::{Event, MouseButton, MouseEventKind};
 use ratatui::prelude::*;
 use ratatui::widgets::{
-    Block, Borders, Clear, HighlightSpacing, List, ListItem, ListState, Paragraph, Wrap,
+    Block, BorderType, Borders, Clear, HighlightSpacing, List, ListItem, ListState, Paragraph, Wrap
 };
 
 /// GitHub authentication component (also handles local repo setup)
@@ -89,41 +89,25 @@ impl GitHubAuthComponent {
     fn render_token_field(&mut self, frame: &mut Frame, area: Rect) -> Result<()> {
         let is_focused = self.auth_state.focused_field == GitHubAuthField::Token;
 
-        // Show masked token if repo is already configured and not editing
-        let display_text =
-            if self.auth_state.repo_already_configured && !self.auth_state.is_editing_token {
-                "••••••••••••••••••••••••••••••••••••••••"
-            } else {
-                self.auth_state.token_input.text()
-            };
-
-        let cursor_pos = if is_focused
-            && (!self.auth_state.repo_already_configured || self.auth_state.is_editing_token)
-        {
-            self.auth_state.token_input.cursor()
-        } else {
-            0
-        };
-
         // Disable token field if repo configured and not in edit mode
         let is_disabled =
             self.auth_state.repo_already_configured && !self.auth_state.is_editing_token;
+
+        // Show masked token if repo is already configured and not editing
+        let masked = self.auth_state.repo_already_configured && !self.auth_state.is_editing_token;
 
         // Store area for mouse support
         let input_block = Block::bordered();
         self.token_area = Some(input_block.inner(area));
 
-        InputField::render(
-            frame,
-            area,
-            display_text,
-            cursor_pos,
-            is_focused && !is_disabled,
-            "GitHub Token",
-            Some("ghp_..."),
-            Alignment::Left,
-            is_disabled,
-        )?;
+        let widget = TextInputWidget::new(&self.auth_state.token_input)
+            .title("GitHub Token")
+            .placeholder("ghp_...")
+            .focused(is_focused && !is_disabled)
+            .disabled(is_disabled)
+            .masked(masked);
+
+        frame.render_text_input_widget(widget, area);
         Ok(())
     }
 
@@ -131,27 +115,17 @@ impl GitHubAuthComponent {
         let is_focused = self.auth_state.focused_field == GitHubAuthField::RepoName;
         let is_disabled = self.auth_state.repo_already_configured;
 
-        let cursor_pos = if is_focused && !is_disabled {
-            self.auth_state.repo_name_input.cursor()
-        } else {
-            0
-        };
-
         // Store area for mouse support
         let input_block = Block::bordered();
         self.repo_name_area = Some(input_block.inner(area));
 
-        InputField::render(
-            frame,
-            area,
-            self.auth_state.repo_name_input.text(),
-            cursor_pos,
-            is_focused && !is_disabled,
-            "Repository Name",
-            Some(crate::config::default_repo_name().as_str()),
-            Alignment::Left,
-            is_disabled,
-        )?;
+        let widget = TextInputWidget::new(&self.auth_state.repo_name_input)
+            .title("Repository Name")
+            .placeholder("dotstate-dotfiles")
+            .focused(is_focused && !is_disabled)
+            .disabled(is_disabled);
+
+        frame.render_text_input_widget(widget, area);
         Ok(())
     }
 
@@ -159,27 +133,17 @@ impl GitHubAuthComponent {
         let is_focused = self.auth_state.focused_field == GitHubAuthField::RepoLocation;
         let is_disabled = self.auth_state.repo_already_configured;
 
-        let cursor_pos = if is_focused && !is_disabled {
-            self.auth_state.repo_location_input.cursor()
-        } else {
-            0
-        };
-
         // Store area for mouse support
         let input_block = Block::bordered();
         self.repo_location_area = Some(input_block.inner(area));
 
-        InputField::render(
-            frame,
-            area,
-            self.auth_state.repo_location_input.text(),
-            cursor_pos,
-            is_focused && !is_disabled,
-            "Local Path",
-            Some("~/.config/dotstate/storage"),
-            Alignment::Left,
-            is_disabled,
-        )?;
+        let widget = TextInputWidget::new(&self.auth_state.repo_location_input)
+            .title("Local Path")
+            .placeholder("~/.config/dotstate/storage")
+            .focused(is_focused && !is_disabled)
+            .disabled(is_disabled);
+
+        frame.render_text_input_widget(widget, area);
         Ok(())
     }
 
@@ -265,7 +229,7 @@ impl GitHubAuthComponent {
         let list_block = Block::default()
             .borders(Borders::ALL)
             .border_style(focused_border_style())
-            .border_type(ratatui::widgets::BorderType::Rounded)
+            .border_type(BorderType::Rounded)
             .title("📋 Choose Setup Method")
             .title_style(t.title_style())
             .title_alignment(Alignment::Center)
@@ -377,7 +341,7 @@ impl GitHubAuthComponent {
         let explanation_block = Block::default()
             .borders(Borders::ALL)
             .border_style(Style::default().fg(t.primary))
-            .border_type(ratatui::widgets::BorderType::Rounded)
+            .border_type(BorderType::Rounded)
             .title(format!("💡 {}", title))
             .title_style(t.title_style())
             .title_alignment(Alignment::Center)
@@ -477,7 +441,7 @@ impl GitHubAuthComponent {
         let instructions_block = Block::default()
             .borders(Borders::ALL)
             .border_style(Style::default().fg(t.tertiary))
-            .border_type(ratatui::widgets::BorderType::Rounded)
+            .border_type(BorderType::Rounded)
             .title("📋 Setup Instructions")
             .title_style(Style::default().fg(t.tertiary).add_modifier(Modifier::BOLD))
             .title_alignment(Alignment::Center);
@@ -489,27 +453,18 @@ impl GitHubAuthComponent {
 
         // Path input field
         let is_disabled = self.auth_state.repo_already_configured;
-        let cursor_pos = if !is_disabled {
-            self.auth_state.local_repo_path_input.cursor()
-        } else {
-            0
-        };
 
         // Store area for mouse support
         let input_block = Block::bordered();
         self.local_repo_path_area = Some(input_block.inner(left_layout[2]));
 
-        InputField::render(
-            frame,
-            left_layout[2],
-            self.auth_state.local_repo_path_input.text(),
-            cursor_pos,
-            self.auth_state.input_focused && !is_disabled,
-            "Local Repository Path",
-            Some("~/.config/dotstate/storage"),
-            Alignment::Left,
-            is_disabled,
-        )?;
+        let widget = TextInputWidget::new(&self.auth_state.local_repo_path_input)
+            .title("Local Repository Path")
+            .placeholder("~/.config/dotstate/storage")
+            .focused(self.auth_state.input_focused && !is_disabled)
+            .disabled(is_disabled);
+
+        frame.render_text_input_widget(widget, left_layout[2]);
 
         // Right side: Help panel
         self.render_local_help_panel(frame, main_layout[1])?;
@@ -535,6 +490,7 @@ impl GitHubAuthComponent {
         if let Some(status) = &self.auth_state.status_message {
             let status_block = Block::default()
                 .borders(Borders::ALL)
+                .border_type(BorderType::Rounded)
                 .title("Status")
                 .title_alignment(Alignment::Center)
                 .border_style(Style::default().fg(t.success));
@@ -545,6 +501,7 @@ impl GitHubAuthComponent {
         } else if let Some(error) = &self.auth_state.error_message {
             let error_block = Block::default()
                 .borders(Borders::ALL)
+                .border_type(BorderType::Rounded)
                 .title("Error")
                 .title_alignment(Alignment::Center)
                 .border_style(Style::default().fg(t.error));
@@ -591,7 +548,7 @@ impl GitHubAuthComponent {
                 .title("📋 Repository Info")
                 .title_alignment(Alignment::Center)
                 .border_style(Style::default().fg(t.success))
-                .border_type(ratatui::widgets::BorderType::Rounded)
+                .border_type(BorderType::Rounded)
                 .padding(ratatui::widgets::Padding::new(1, 1, 0, 0));
 
             let help_para = Paragraph::new(help_lines)
@@ -627,7 +584,7 @@ impl GitHubAuthComponent {
                 .title("💡 Help")
                 .title_alignment(Alignment::Center)
                 .border_style(Style::default().fg(t.primary))
-                .border_type(ratatui::widgets::BorderType::Rounded)
+                .border_type(BorderType::Rounded)
                 .padding(ratatui::widgets::Padding::new(1, 1, 0, 0));
 
             let help_para = Paragraph::new(help_lines)
@@ -643,6 +600,7 @@ impl GitHubAuthComponent {
         if let Some(status) = &self.auth_state.status_message {
             let status_block = Block::default()
                 .borders(Borders::ALL)
+                .border_type(BorderType::Rounded)
                 .title("Status")
                 .title_alignment(Alignment::Center)
                 .border_style(Style::default().fg(t.success));
@@ -653,6 +611,7 @@ impl GitHubAuthComponent {
         } else if let Some(error) = &self.auth_state.error_message {
             let error_block = Block::default()
                 .borders(Borders::ALL)
+                .border_type(BorderType::Rounded)
                 .title("Error")
                 .title_alignment(Alignment::Center)
                 .border_style(Style::default().fg(t.error));
@@ -754,6 +713,7 @@ impl GitHubAuthComponent {
             let help_block = Block::default()
                 .borders(Borders::ALL)
                 .title(title)
+                .border_type(BorderType::Rounded)
                 .title_alignment(Alignment::Center)
                 .border_style(Style::default().fg(t.primary));
             let help_para = Paragraph::new(help_lines.join("\n"))
@@ -791,6 +751,7 @@ impl GitHubAuthComponent {
         // Progress block
         let progress_block = Block::default()
             .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
             .title("Progress")
             .title_alignment(Alignment::Center)
             .border_style(Style::default().fg(t.primary))
@@ -823,6 +784,7 @@ impl GitHubAuthComponent {
 
             let error_block = Block::default()
                 .borders(Borders::ALL)
+                .border_type(BorderType::Rounded)
                 .title("Error")
                 .title_alignment(Alignment::Center)
                 .border_style(Style::default().fg(t.error));
@@ -933,7 +895,7 @@ impl Component for GitHubAuthComponent {
         let instructions_block = Block::default()
             .borders(Borders::ALL)
             .border_style(Style::default().fg(t.tertiary))
-            .border_type(ratatui::widgets::BorderType::Rounded);
+            .border_type(BorderType::Rounded);
         let instructions = Paragraph::new("Fill in the details below to set up your dotfiles repository. Use Tab to navigate between fields.")
             .block(instructions_block)
             .style(t.text_style())
