@@ -4,7 +4,7 @@ use crate::utils::SymlinkManager;
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
-use tracing::{debug, info, warn};
+use tracing::{info, warn};
 
 /// A friendly TUI tool for managing dotfiles with GitHub sync
 #[derive(Parser, Debug)]
@@ -36,6 +36,17 @@ pub enum Commands {
     Add {
         /// Path to the file to add
         path: PathBuf,
+        /// Add as a common file (shared across all profiles)
+        #[arg(long)]
+        common: bool,
+    },
+    /// Remove a file from sync
+    Remove {
+        /// Path to the file to remove (relative to home directory, e.g., ".zshrc")
+        path: String,
+        /// Remove from common files (shared across all profiles)
+        #[arg(long)]
+        common: bool,
     },
     /// Activate the symlinks, restores app state after deactivation.
     Activate,
@@ -70,7 +81,8 @@ impl Cli {
         match self.command {
             Some(Commands::Sync { message }) => Self::cmd_sync(message),
             Some(Commands::List { verbose }) => Self::cmd_list(verbose),
-            Some(Commands::Add { path }) => Self::cmd_add(path),
+            Some(Commands::Add { path, common }) => Self::cmd_add(path, common),
+            Some(Commands::Remove { path, common }) => Self::cmd_remove(path, common),
             Some(Commands::Activate) => Self::cmd_activate(),
             Some(Commands::Deactivate { completely }) => Self::cmd_deactivate(completely),
             Some(Commands::Help { command }) => Self::cmd_help(command),
@@ -234,9 +246,14 @@ impl Cli {
             std::process::exit(1);
         }
 
-        // Get active profile's synced files from manifest
+        // Get manifest
         let manifest = crate::utils::ProfileManifest::load_or_backfill(&config.repo_path)
             .context("Failed to load profile manifest")?;
+
+        // Get common files
+        let common_files = manifest.get_common_files();
+
+        // Get active profile's synced files
         let empty_vec = Vec::new();
         let synced_files = manifest
             .profiles
@@ -245,7 +262,7 @@ impl Cli {
             .map(|p| &p.synced_files)
             .unwrap_or(&empty_vec);
 
-        if synced_files.is_empty() {
+        if common_files.is_empty() && synced_files.is_empty() {
             println!("No files are currently synced.");
             return Ok(());
         }
@@ -254,49 +271,92 @@ impl Cli {
         let repo_path = &config.repo_path;
         let profile_name = &config.active_profile;
 
-        println!("Synced files ({}):", synced_files.len());
-        for file in synced_files {
-            let symlink_path = home_dir.join(file);
-            let repo_file_path = repo_path.join(profile_name).join(file);
+        // Print common files first
+        if !common_files.is_empty() {
+            println!("Common files ({}) - shared across all profiles:", common_files.len());
+            for file in common_files {
+                let symlink_path = home_dir.join(file);
+                let repo_file_path = repo_path.join("common").join(file);
 
-            if verbose {
-                let symlink_exists = symlink_path.exists();
-                let repo_file_exists = repo_file_path.exists();
+                if verbose {
+                    let symlink_exists = symlink_path.exists();
+                    let repo_file_exists = repo_file_path.exists();
 
-                println!("  {}", file);
-                println!("    Symlink:   {}", symlink_path.display());
-                if symlink_exists {
-                    // Check if it's actually a symlink
-                    if let Ok(metadata) = symlink_path.symlink_metadata() {
-                        if metadata.is_symlink() {
-                            println!("      Status:  ✓ Active symlink");
+                    println!("  {}", file);
+                    println!("    Symlink:   {}", symlink_path.display());
+                    if symlink_exists {
+                        if let Ok(metadata) = symlink_path.symlink_metadata() {
+                            if metadata.is_symlink() {
+                                println!("      Status:  ✓ Active symlink");
+                            } else {
+                                println!("      Status:  ⚠ File exists but is not a symlink");
+                            }
                         } else {
-                            println!("      Status:  ⚠ File exists but is not a symlink");
+                            println!("      Status:  ✓ Exists");
                         }
                     } else {
+                        println!("      Status:  ✗ Not found");
+                    }
+                    println!("    Storage:   {}", repo_file_path.display());
+                    if repo_file_exists {
                         println!("      Status:  ✓ Exists");
+                    } else {
+                        println!("      Status:  ✗ Not found");
                     }
                 } else {
-                    println!("      Status:  ✗ Not found");
+                    println!("  {}", file);
+                    println!("    Symlink:   {}", symlink_path.display());
+                    println!("    Storage:   {}", repo_file_path.display());
                 }
-                println!("    Storage:   {}", repo_file_path.display());
-                if repo_file_exists {
-                    println!("      Status:  ✓ Exists");
+            }
+            println!();
+        }
+
+        // Print profile files
+        if !synced_files.is_empty() {
+            println!("Profile files ({}) - {}:", synced_files.len(), profile_name);
+            for file in synced_files {
+                let symlink_path = home_dir.join(file);
+                let repo_file_path = repo_path.join(profile_name).join(file);
+
+                if verbose {
+                    let symlink_exists = symlink_path.exists();
+                    let repo_file_exists = repo_file_path.exists();
+
+                    println!("  {}", file);
+                    println!("    Symlink:   {}", symlink_path.display());
+                    if symlink_exists {
+                        if let Ok(metadata) = symlink_path.symlink_metadata() {
+                            if metadata.is_symlink() {
+                                println!("      Status:  ✓ Active symlink");
+                            } else {
+                                println!("      Status:  ⚠ File exists but is not a symlink");
+                            }
+                        } else {
+                            println!("      Status:  ✓ Exists");
+                        }
+                    } else {
+                        println!("      Status:  ✗ Not found");
+                    }
+                    println!("    Storage:   {}", repo_file_path.display());
+                    if repo_file_exists {
+                        println!("      Status:  ✓ Exists");
+                    } else {
+                        println!("      Status:  ✗ Not found");
+                    }
                 } else {
-                    println!("      Status:  ✗ Not found");
+                    println!("  {}", file);
+                    println!("    Symlink:   {}", symlink_path.display());
+                    println!("    Storage:   {}", repo_file_path.display());
                 }
-            } else {
-                println!("  {}", file);
-                println!("    Symlink:   {}", symlink_path.display());
-                println!("    Storage:   {}", repo_file_path.display());
             }
         }
 
         Ok(())
     }
 
-    fn cmd_add(path: PathBuf) -> Result<()> {
-        use crate::utils::SymlinkManager;
+    fn cmd_add(path: PathBuf, common: bool) -> Result<()> {
+        use crate::services::{AddFileResult, SyncService};
 
         let config_path = crate::utils::get_config_path();
         let config =
@@ -316,45 +376,20 @@ impl Cli {
             std::process::exit(1);
         }
 
-        // Get relative path from home (needed for validation)
+        // Get relative path from home
         let relative_path = resolved_path
             .strip_prefix(&home)
             .map(|p| p.to_path_buf())
             .unwrap_or_else(|_| resolved_path.clone());
         let relative_str = relative_path.to_string_lossy().to_string();
 
-        // Comprehensive validation before any operations
-        let manifest = crate::utils::ProfileManifest::load_or_backfill(&config.repo_path)
-            .context("Failed to load profile manifest")?;
-
-        let synced_files: std::collections::HashSet<String> = manifest
-            .profiles
-            .iter()
-            .find(|p| p.name == config.active_profile)
-            .map(|p| p.synced_files.iter().cloned().collect())
-            .unwrap_or_default();
-
-        let validation = crate::utils::sync_validation::validate_before_sync(
-            &relative_str,
-            &resolved_path,
-            &synced_files,
-            &config.repo_path,
-        );
-
-        if !validation.is_safe {
-            eprintln!(
-                "❌ {}",
-                validation
-                    .error_message
-                    .unwrap_or_else(|| "Cannot add this path".to_string())
-            );
-            eprintln!("   Path: {:?}", resolved_path);
-            std::process::exit(1);
-        }
-
         // Show confirmation prompt
-        println!("⚠️  Warning: This will move the following path to the storage repo and replace it with a symlink:");
+        let destination = if common { "common files" } else { "profile" };
+        println!("⚠️  Warning: This will move the following path to {} and replace it with a symlink:", destination);
         println!("   {}", resolved_path.display());
+        if common {
+            println!("\n   This file will be shared across ALL profiles.");
+        }
         println!("\n   Make sure you know what you are doing.");
         print!("   Continue? [y/N]: ");
         use std::io::{self, Write};
@@ -371,135 +406,105 @@ impl Cli {
             return Ok(());
         }
 
-        let profile_name = config.active_profile.clone();
-        let repo_path = config.repo_path.clone();
+        info!("CLI: Adding file to sync: {} (common: {})", relative_str, common);
 
-        // Check if already synced (validation already checked, but double-check for user feedback)
-        if synced_files.contains(&relative_str) {
-            println!("ℹ️  File is already synced: {}", relative_str);
+        // Use appropriate SyncService method
+        let result = if common {
+            SyncService::add_common_file_to_sync(
+                &config,
+                &resolved_path,
+                &relative_str,
+                config.backup_enabled,
+            )?
+        } else {
+            SyncService::add_file_to_sync(
+                &config,
+                &resolved_path,
+                &relative_str,
+                config.backup_enabled,
+            )?
+        };
+
+        match result {
+            AddFileResult::Success => {
+                // Check if this is a custom file (not in default dotfile candidates)
+                if !common && SyncService::is_custom_file(&relative_str) {
+                    // Add to config.custom_files if not already there
+                    let mut config = Config::load_or_create(&config_path)
+                        .context("Failed to load configuration")?;
+                    if !config.custom_files.contains(&relative_str) {
+                        config.custom_files.push(relative_str.clone());
+                        config.save(&config_path)?;
+                    }
+                }
+                let dest_type = if common { "common files" } else { "repository" };
+                println!("✅ Added {} to {} and created symlink", relative_str, dest_type);
+            }
+            AddFileResult::AlreadySynced => {
+                let dest_type = if common { "common" } else { "synced" };
+                println!("ℹ️  File is already {}: {}", dest_type, relative_str);
+            }
+            AddFileResult::ValidationFailed(msg) => {
+                eprintln!("❌ {}", msg);
+                std::process::exit(1);
+            }
+        }
+
+        Ok(())
+    }
+
+    fn cmd_remove(path: String, common: bool) -> Result<()> {
+        use crate::services::{RemoveFileResult, SyncService};
+
+        let config_path = crate::utils::get_config_path();
+        let config =
+            Config::load_or_create(&config_path).context("Failed to load configuration")?;
+
+        // Show confirmation prompt
+        let source = if common { "common files" } else { "profile" };
+        println!("⚠️  Warning: This will remove {} from {} and restore the original file.", path, source);
+        print!("   Continue? [y/N]: ");
+        use std::io::{self, Write};
+        io::stdout().flush().context("Failed to flush stdout")?;
+
+        let mut input = String::new();
+        io::stdin()
+            .read_line(&mut input)
+            .context("Failed to read input")?;
+
+        let trimmed = input.trim().to_lowercase();
+        if trimmed != "y" && trimmed != "yes" {
+            println!("Cancelled.");
             return Ok(());
         }
 
-        // Validate symlink can be created before deleting original file
-        let profile_path = repo_path.join(&profile_name);
-        let repo_file_path = profile_path.join(&relative_path);
-        let target_path = home.join(&relative_path);
+        info!("CLI: Removing file from sync: {} (common: {})", path, common);
 
-        // Create file manager for symlink resolution
-        let file_manager = crate::file_manager::FileManager::new()?;
-
-        // Handle symlinks: resolve to original file for validation
-        let original_source = if file_manager.is_symlink(&resolved_path) {
-            file_manager
-                .resolve_symlink(&resolved_path)
-                .context("Failed to resolve symlink")?
+        // Use appropriate SyncService method
+        let result = if common {
+            SyncService::remove_common_file_from_sync(&config, &path)?
         } else {
-            resolved_path.clone()
+            SyncService::remove_file_from_sync(&config, &path)?
         };
 
-        let symlink_validation = crate::utils::sync_validation::validate_symlink_creation(
-            &original_source,
-            &repo_file_path,
-            &target_path,
-        )
-        .context("Failed to validate symlink creation")?;
-
-        if !symlink_validation.is_safe {
-            eprintln!(
-                "❌ {}",
-                symlink_validation
-                    .error_message
-                    .unwrap_or_else(|| "Cannot create symlink".to_string())
-            );
-            std::process::exit(1);
-        }
-
-        // Copy file to repo FIRST (before deleting original)
-        // This ensures we have a backup before any destructive operations
-        // (file_manager already created above for validation)
-        info!("CLI: Adding file to sync: {}", relative_str);
-        info!("CLI: Source path: {:?}", resolved_path);
-        info!("CLI: Repo destination: {:?}", repo_file_path);
-        info!("CLI: Symlink target: {:?}", target_path);
-
-        // Create parent directories
-        if let Some(parent) = repo_file_path.parent() {
-            if !parent.exists() {
-                info!("CLI: Creating repo directory: {:?}", parent);
+        match result {
+            RemoveFileResult::Success => {
+                // Remove from config.custom_files if present
+                if !common {
+                    let mut config = Config::load_or_create(&config_path)
+                        .context("Failed to load configuration")?;
+                    config.custom_files.retain(|f| f != &path);
+                    config.save(&config_path)?;
+                }
+                let source_type = if common { "common files" } else { "sync" };
+                println!("✅ Removed {} from {} and restored original file", path, source_type);
             }
-            std::fs::create_dir_all(parent).context("Failed to create repo directory")?;
-        }
-
-        // Handle symlinks: resolve to original file
-        let source_path = if file_manager.is_symlink(&resolved_path) {
-            info!("CLI: Resolving symlink: {:?}", resolved_path);
-            let resolved = file_manager
-                .resolve_symlink(&resolved_path)
-                .context("Failed to resolve symlink")?;
-            info!("CLI: Resolved symlink to: {:?}", resolved);
-            resolved
-        } else {
-            resolved_path.clone()
-        };
-
-        // Copy to repo
-        info!("CLI: Copying file to repository...");
-        file_manager
-            .copy_to_repo(&source_path, &repo_file_path)
-            .context("Failed to copy file to repo")?;
-        info!("CLI: Successfully copied file to repository");
-
-        // Create symlink using SymlinkManager
-        info!("CLI: Creating symlink...");
-        let mut symlink_mgr =
-            SymlinkManager::new_with_backup(repo_path.clone(), config.backup_enabled)?;
-        symlink_mgr
-            .activate_profile(&profile_name, std::slice::from_ref(&relative_str))
-            .context("Failed to create symlink")?;
-        info!("CLI: Successfully created symlink");
-
-        // Update manifest
-        info!("CLI: Updating profile manifest...");
-        let mut manifest = crate::utils::ProfileManifest::load_or_backfill(&repo_path)?;
-        let current_files = manifest
-            .profiles
-            .iter()
-            .find(|p| p.name == profile_name)
-            .map(|p| p.synced_files.clone())
-            .unwrap_or_default();
-        if !current_files.contains(&relative_str) {
-            debug!(
-                "CLI: Adding {} to manifest for profile {}",
-                relative_str, profile_name
-            );
-            let mut new_files = current_files;
-            new_files.push(relative_str.clone());
-            manifest.update_synced_files(&profile_name, new_files)?;
-            manifest.save(&repo_path)?;
-            info!("CLI: Updated manifest with new file: {}", relative_str);
-        } else {
-            debug!("CLI: File already in manifest, skipping update");
-        }
-
-        // Check if this is a custom file (not in default dotfile candidates)
-        use crate::dotfile_candidates::get_default_dotfile_paths;
-        let default_paths = get_default_dotfile_paths();
-        let is_custom = !default_paths.iter().any(|p| p == &relative_str);
-
-        if is_custom {
-            // Add to config.custom_files if not already there
-            let mut config =
-                Config::load_or_create(&config_path).context("Failed to load configuration")?;
-            if !config.custom_files.contains(&relative_str) {
-                config.custom_files.push(relative_str.clone());
-                config.save(&config_path)?;
+            RemoveFileResult::NotSynced => {
+                let source_type = if common { "common" } else { "synced" };
+                println!("ℹ️  File is not {}: {}", source_type, path);
             }
         }
 
-        println!(
-            "✅ Added {} to repository and created symlink",
-            relative_str
-        );
         Ok(())
     }
 

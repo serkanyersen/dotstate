@@ -1112,6 +1112,324 @@ impl SymlinkManager {
 
         Ok(())
     }
+
+    // ============================================================================
+    // Common File Methods - For files shared across all profiles
+    // ============================================================================
+
+    /// Add a symlink for a common file (shared across all profiles).
+    ///
+    /// Common files are stored in the "common" folder at the repository root
+    /// and are symlinked regardless of which profile is active.
+    ///
+    /// # Arguments
+    ///
+    /// * `relative_path` - Path relative to home directory (e.g., ".gitconfig")
+    ///
+    /// # Returns
+    ///
+    /// The symlink operation result
+    pub fn add_common_symlink(&mut self, relative_path: &str) -> Result<SymlinkOperation> {
+        let common_path = self.repo_path.join("common");
+        let source = common_path.join(relative_path);
+        let home_dir = crate::utils::get_home_dir();
+        let target = home_dir.join(relative_path);
+
+        info!(
+            "Adding common symlink: {} -> {:?}",
+            relative_path, source
+        );
+
+        // Ensure common directory exists
+        if !common_path.exists() {
+            fs::create_dir_all(&common_path)
+                .context("Failed to create common directory")?;
+        }
+
+        // Create backup session if backups are enabled and not already created
+        if self.backup_enabled && self.backup_session.is_none() {
+            if let Some(ref backup_mgr) = self.backup_manager {
+                self.backup_session = Some(backup_mgr.create_backup_session()?);
+                debug!("Created backup session: {:?}", self.backup_session);
+            }
+        }
+
+        // Create the symlink
+        let operation = self.create_symlink(&source, &target, relative_path)?;
+
+        // Update tracking if successful
+        if matches!(operation.status, OperationStatus::Success) {
+            self.tracking.symlinks.push(TrackedSymlink {
+                target: operation.target.clone(),
+                source: operation.source.clone(),
+                created_at: operation.timestamp,
+                backup: operation.backup.clone(),
+            });
+
+            self.save_tracking()?;
+            info!("Successfully added common symlink for {}", relative_path);
+        }
+
+        Ok(operation)
+    }
+
+    /// Remove a symlink for a common file and restore original if exists.
+    ///
+    /// # Arguments
+    ///
+    /// * `relative_path` - Path relative to home directory (e.g., ".gitconfig")
+    ///
+    /// # Returns
+    ///
+    /// The symlink operation result
+    pub fn remove_common_symlink(&mut self, relative_path: &str) -> Result<SymlinkOperation> {
+        let common_path = self.repo_path.join("common");
+        let source_path = common_path.join(relative_path);
+
+        info!("Removing common symlink: {}", relative_path);
+
+        // Find the tracked symlink
+        let symlink = self
+            .tracking
+            .symlinks
+            .iter()
+            .find(|s| s.source == source_path)
+            .cloned();
+
+        let operation = if let Some(tracked) = symlink {
+            self.remove_symlink_with_restore(&tracked)?
+        } else {
+            // Not tracked, but try to remove if it exists
+            let home_dir = crate::utils::get_home_dir();
+            let target = home_dir.join(relative_path);
+
+            if target.symlink_metadata().is_ok() {
+                fs::remove_file(&target)
+                    .with_context(|| format!("Failed to remove symlink: {:?}", target))?;
+            }
+
+            SymlinkOperation {
+                source: source_path.clone(),
+                target,
+                backup: None,
+                status: OperationStatus::Success,
+                timestamp: Utc::now(),
+            }
+        };
+
+        // Remove from tracking
+        self.tracking.symlinks.retain(|s| s.source != source_path);
+        self.save_tracking()?;
+
+        Ok(operation)
+    }
+
+    /// Remove a common symlink from tracking only (without touching the actual symlink).
+    ///
+    /// # Arguments
+    ///
+    /// * `relative_path` - Path relative to home directory
+    pub fn remove_common_symlink_from_tracking(&mut self, relative_path: &str) -> Result<()> {
+        let common_path = self.repo_path.join("common");
+        let source_path = common_path.join(relative_path);
+
+        debug!(
+            "Removing common symlink from tracking: path={}",
+            relative_path
+        );
+
+        let initial_count = self.tracking.symlinks.len();
+        self.tracking.symlinks.retain(|s| s.source != source_path);
+        let removed_count = initial_count - self.tracking.symlinks.len();
+
+        if removed_count > 0 {
+            info!(
+                "Removed {} common symlink(s) from tracking for {}",
+                removed_count, relative_path
+            );
+            self.save_tracking()?;
+        }
+
+        Ok(())
+    }
+
+    /// Ensure all common files have their symlinks created.
+    ///
+    /// This is an efficient "reconciliation" method for common files.
+    ///
+    /// # Arguments
+    ///
+    /// * `files` - List of common files that should have symlinks (relative paths)
+    ///
+    /// # Returns
+    ///
+    /// A tuple of (created_count, skipped_count, errors)
+    pub fn ensure_common_symlinks(
+        &mut self,
+        files: &[String],
+    ) -> Result<(usize, usize, Vec<String>)> {
+        info!("Ensuring common symlinks ({} files)", files.len());
+
+        let common_path = self.repo_path.join("common");
+        let home_dir = crate::utils::get_home_dir();
+
+        let mut created_count = 0;
+        let mut skipped_count = 0;
+        let mut errors = Vec::new();
+
+        // Create backup session if backups are enabled
+        if self.backup_enabled && self.backup_session.is_none() {
+            if let Some(ref backup_mgr) = self.backup_manager {
+                self.backup_session = Some(backup_mgr.create_backup_session()?);
+                debug!("Created backup session: {:?}", self.backup_session);
+            }
+        }
+
+        for relative_path in files {
+            let source = common_path.join(relative_path);
+            let target = home_dir.join(relative_path);
+
+            // Check if source exists in repo
+            if !source.exists() {
+                debug!("Common source file does not exist, skipping: {:?}", source);
+                skipped_count += 1;
+                continue;
+            }
+
+            // Check if symlink already exists and points to the right place
+            if target.symlink_metadata().is_ok() {
+                if let Ok(metadata) = target.symlink_metadata() {
+                    if metadata.is_symlink() {
+                        if let Ok(existing_target) = fs::read_link(&target) {
+                            let existing_normalized = if existing_target.is_absolute() {
+                                existing_target.canonicalize().unwrap_or(existing_target)
+                            } else {
+                                if let Some(parent) = target.parent() {
+                                    parent
+                                        .join(&existing_target)
+                                        .canonicalize()
+                                        .unwrap_or_else(|_| parent.join(&existing_target))
+                                } else {
+                                    existing_target
+                                }
+                            };
+
+                            let source_normalized = source.canonicalize().unwrap_or(source.clone());
+
+                            if existing_normalized == source_normalized {
+                                debug!(
+                                    "Common symlink already exists and is correct, skipping: {:?}",
+                                    target
+                                );
+                                skipped_count += 1;
+                                continue;
+                            }
+                        }
+                    } else {
+                        errors.push(format!("File exists at {} (not a symlink)", relative_path));
+                        continue;
+                    }
+                }
+            }
+
+            // Create the symlink
+            match self.create_symlink(&source, &target, relative_path) {
+                Ok(op) => {
+                    if matches!(op.status, OperationStatus::Success) {
+                        created_count += 1;
+                        self.tracking.symlinks.push(TrackedSymlink {
+                            target: op.target,
+                            source: op.source,
+                            created_at: op.timestamp,
+                            backup: op.backup,
+                        });
+                    }
+                }
+                Err(e) => {
+                    errors.push(format!("Failed to create common symlink for {}: {}", relative_path, e));
+                }
+            }
+        }
+
+        if created_count > 0 {
+            self.save_tracking()?;
+        }
+
+        info!(
+            "Common symlinks: {} created, {} skipped, {} errors",
+            created_count, skipped_count, errors.len()
+        );
+
+        Ok((created_count, skipped_count, errors))
+    }
+
+    /// Activate all common files by creating their symlinks.
+    ///
+    /// # Arguments
+    ///
+    /// * `files` - List of common files to activate
+    ///
+    /// # Returns
+    ///
+    /// List of symlink operations
+    pub fn activate_common_files(&mut self, files: &[String]) -> Result<Vec<SymlinkOperation>> {
+        info!("Activating common files ({} files)", files.len());
+
+        let common_path = self.repo_path.join("common");
+
+        // Ensure common directory exists
+        if !common_path.exists() {
+            fs::create_dir_all(&common_path)
+                .context("Failed to create common directory")?;
+        }
+
+        // Create backup session if backups are enabled
+        if self.backup_enabled && self.backup_session.is_none() {
+            if let Some(ref backup_mgr) = self.backup_manager {
+                self.backup_session = Some(backup_mgr.create_backup_session()?);
+            }
+        }
+
+        let mut operations = Vec::new();
+        let home_dir = crate::utils::get_home_dir();
+
+        for file in files {
+            let source = common_path.join(file);
+            let target = home_dir.join(file);
+
+            let operation = self.create_symlink(&source, &target, file)?;
+
+            if matches!(operation.status, OperationStatus::Success) {
+                self.tracking.symlinks.push(TrackedSymlink {
+                    target: operation.target.clone(),
+                    source: operation.source.clone(),
+                    created_at: operation.timestamp,
+                    backup: operation.backup.clone(),
+                });
+            }
+
+            operations.push(operation);
+        }
+
+        self.save_tracking()?;
+        info!("Activated {} common files", operations.len());
+
+        Ok(operations)
+    }
+
+    /// Check if a symlink is for a common file.
+    ///
+    /// # Arguments
+    ///
+    /// * `source_path` - The source path of the symlink
+    ///
+    /// # Returns
+    ///
+    /// True if the symlink is for a common file
+    pub fn is_common_symlink(&self, source_path: &Path) -> bool {
+        let common_path = self.repo_path.join("common");
+        source_path.starts_with(&common_path)
+    }
 }
 
 #[cfg(test)]

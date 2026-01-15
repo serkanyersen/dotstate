@@ -339,14 +339,25 @@ impl SyncService {
         let dotfile_names = get_default_dotfile_paths();
         let mut found = file_manager.scan_dotfiles(&dotfile_names);
 
+        // Load the manifest to get synced files and common files
+        let manifest = ProfileManifest::load_or_backfill(&config.repo_path)?;
+
         // Mark files that are already synced
         let synced_set =
             Self::get_synced_files(&config.repo_path, &config.active_profile).unwrap_or_default();
+
+        // Also check if any found files are common files
+        let common_files_set: HashSet<String> =
+            manifest.get_common_files().iter().cloned().collect();
 
         for dotfile in &mut found {
             let rel = dotfile.relative_path.to_string_lossy().to_string();
             if synced_set.contains(&rel) {
                 dotfile.synced = true;
+            }
+            if common_files_set.contains(&rel) {
+                dotfile.is_common = true;
+                dotfile.synced = true; // Common files are always synced
             }
         }
 
@@ -376,6 +387,7 @@ impl SyncService {
                 relative_path,
                 synced: is_synced,
                 description: None,
+                is_common: false,
             });
         }
 
@@ -401,6 +413,30 @@ impl SyncService {
                 relative_path,
                 synced: true, // It's in the manifest, so it's synced
                 description: None,
+                is_common: false,
+            });
+        }
+
+        // Add common files from manifest
+        let common_files = manifest.get_common_files();
+        for common_path in common_files {
+            // Skip if already in the list (shouldn't happen, but be safe)
+            if found
+                .iter()
+                .any(|d| d.relative_path.to_string_lossy() == *common_path)
+            {
+                continue;
+            }
+
+            let full_path = home_dir.join(common_path);
+            let relative_path = PathBuf::from(common_path);
+
+            found.push(Dotfile {
+                original_path: full_path,
+                relative_path,
+                synced: true, // Common files are always synced
+                description: None,
+                is_common: true,
             });
         }
 
@@ -423,6 +459,418 @@ impl SyncService {
         use crate::dotfile_candidates::get_default_dotfile_paths;
         let default_paths = get_default_dotfile_paths();
         !default_paths.iter().any(|p| p == relative_path)
+    }
+
+    // ============================================================================
+    // Common File Methods - For files shared across all profiles
+    // ============================================================================
+
+    /// Add a file to common (shared across all profiles).
+    ///
+    /// This performs the following operations:
+    /// 1. Validates the operation is safe
+    /// 2. Copies the file to the common folder in the repository
+    /// 3. Creates a symlink from home to the common folder
+    /// 4. Updates the manifest
+    ///
+    /// # Arguments
+    ///
+    /// * `config` - Application configuration.
+    /// * `full_path` - Full path to the source file.
+    /// * `relative_path` - Path relative to home directory.
+    /// * `backup_enabled` - Whether to enable backups.
+    ///
+    /// # Returns
+    ///
+    /// Result indicating success, already synced, or validation failure.
+    pub fn add_common_file_to_sync(
+        config: &Config,
+        full_path: &Path,
+        relative_path: &str,
+        backup_enabled: bool,
+    ) -> Result<AddFileResult> {
+        let repo_path = &config.repo_path;
+
+        // Load manifest to check if already in common
+        let manifest = ProfileManifest::load_or_backfill(repo_path)?;
+        if manifest.is_common_file(relative_path) {
+            debug!("File already in common: {}", relative_path);
+            return Ok(AddFileResult::AlreadySynced);
+        }
+
+        // VALIDATE BEFORE ANY OPERATIONS
+        let previously_synced = Self::get_synced_files(repo_path, &config.active_profile)?;
+        let validation = sync_validation::validate_before_sync(
+            relative_path,
+            full_path,
+            &previously_synced,
+            repo_path,
+        );
+        if !validation.is_safe {
+            let error_msg = validation
+                .error_message
+                .unwrap_or_else(|| "Cannot add this file to common".to_string());
+            warn!("Validation failed for common file {}: {}", relative_path, error_msg);
+            return Ok(AddFileResult::ValidationFailed(error_msg));
+        }
+
+        // Create file manager for symlink resolution
+        let file_manager = FileManager::new()?;
+
+        // Validate symlink can be created
+        let home_dir = get_home_dir();
+        let target_path = home_dir.join(relative_path);
+        let common_path = repo_path.join("common");
+        let repo_file_path = common_path.join(relative_path);
+
+        // Handle symlinks: resolve to original file for validation
+        let original_source = if file_manager.is_symlink(full_path) {
+            file_manager.resolve_symlink(full_path)?
+        } else {
+            full_path.to_path_buf()
+        };
+
+        let symlink_validation = sync_validation::validate_symlink_creation(
+            &original_source,
+            &repo_file_path,
+            &target_path,
+        )
+        .context("Failed to validate symlink creation")?;
+        if !symlink_validation.is_safe {
+            let error_msg = symlink_validation
+                .error_message
+                .unwrap_or_else(|| "Cannot create symlink".to_string());
+            warn!(
+                "Symlink validation failed for common file {}: {}",
+                relative_path, error_msg
+            );
+            return Ok(AddFileResult::ValidationFailed(error_msg));
+        }
+
+        info!("Adding common file to sync: {}", relative_path);
+
+        // Ensure common directory exists
+        std::fs::create_dir_all(&common_path).context("Failed to create common directory")?;
+
+        // Create parent directories
+        if let Some(parent) = repo_file_path.parent() {
+            if !parent.exists() {
+                std::fs::create_dir_all(parent).context("Failed to create directory")?;
+            }
+        }
+
+        // Handle symlinks: resolve to original file
+        let source_path = if file_manager.is_symlink(full_path) {
+            file_manager.resolve_symlink(full_path)?
+        } else {
+            full_path.to_path_buf()
+        };
+
+        // Copy to common folder in repo
+        info!("Copying file to common folder...");
+        file_manager
+            .copy_to_repo(&source_path, &repo_file_path)
+            .context("Failed to copy file to common folder")?;
+
+        // Create symlink using SymlinkManager
+        info!("Creating symlink...");
+        let mut symlink_mgr = SymlinkManager::new_with_backup(repo_path.clone(), backup_enabled)?;
+        symlink_mgr
+            .add_common_symlink(relative_path)
+            .context("Failed to create symlink")?;
+
+        // Update manifest
+        info!("Updating manifest...");
+        let mut manifest = ProfileManifest::load_or_backfill(repo_path)?;
+        manifest.add_common_file(relative_path);
+        manifest.save(repo_path)?;
+
+        info!("Successfully added common file: {}", relative_path);
+        Ok(AddFileResult::Success)
+    }
+
+    /// Remove a file from common.
+    ///
+    /// This performs the following operations:
+    /// 1. Removes the symlink from home
+    /// 2. Restores the file from the common folder
+    /// 3. Removes the file from the common folder
+    /// 4. Updates the manifest
+    ///
+    /// # Arguments
+    ///
+    /// * `config` - Application configuration.
+    /// * `relative_path` - Path relative to home directory.
+    ///
+    /// # Returns
+    ///
+    /// Result indicating success or that file was not in common.
+    pub fn remove_common_file_from_sync(config: &Config, relative_path: &str) -> Result<RemoveFileResult> {
+        let repo_path = &config.repo_path;
+        let home_dir = get_home_dir();
+
+        // Load manifest to check if in common
+        let manifest = ProfileManifest::load_or_backfill(repo_path)?;
+        if !manifest.is_common_file(relative_path) {
+            debug!("File not in common, skipping removal: {}", relative_path);
+            return Ok(RemoveFileResult::NotSynced);
+        }
+
+        info!("Removing common file from sync: {}", relative_path);
+
+        let target_path = home_dir.join(relative_path);
+        let common_path = repo_path.join("common");
+        let repo_file_path = common_path.join(relative_path);
+
+        // Restore file from common folder if symlink exists
+        if target_path.symlink_metadata().is_ok() {
+            let metadata = target_path.symlink_metadata().unwrap();
+            if metadata.is_symlink() {
+                // Remove symlink
+                std::fs::remove_file(&target_path).context("Failed to remove symlink")?;
+
+                // Copy file from common folder back to home
+                if repo_file_path.exists() {
+                    if repo_file_path.is_dir() {
+                        copy_dir_all(&repo_file_path, &target_path)
+                            .context("Failed to restore directory from common")?;
+                    } else {
+                        std::fs::copy(&repo_file_path, &target_path)
+                            .context("Failed to restore file from common")?;
+                    }
+                }
+            }
+        }
+
+        // Update symlink tracking
+        let mut symlink_mgr = SymlinkManager::new(repo_path.clone())?;
+        symlink_mgr.remove_common_symlink_from_tracking(relative_path)?;
+
+        // Remove from common folder
+        if repo_file_path.exists() {
+            if repo_file_path.is_dir() {
+                std::fs::remove_dir_all(&repo_file_path)
+                    .context("Failed to remove directory from common")?;
+            } else {
+                std::fs::remove_file(&repo_file_path)
+                    .context("Failed to remove file from common")?;
+            }
+        }
+
+        // Update manifest
+        let mut manifest = ProfileManifest::load_or_backfill(repo_path)?;
+        manifest.remove_common_file(relative_path);
+        manifest.save(repo_path)?;
+
+        info!("Successfully removed common file: {}", relative_path);
+        Ok(RemoveFileResult::Success)
+    }
+
+    /// Move a file from a profile to common.
+    ///
+    /// # Arguments
+    ///
+    /// * `config` - Application configuration.
+    /// * `relative_path` - Path relative to home directory.
+    ///
+    /// # Returns
+    ///
+    /// Result indicating success or failure.
+    pub fn move_to_common(config: &Config, relative_path: &str) -> Result<()> {
+        let repo_path = &config.repo_path;
+        let profile_name = &config.active_profile;
+
+        info!(
+            "Moving {} from profile '{}' to common",
+            relative_path, profile_name
+        );
+
+        // Load manifest
+        let mut manifest = ProfileManifest::load_or_backfill(repo_path)?;
+
+        // Check if file is in the profile
+        let profile = manifest
+            .profiles
+            .iter()
+            .find(|p| p.name == *profile_name)
+            .ok_or_else(|| anyhow::anyhow!("Profile '{}' not found", profile_name))?;
+
+        if !profile.synced_files.contains(&relative_path.to_string()) {
+            return Err(anyhow::anyhow!(
+                "File '{}' is not synced in profile '{}'",
+                relative_path,
+                profile_name
+            ));
+        }
+
+        // Move the actual file from profile folder to common folder
+        let profile_path = repo_path.join(profile_name);
+        let common_path = repo_path.join("common");
+        let source = profile_path.join(relative_path);
+        let dest = common_path.join(relative_path);
+
+        // Ensure common directory exists
+        std::fs::create_dir_all(&common_path).context("Failed to create common directory")?;
+
+        // Create parent directories for destination
+        if let Some(parent) = dest.parent() {
+            if !parent.exists() {
+                std::fs::create_dir_all(parent)?;
+            }
+        }
+
+        // Move the file
+        if source.exists() {
+            if source.is_dir() {
+                copy_dir_all(&source, &dest)?;
+                std::fs::remove_dir_all(&source)?;
+            } else {
+                std::fs::copy(&source, &dest)?;
+                std::fs::remove_file(&source)?;
+            }
+        }
+
+        // Update symlink to point to common folder
+        let home_dir = get_home_dir();
+        let target = home_dir.join(relative_path);
+
+        // Remove old symlink if exists
+        if target.symlink_metadata().is_ok() {
+            std::fs::remove_file(&target)?;
+        }
+
+        // Create new symlink to common
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&dest, &target)?;
+        #[cfg(windows)]
+        {
+            if dest.is_dir() {
+                std::os::windows::fs::symlink_dir(&dest, &target)?;
+            } else {
+                std::os::windows::fs::symlink_file(&dest, &target)?;
+            }
+        }
+
+        // Update manifest
+        manifest.move_to_common(profile_name, relative_path)?;
+        manifest.save(repo_path)?;
+
+        // Update symlink tracking
+        let mut symlink_mgr = SymlinkManager::new(repo_path.clone())?;
+        symlink_mgr.remove_symlink_from_tracking(profile_name, relative_path)?;
+        // Note: The common symlink will be tracked when we add it through the normal flow
+
+        info!(
+            "Successfully moved {} to common",
+            relative_path
+        );
+
+        Ok(())
+    }
+
+    /// Move a file from common to the current profile.
+    ///
+    /// # Arguments
+    ///
+    /// * `config` - Application configuration.
+    /// * `relative_path` - Path relative to home directory.
+    ///
+    /// # Returns
+    ///
+    /// Result indicating success or failure.
+    pub fn move_from_common(config: &Config, relative_path: &str) -> Result<()> {
+        let repo_path = &config.repo_path;
+        let profile_name = &config.active_profile;
+
+        info!(
+            "Moving {} from common to profile '{}'",
+            relative_path, profile_name
+        );
+
+        // Load manifest
+        let mut manifest = ProfileManifest::load_or_backfill(repo_path)?;
+
+        // Check if file is in common
+        if !manifest.is_common_file(relative_path) {
+            return Err(anyhow::anyhow!(
+                "File '{}' is not in common",
+                relative_path
+            ));
+        }
+
+        // Move the actual file from common folder to profile folder
+        let common_path = repo_path.join("common");
+        let profile_path = repo_path.join(profile_name);
+        let source = common_path.join(relative_path);
+        let dest = profile_path.join(relative_path);
+
+        // Create parent directories for destination
+        if let Some(parent) = dest.parent() {
+            if !parent.exists() {
+                std::fs::create_dir_all(parent)?;
+            }
+        }
+
+        // Move the file
+        if source.exists() {
+            if source.is_dir() {
+                copy_dir_all(&source, &dest)?;
+                std::fs::remove_dir_all(&source)?;
+            } else {
+                std::fs::copy(&source, &dest)?;
+                std::fs::remove_file(&source)?;
+            }
+        }
+
+        // Update symlink to point to profile folder
+        let home_dir = get_home_dir();
+        let target = home_dir.join(relative_path);
+
+        // Remove old symlink if exists
+        if target.symlink_metadata().is_ok() {
+            std::fs::remove_file(&target)?;
+        }
+
+        // Create new symlink to profile
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&dest, &target)?;
+        #[cfg(windows)]
+        {
+            if dest.is_dir() {
+                std::os::windows::fs::symlink_dir(&dest, &target)?;
+            } else {
+                std::os::windows::fs::symlink_file(&dest, &target)?;
+            }
+        }
+
+        // Update manifest
+        manifest.move_from_common(profile_name, relative_path)?;
+        manifest.save(repo_path)?;
+
+        // Update symlink tracking
+        let mut symlink_mgr = SymlinkManager::new(repo_path.clone())?;
+        symlink_mgr.remove_common_symlink_from_tracking(relative_path)?;
+
+        info!(
+            "Successfully moved {} to profile '{}'",
+            relative_path, profile_name
+        );
+
+        Ok(())
+    }
+
+    /// Get the set of common files.
+    ///
+    /// # Arguments
+    ///
+    /// * `repo_path` - Path to the repository.
+    ///
+    /// # Returns
+    ///
+    /// Set of common file paths.
+    pub fn get_common_files(repo_path: &Path) -> Result<HashSet<String>> {
+        let manifest = ProfileManifest::load_or_backfill(repo_path)?;
+        Ok(manifest.get_common_files().iter().cloned().collect())
     }
 }
 

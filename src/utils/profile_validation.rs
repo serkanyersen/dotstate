@@ -1,7 +1,15 @@
 use anyhow::{bail, Result};
 
 /// Reserved profile names that cannot be used
-const RESERVED_NAMES: &[&str] = &["backup", "temp", ".git", "node_modules", "target", "build"];
+const RESERVED_NAMES: &[&str] = &[
+    "backup",
+    "temp",
+    ".git",
+    "node_modules",
+    "target",
+    "build",
+    "common", // Reserved for common files shared across all profiles
+];
 
 /// Maximum profile name length
 const MAX_NAME_LENGTH: usize = 50;
@@ -152,6 +160,8 @@ mod tests {
         assert!(validate_profile_name("backup", &existing).is_err());
         assert!(validate_profile_name("temp", &existing).is_err());
         assert!(validate_profile_name(".git", &existing).is_err());
+        assert!(validate_profile_name("common", &existing).is_err());
+        assert!(validate_profile_name("Common", &existing).is_err()); // Case-insensitive
 
         // Starts with dot
         assert!(validate_profile_name(".hidden", &existing).is_err());
@@ -199,6 +209,7 @@ mod tests {
         assert!(!is_safe_profile_name("Profile Name"));
         assert!(!is_safe_profile_name(".hidden"));
         assert!(!is_safe_profile_name("backup"));
+        assert!(!is_safe_profile_name("common"));
 
         let long_name = "a".repeat(51);
         assert!(!is_safe_profile_name(&long_name));

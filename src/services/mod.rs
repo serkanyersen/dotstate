@@ -40,4 +40,4 @@ pub mod sync_service;
 pub use git_service::GitService;
 pub use package_service::{PackageCreationParams, PackageService};
 pub use profile_service::ProfileService;
-pub use sync_service::SyncService;
+pub use sync_service::{AddFileResult, RemoveFileResult, SyncService};

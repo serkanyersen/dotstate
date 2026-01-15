@@ -165,6 +165,13 @@ pub enum ScreenAction {
         /// Whether backups are enabled.
         enabled: bool,
     },
+    /// Move a file to/from common (shared across all profiles).
+    MoveToCommon {
+        /// Index of the file in the dotfiles list.
+        file_index: usize,
+        /// Whether the file is currently in common (true = move to profile, false = move to common).
+        is_common: bool,
+    },
     // Profile management actions
     /// Create a new profile.
     CreateProfile {

@@ -1465,6 +1465,7 @@ impl App {
                 };
 
                 let manifest = crate::utils::ProfileManifest {
+                    common: crate::utils::profile_manifest::CommonSection::default(),
                     profiles: vec![crate::utils::profile_manifest::ProfileInfo {
                         name: default_profile_name.clone(),
                         description: None, // Default profile, no description yet

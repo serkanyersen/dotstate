@@ -22,6 +22,8 @@ pub struct Dotfile {
     pub synced: bool,
     /// Description of the dotfile (if available from default list)
     pub description: Option<String>,
+    /// Whether this file is a common file (shared across all profiles)
+    pub is_common: bool,
 }
 
 impl FileManager {
@@ -53,6 +55,7 @@ impl FileManager {
                     relative_path: relative,
                     synced: false,
                     description,
+                    is_common: false,
                 });
             }
         }

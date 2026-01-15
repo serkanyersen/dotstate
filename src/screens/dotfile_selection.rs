@@ -610,6 +610,22 @@ impl DotfileSelectionScreen {
             }
         }
 
+        // Handle 'm' key for moving files to/from common (outside of keymap)
+        if let KeyCode::Char('m') = key_code {
+            if let Some(idx) = self.state.dotfile_list_state.selected() {
+                if idx < self.state.dotfiles.len() {
+                    let dotfile = &self.state.dotfiles[idx];
+                    if dotfile.synced {
+                        // Only allow moving synced files
+                        return Ok(ScreenAction::MoveToCommon {
+                            file_index: idx,
+                            is_common: dotfile.is_common,
+                        });
+                    }
+                }
+            }
+        }
+
         Ok(ScreenAction::None)
     }
 
@@ -950,6 +966,11 @@ impl DotfileSelectionScreen {
 
         // File list using ListState - simplified, no descriptions inline
         let t = ui_theme();
+
+        // Count common vs profile files
+        let common_count = self.state.dotfiles.iter().filter(|d| d.is_common).count();
+        let profile_count = self.state.dotfiles.len() - common_count;
+
         let items: Vec<ListItem> = self
             .state
             .dotfiles
@@ -957,14 +978,18 @@ impl DotfileSelectionScreen {
             .enumerate()
             .map(|(i, dotfile)| {
                 let is_selected = self.state.selected_for_sync.contains(&i);
-                let prefix = if is_selected { "✓ " } else { "  " };
+                let sync_marker = if is_selected { "✓" } else { " " };
+                let common_marker = if dotfile.is_common { "[C] " } else { "    " };
                 let style = if is_selected {
                     Style::default().fg(t.success)
+                } else if dotfile.is_common {
+                    // Common files get a distinct color (using tertiary)
+                    Style::default().fg(t.tertiary)
                 } else {
                     t.text_style()
                 };
                 let path_str = dotfile.relative_path.to_string_lossy();
-                ListItem::new(format!("{}{}", prefix, path_str)).style(style)
+                ListItem::new(format!("{} {}{}", sync_marker, common_marker, path_str)).style(style)
             })
             .collect();
 
@@ -977,8 +1002,12 @@ impl DotfileSelectionScreen {
             .content_length(total_dotfiles)
             .position(selected_index);
 
-        // Add focus indicator to files list
-        let list_title = format!("Found {} dotfiles", self.state.dotfiles.len());
+        // Add focus indicator to files list with common/profile breakdown
+        let list_title = if common_count > 0 {
+            format!("Dotfiles ({} common, {} profile)", common_count, profile_count)
+        } else {
+            format!("Found {} dotfiles", self.state.dotfiles.len())
+        };
         let list_border_style = if self.state.focus == DotfileSelectionFocus::FilesList {
             focused_border_style()
         } else {
