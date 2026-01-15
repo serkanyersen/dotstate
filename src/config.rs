@@ -293,8 +293,10 @@ mod tests {
         let repo_path = temp_dir.path().join("repo");
 
         // Create a config with a non-existent repo_path to avoid manifest loading
-        let mut config = Config::default();
-        config.repo_path = repo_path.clone();
+        let config = Config {
+            repo_path: repo_path.clone(),
+            ..Default::default()
+        };
         config.save(&config_path).unwrap();
 
         let loaded = Config::load_or_create(&config_path).unwrap();
@@ -310,16 +312,22 @@ mod tests {
         let repo_path = temp_dir.path().join("repo");
 
         // Test GitHub mode
-        let mut config = Config::default();
-        config.repo_path = repo_path.clone();
-        config.repo_mode = RepoMode::GitHub;
+        let config = Config {
+            repo_path: repo_path.clone(),
+            repo_mode: RepoMode::GitHub,
+            ..Default::default()
+        };
         config.save(&config_path).unwrap();
 
         let loaded = Config::load_or_create(&config_path).unwrap();
         assert_eq!(loaded.repo_mode, RepoMode::GitHub);
 
         // Test Local mode
-        config.repo_mode = RepoMode::Local;
+        let config = Config {
+            repo_path: repo_path.clone(),
+            repo_mode: RepoMode::Local,
+            ..Default::default()
+        };
         config.save(&config_path).unwrap();
 
         let loaded = Config::load_or_create(&config_path).unwrap();
@@ -372,8 +380,10 @@ custom_files = []
         let config_path = temp_dir.path().join("config.toml");
         let repo_path = temp_dir.path().join("repo");
 
-        let mut config = Config::default();
-        config.repo_path = repo_path;
+        let mut config = Config {
+            repo_path,
+            ..Default::default()
+        };
         config.updates.check_enabled = false;
         config.updates.check_interval_hours = 48;
         config.save(&config_path).unwrap();

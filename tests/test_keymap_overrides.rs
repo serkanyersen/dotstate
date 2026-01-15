@@ -10,8 +10,10 @@ fn test_keymap_override_in_config() {
     let repo_path = temp_dir.path().join("repo");
 
     // Create a config with keymap overrides
-    let mut config = Config::default();
-    config.repo_path = repo_path.clone();
+    let mut config = Config {
+        repo_path: repo_path.clone(),
+        ..Default::default()
+    };
     config.keymap.preset = KeymapPreset::Vim;
 
     // Add an override: map 'x' to Quit (normally 'q' in vim preset)
@@ -88,8 +90,10 @@ fn test_keymap_override_shadows_preset() {
     let repo_path = temp_dir.path().join("repo");
 
     // Create a config with keymap override that shadows a preset binding
-    let mut config = Config::default();
-    config.repo_path = repo_path.clone();
+    let mut config = Config {
+        repo_path: repo_path.clone(),
+        ..Default::default()
+    };
     config.keymap.preset = KeymapPreset::Vim;
 
     // Override 'j' to map to MoveUp instead of MoveDown
@@ -129,8 +133,10 @@ fn test_keymap_override_with_modifiers() {
     let repo_path = temp_dir.path().join("repo");
 
     // Create a config with keymap override using modifiers
-    let mut config = Config::default();
-    config.repo_path = repo_path.clone();
+    let mut config = Config {
+        repo_path: repo_path.clone(),
+        ..Default::default()
+    };
     config.keymap.preset = KeymapPreset::Standard;
 
     // Override Ctrl+N to map to Quit
@@ -163,8 +169,10 @@ fn test_keymap_override_serialization_format() {
     let repo_path = temp_dir.path().join("repo");
 
     // Create a config with keymap overrides
-    let mut config = Config::default();
-    config.repo_path = repo_path.clone();
+    let mut config = Config {
+        repo_path: repo_path.clone(),
+        ..Default::default()
+    };
     config.keymap.preset = KeymapPreset::Emacs;
     config
         .keymap

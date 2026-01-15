@@ -1118,8 +1118,8 @@ impl DotfileSelectionScreen {
                  // Try to find valid item from current position onwards
                  let mut found = false;
                  // First try current to end
-                 for i in current_sel..display_items.len() {
-                     if !matches!(display_items[i], DisplayItem::Header(_)) {
+                 for (i, item) in display_items.iter().enumerate().skip(current_sel) {
+                     if !matches!(item, DisplayItem::Header(_)) {
                          self.state.dotfile_list_state.select(Some(i));
                          found = true;
                          break;
@@ -1127,8 +1127,8 @@ impl DotfileSelectionScreen {
                  }
                  // If not found, try from beginning
                  if !found {
-                     for i in 0..current_sel {
-                         if !matches!(display_items[i], DisplayItem::Header(_)) {
+                     for (i, item) in display_items.iter().enumerate().take(current_sel) {
+                         if !matches!(item, DisplayItem::Header(_)) {
                              self.state.dotfile_list_state.select(Some(i));
                              break;
                          }
@@ -1151,7 +1151,7 @@ impl DotfileSelectionScreen {
                     if title.is_empty() {
                         ListItem::new("").style(Style::default())
                     } else {
-                        ListItem::new(format!("{}", title))
+                        ListItem::new(title.to_string())
                             .style(Style::default().fg(t.tertiary).add_modifier(Modifier::BOLD))
                     }
                 }

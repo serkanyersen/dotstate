@@ -1303,15 +1303,13 @@ impl SymlinkManager {
                         if let Ok(existing_target) = fs::read_link(&target) {
                             let existing_normalized = if existing_target.is_absolute() {
                                 existing_target.canonicalize().unwrap_or(existing_target)
+                            } else if let Some(parent) = target.parent() {
+                                parent
+                                    .join(&existing_target)
+                                    .canonicalize()
+                                    .unwrap_or_else(|_| parent.join(&existing_target))
                             } else {
-                                if let Some(parent) = target.parent() {
-                                    parent
-                                        .join(&existing_target)
-                                        .canonicalize()
-                                        .unwrap_or_else(|_| parent.join(&existing_target))
-                                } else {
-                                    existing_target
-                                }
+                                existing_target
                             };
 
                             let source_normalized = source.canonicalize().unwrap_or(source.clone());

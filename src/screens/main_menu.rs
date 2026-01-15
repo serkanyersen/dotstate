@@ -1136,9 +1136,10 @@ mod tests {
     use std::path::PathBuf;
 
     fn test_config() -> Config {
-        let mut config = Config::default();
-        config.repo_path = PathBuf::from("/tmp/test-repo");
-        config
+        Config {
+            repo_path: PathBuf::from("/tmp/test-repo"),
+            ..Default::default()
+        }
     }
 
     #[test]

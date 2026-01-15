@@ -76,7 +76,7 @@ mod tests {
         let theme_set = ThemeSet::load_defaults();
         let theme = get_syntax_theme(&theme_set, ThemeType::Dark);
         // Should not panic and return a valid theme
-        assert!(!theme.name.as_ref().map_or(true, |n| n.is_empty()));
+        assert!(!theme.name.as_ref().is_none_or(|n| n.is_empty()));
     }
 
     #[test]
@@ -84,7 +84,7 @@ mod tests {
         let theme_set = ThemeSet::load_defaults();
         let theme = get_syntax_theme(&theme_set, ThemeType::Light);
         // Should not panic and return a valid theme
-        assert!(!theme.name.as_ref().map_or(true, |n| n.is_empty()));
+        assert!(!theme.name.as_ref().is_none_or(|n| n.is_empty()));
     }
 
     #[test]
@@ -92,6 +92,6 @@ mod tests {
         let theme_set = ThemeSet::load_defaults();
         let theme = get_syntax_theme(&theme_set, ThemeType::NoColor);
         // NoColor should fall back to dark theme preferences
-        assert!(!theme.name.as_ref().map_or(true, |n| n.is_empty()));
+        assert!(!theme.name.as_ref().is_none_or(|n| n.is_empty()));
     }
 }
