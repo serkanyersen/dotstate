@@ -4,7 +4,7 @@ use crate::git::GitManager;
 use crate::github::GitHubClient;
 use crate::screens::{
     GitHubAuthScreen, MainMenuScreen, ManagePackagesScreen, ManageProfilesScreen,
-    Screen as ScreenTrait, SyncWithRemoteScreen, ViewSyncedFilesScreen,
+    Screen as ScreenTrait, SyncWithRemoteScreen,
 };
 use crate::tui::Tui;
 use crate::ui::{GitHubAuthStep, GitHubSetupStep, Screen, UiState};
@@ -66,7 +66,6 @@ pub struct App {
     main_menu_screen: MainMenuScreen,
     github_auth_screen: GitHubAuthScreen,
     dotfile_selection_screen: crate::screens::DotfileSelectionScreen,
-    view_synced_files_screen: ViewSyncedFilesScreen,
     sync_with_remote_screen: SyncWithRemoteScreen,
     profile_selection_screen: crate::screens::ProfileSelectionScreen,
     manage_profiles_screen: ManageProfilesScreen,
@@ -122,7 +121,6 @@ impl App {
             main_menu_screen,
             github_auth_screen: GitHubAuthScreen::new(),
             dotfile_selection_screen: crate::screens::DotfileSelectionScreen::new(),
-            view_synced_files_screen: ViewSyncedFilesScreen::new(config_clone),
             sync_with_remote_screen: SyncWithRemoteScreen::new(),
             profile_selection_screen: crate::screens::ProfileSelectionScreen::new(),
             manage_profiles_screen: ManageProfilesScreen::new(),
@@ -398,12 +396,6 @@ impl App {
 
         // DotfileSelectionScreen handles its own state and rendering
 
-        // Update synced files screen config (only if on that screen to avoid unnecessary clones)
-        if self.ui_state.current_screen == Screen::ViewSyncedFiles {
-            self.view_synced_files_screen
-                .update_config(self.config.clone());
-        }
-
         // Load changed files when entering PushChanges screen
         if self.ui_state.current_screen == Screen::SyncWithRemote
             && !self.sync_with_remote_screen.get_state().is_syncing
@@ -476,20 +468,6 @@ impl App {
                     );
                     if let Err(e) = self.dotfile_selection_screen.render(frame, area, &ctx) {
                         error!("Failed to render dotfile selection screen: {}", e);
-                    }
-                }
-                Screen::ViewSyncedFiles => {
-                    // Router pattern - delegate to screen's render method
-                    use crate::screens::{RenderContext, Screen as ScreenTrait};
-                    let syntax_theme = crate::utils::get_current_syntax_theme(&self.theme_set);
-                    let ctx = RenderContext::new(
-                        &config_clone,
-                        &self.syntax_set,
-                        &self.theme_set,
-                        syntax_theme,
-                    );
-                    if let Err(e) = self.view_synced_files_screen.render(frame, area, &ctx) {
-                        error!("Failed to render view synced files screen: {}", e);
                     }
                 }
                 Screen::SyncWithRemote => {
@@ -752,14 +730,6 @@ impl App {
                 // Sync state from screen back to ui_state (for legacy code that reads it)
                 self.ui_state.github_auth = self.github_auth_screen.get_auth_state().clone();
 
-                self.process_screen_action(action)?;
-                Ok(())
-            }
-            Screen::ViewSyncedFiles => {
-                // Router pattern - delegate to screen's handle_event method
-                use crate::screens::ScreenContext;
-                let ctx = ScreenContext::new(&self.config, &self.config_path);
-                let action = self.view_synced_files_screen.handle_event(event, &ctx)?;
                 self.process_screen_action(action)?;
                 Ok(())
             }

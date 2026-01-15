@@ -56,7 +56,6 @@ pub mod manage_profiles;
 pub mod profile_selection;
 pub mod screen_trait;
 pub mod sync_with_remote;
-pub mod view_synced_files;
 
 pub use dotfile_selection::DotfileSelectionScreen;
 pub use github_auth::GitHubAuthScreen;
@@ -66,4 +65,3 @@ pub use manage_profiles::ManageProfilesScreen;
 pub use profile_selection::ProfileSelectionScreen;
 pub use screen_trait::{RenderContext, Screen, ScreenAction, ScreenContext};
 pub use sync_with_remote::SyncWithRemoteScreen;
-pub use view_synced_files::ViewSyncedFilesScreen;

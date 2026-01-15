@@ -6,7 +6,6 @@ pub enum Screen {
     MainMenu,
     DotfileSelection,
     GitHubAuth,
-    ViewSyncedFiles,
     SyncWithRemote,
     ManageProfiles,
     ProfileSelection, // For selecting which profile to activate after setup
