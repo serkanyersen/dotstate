@@ -108,7 +108,7 @@ impl App {
         let theme_set = syntect::highlighting::ThemeSet::load_defaults();
 
         let has_changes = false; // Will be checked on first draw
-        let config_clone = config.clone();
+        let _config_clone = config.clone();
         let main_menu_screen = MainMenuScreen::with_config(&config, has_changes);
         let app = Self {
             config_path,

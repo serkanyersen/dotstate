@@ -103,12 +103,16 @@ impl GitHubAuthScreen {
 
     // Rendering methods
 
-    fn render_token_field(&mut self, frame: &mut Frame, area: Rect, _ctx: &RenderContext) -> Result<()> {
+    fn render_token_field(
+        &mut self,
+        frame: &mut Frame,
+        area: Rect,
+        _ctx: &RenderContext,
+    ) -> Result<()> {
         let is_focused = self.state.focused_field == GitHubAuthField::Token;
 
         // Disable token field if repo configured and not in edit mode
-        let is_disabled =
-            self.state.repo_already_configured && !self.state.is_editing_token;
+        let is_disabled = self.state.repo_already_configured && !self.state.is_editing_token;
 
         // Show masked token if repo is already configured and not editing
         let masked = self.state.repo_already_configured && !self.state.is_editing_token;
@@ -128,7 +132,12 @@ impl GitHubAuthScreen {
         Ok(())
     }
 
-    fn render_repo_name_field(&mut self, frame: &mut Frame, area: Rect, _ctx: &RenderContext) -> Result<()> {
+    fn render_repo_name_field(
+        &mut self,
+        frame: &mut Frame,
+        area: Rect,
+        _ctx: &RenderContext,
+    ) -> Result<()> {
         let is_focused = self.state.focused_field == GitHubAuthField::RepoName;
         let is_disabled = self.state.repo_already_configured;
 
@@ -146,7 +155,12 @@ impl GitHubAuthScreen {
         Ok(())
     }
 
-    fn render_repo_location_field(&mut self, frame: &mut Frame, area: Rect, _ctx: &RenderContext) -> Result<()> {
+    fn render_repo_location_field(
+        &mut self,
+        frame: &mut Frame,
+        area: Rect,
+        _ctx: &RenderContext,
+    ) -> Result<()> {
         let is_focused = self.state.focused_field == GitHubAuthField::RepoLocation;
         let is_disabled = self.state.repo_already_configured;
 
@@ -164,7 +178,12 @@ impl GitHubAuthScreen {
         Ok(())
     }
 
-    fn render_visibility_field(&mut self, frame: &mut Frame, area: Rect, ctx: &RenderContext) -> Result<()> {
+    fn render_visibility_field(
+        &mut self,
+        frame: &mut Frame,
+        area: Rect,
+        ctx: &RenderContext,
+    ) -> Result<()> {
         let is_focused = self.state.focused_field == GitHubAuthField::IsPrivate;
         let is_disabled = self.state.repo_already_configured;
         let icons = self.icons(ctx);
@@ -218,7 +237,12 @@ impl GitHubAuthScreen {
     }
 
     /// Render the mode selection screen (choosing between GitHub and Local modes)
-    fn render_mode_selection(&mut self, frame: &mut Frame, area: Rect, ctx: &RenderContext) -> Result<()> {
+    fn render_mode_selection(
+        &mut self,
+        frame: &mut Frame,
+        area: Rect,
+        ctx: &RenderContext,
+    ) -> Result<()> {
         let t = theme();
         // Layout: Header, Content, Footer
         let (header_chunk, content_chunk, footer_chunk) = create_standard_layout(area, 5, 2);
@@ -400,7 +424,12 @@ impl GitHubAuthScreen {
     }
 
     /// Render the local repository setup screen
-    fn render_local_setup(&mut self, frame: &mut Frame, area: Rect, ctx: &RenderContext) -> Result<()> {
+    fn render_local_setup(
+        &mut self,
+        frame: &mut Frame,
+        area: Rect,
+        ctx: &RenderContext,
+    ) -> Result<()> {
         let t = theme();
         let icons = self.icons(ctx);
         // Layout: Header, Content, Footer
@@ -519,7 +548,12 @@ impl GitHubAuthScreen {
     }
 
     /// Render help panel for local setup
-    fn render_local_help_panel(&self, frame: &mut Frame, area: Rect, ctx: &RenderContext) -> Result<()> {
+    fn render_local_help_panel(
+        &self,
+        frame: &mut Frame,
+        area: Rect,
+        ctx: &RenderContext,
+    ) -> Result<()> {
         let t = theme();
         let icons = self.icons(ctx);
         if let Some(status) = &self.state.status_message {
@@ -765,7 +799,12 @@ impl GitHubAuthScreen {
     }
 
     /// Render progress screen when processing GitHub setup
-    fn render_progress_screen(&mut self, frame: &mut Frame, area: Rect, ctx: &RenderContext) -> Result<()> {
+    fn render_progress_screen(
+        &mut self,
+        frame: &mut Frame,
+        area: Rect,
+        ctx: &RenderContext,
+    ) -> Result<()> {
         let t = theme();
 
         // Layout: Header, Content, Footer
@@ -852,7 +891,12 @@ impl GitHubAuthScreen {
     }
 
     /// Render the GitHub setup form
-    fn render_github_form(&mut self, frame: &mut Frame, area: Rect, ctx: &RenderContext) -> Result<()> {
+    fn render_github_form(
+        &mut self,
+        frame: &mut Frame,
+        area: Rect,
+        ctx: &RenderContext,
+    ) -> Result<()> {
         let t = theme();
 
         // Layout: Title/Description, Content, Footer
@@ -1420,15 +1464,9 @@ impl Screen for GitHubAuthScreen {
 
         // Check setup mode and render appropriate screen
         match self.state.setup_mode {
-            SetupMode::Choosing => {
-                return self.render_mode_selection(frame, area, ctx);
-            }
-            SetupMode::Local => {
-                return self.render_local_setup(frame, area, ctx);
-            }
-            SetupMode::GitHub => {
-                return self.render_github_form(frame, area, ctx);
-            }
+            SetupMode::Choosing => self.render_mode_selection(frame, area, ctx),
+            SetupMode::Local => self.render_local_setup(frame, area, ctx),
+            SetupMode::GitHub => self.render_github_form(frame, area, ctx),
         }
     }
 
