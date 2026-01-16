@@ -6,7 +6,7 @@
 use crate::components::footer::Footer;
 use crate::styles::theme;
 use ratatui::prelude::*;
-use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph};
+use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 
 /// Result of rendering a popup, containing area for content
 #[derive(Debug)]
@@ -121,7 +121,7 @@ impl<'a> Popup<'a> {
         let inner_area = if self.show_border {
             let block = Block::default()
                 .borders(Borders::ALL)
-                .border_type(BorderType::Thick)
+                .border_type(t.border_focused_type)
                 .border_style(Style::default().fg(t.border_focused))
                 .style(t.background_style());
 

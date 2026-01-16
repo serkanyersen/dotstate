@@ -17,7 +17,7 @@ use crate::widgets::{TextInputWidget, TextInputWidgetExt};
 use anyhow::Result;
 use crossterm::event::{Event, KeyCode, KeyModifiers};
 use ratatui::prelude::*;
-use ratatui::widgets::{Block, BorderType, Borders, List, ListItem, Paragraph, Wrap};
+use ratatui::widgets::{Block, Borders, List, ListItem, Paragraph, Wrap};
 use std::time::Duration;
 use tracing::{debug, error, info, warn};
 
@@ -1203,7 +1203,7 @@ impl ManagePackagesScreen {
             .block(
                 Block::default()
                     .borders(Borders::ALL)
-                    .border_type(BorderType::Rounded)
+                    .border_type(theme().border_type(false))
                     .title(" Packages ")
                     .border_style(unfocused_border_style())
                     .padding(ratatui::widgets::Padding::new(1, 1, 1, 1)),
@@ -1247,7 +1247,7 @@ impl ManagePackagesScreen {
                 .block(
                     Block::default()
                         .borders(Borders::ALL)
-                        .border_type(BorderType::Rounded)
+                        .border_type(theme().border_type(false))
                         .title(" Packages ")
                         .border_style(focused_border_style()),
                 )
@@ -1281,7 +1281,7 @@ impl ManagePackagesScreen {
             .block(
                 Block::default()
                     .borders(Borders::ALL)
-                    .border_type(BorderType::Rounded)
+                    .border_type(theme().border_type(false))
                     .title(" Package Details "),
             )
             .wrap(Wrap { trim: true });
@@ -1521,7 +1521,7 @@ impl ManagePackagesScreen {
         // Render checkboxes in a horizontal wrapping layout
         let block = Block::default()
             .borders(Borders::ALL)
-            .border_type(BorderType::Rounded)
+            .border_type(theme().border_type(false))
             .title(" Package Manager ")
             .border_style(
                 if self.state.add_focused_field == AddPackageField::Manager {
@@ -1722,7 +1722,7 @@ impl ManagePackagesScreen {
                     .block(
                         Block::default()
                             .borders(Borders::ALL)
-                            .border_type(BorderType::Rounded)
+                            .border_type(theme().border_type(false))
                             .title(" Output "),
                     )
                     .wrap(Wrap { trim: true })

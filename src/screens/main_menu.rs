@@ -785,7 +785,7 @@ impl MainMenuScreen {
         let menu_block = Block::default()
             .borders(Borders::ALL)
             .border_style(t.border_focused_style())
-            .border_type(ratatui::widgets::BorderType::Rounded)
+            .border_type(t.border_type(false))
             .title(format!(" {} Menu ", self.icons.menu()))
             .title_style(t.title_style())
             .title_alignment(Alignment::Center);
@@ -835,7 +835,7 @@ impl MainMenuScreen {
         let explanation_block = Block::default()
             .borders(Borders::ALL)
             .border_style(Style::default().fg(color))
-            .border_type(ratatui::widgets::BorderType::Rounded)
+            .border_type(t.border_type(false))
             .title(format!(" {} What does this do? ", icon))
             .title_style(Style::default().fg(color).add_modifier(Modifier::BOLD))
             .title_alignment(Alignment::Center)
@@ -860,7 +860,7 @@ impl MainMenuScreen {
         let stats_block = Block::default()
             .borders(Borders::ALL)
             .border_style(Style::default().fg(stats_color))
-            .border_type(ratatui::widgets::BorderType::Rounded)
+            .border_type(t.border_type(false))
             .title(format!(" {} Status ", stats_icon))
             .title_style(
                 Style::default()

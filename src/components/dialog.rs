@@ -7,7 +7,7 @@ use crate::styles::theme;
 use ratatui::layout::Spacing;
 use ratatui::prelude::*;
 use ratatui::symbols::merge::MergeStrategy;
-use ratatui::widgets::{Block, BorderType, Borders, Clear, Padding, Paragraph, Widget, Wrap};
+use ratatui::widgets::{Block, Borders, Clear, Padding, Paragraph, Widget, Wrap};
 
 /// Dialog variant for different visual styles
 #[derive(Debug, Clone, Copy, Default)]
@@ -204,7 +204,7 @@ impl<'a> Dialog<'a> {
             .spacing(Spacing::Overlap(1)) // Collapse borders
             .split(popup_area);
 
-        let border_type = BorderType::Thick;
+        let border_type = t.dialog_border_type;
 
         // Title block (top) - use horizontal padding only to save vertical space
         let title_block = Block::default()

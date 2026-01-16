@@ -40,7 +40,7 @@ impl Footer {
         let footer_block = Block::default()
             .borders(Borders::TOP)
             .border_style(t.border_focused_style())
-            .border_type(ratatui::widgets::BorderType::Rounded)
+            .border_type(t.border_type(false))
             .style(t.background_style());
 
         let footer_inner = footer_block.inner(area);

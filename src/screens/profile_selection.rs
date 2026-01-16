@@ -5,13 +5,14 @@
 
 use crate::config::Config;
 use crate::screens::screen_trait::{RenderContext, Screen, ScreenAction, ScreenContext};
+use crate::styles::theme;
 use crate::ui::{ProfileSelectionState, Screen as ScreenId};
 use crate::widgets::{TextInputWidget, TextInputWidgetExt};
 use anyhow::Result;
 use crossterm::event::{Event, KeyCode, KeyEventKind};
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::prelude::*;
-use ratatui::widgets::{Block, BorderType, Borders, Clear, List, ListItem};
+use ratatui::widgets::{Block, Borders, Clear, List, ListItem};
 use ratatui::Frame;
 
 /// Profile selection screen controller.
@@ -99,7 +100,7 @@ impl ProfileSelectionScreen {
         let custom_block = Block::default()
             .title(" Create New Profile ")
             .borders(Borders::ALL)
-            .border_type(BorderType::Rounded)
+            .border_type(theme().border_type(false))
             .border_style(Style::default().fg(Color::Cyan));
 
         let widget = TextInputWidget::new(&self.state.create_name_input)
@@ -158,7 +159,7 @@ impl ProfileSelectionScreen {
                 Block::default()
                     .title(" Available Profiles ")
                     .borders(Borders::ALL)
-                    .border_type(BorderType::Rounded),
+                    .border_type(theme().border_type(false)),
             )
             .highlight_style(
                 Style::default()

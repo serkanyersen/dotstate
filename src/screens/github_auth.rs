@@ -20,7 +20,7 @@ use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, 
 use ratatui::layout::{Alignment, Rect};
 use ratatui::prelude::*;
 use ratatui::widgets::{
-    Block, BorderType, Borders, Clear, HighlightSpacing, List, ListItem, ListState, Paragraph, Wrap,
+    Block, Borders, Clear, HighlightSpacing, List, ListItem, ListState, Paragraph, Wrap,
 };
 use ratatui::Frame;
 
@@ -280,7 +280,7 @@ impl GitHubAuthScreen {
         let list_block = Block::default()
             .borders(Borders::ALL)
             .border_style(focused_border_style())
-            .border_type(BorderType::Rounded)
+            .border_type(theme().border_type(false))
             .title(format!(" {} Choose Setup Method ", icons.menu()))
             .title_style(t.title_style())
             .title_alignment(Alignment::Center)
@@ -398,7 +398,7 @@ impl GitHubAuthScreen {
         let explanation_block = Block::default()
             .borders(Borders::ALL)
             .border_style(Style::default().fg(t.primary))
-            .border_type(BorderType::Rounded)
+            .border_type(theme().border_type(false))
             .title(format!(" {} {} ", icons.lightbulb(), title))
             .title_style(t.title_style())
             .title_alignment(Alignment::Center)
@@ -504,7 +504,7 @@ impl GitHubAuthScreen {
         let instructions_block = Block::default()
             .borders(Borders::ALL)
             .border_style(Style::default().fg(t.tertiary))
-            .border_type(BorderType::Rounded)
+            .border_type(theme().border_type(false))
             .title(format!(" {} Setup Instructions ", icons.menu()))
             .title_style(Style::default().fg(t.tertiary).add_modifier(Modifier::BOLD))
             .title_alignment(Alignment::Center);
@@ -559,7 +559,7 @@ impl GitHubAuthScreen {
         if let Some(status) = &self.state.status_message {
             let status_block = Block::default()
                 .borders(Borders::ALL)
-                .border_type(BorderType::Rounded)
+                .border_type(theme().border_type(false))
                 .title(" Status ")
                 .title_alignment(Alignment::Center)
                 .border_style(Style::default().fg(t.success));
@@ -570,7 +570,7 @@ impl GitHubAuthScreen {
         } else if let Some(error) = &self.state.error_message {
             let error_block = Block::default()
                 .borders(Borders::ALL)
-                .border_type(BorderType::Rounded)
+                .border_type(theme().border_type(false))
                 .title(" Error ")
                 .title_alignment(Alignment::Center)
                 .border_style(Style::default().fg(t.error));
@@ -620,7 +620,7 @@ impl GitHubAuthScreen {
                 .title(format!(" {} Repository Info ", icons.menu()))
                 .title_alignment(Alignment::Center)
                 .border_style(Style::default().fg(t.success))
-                .border_type(BorderType::Rounded)
+                .border_type(theme().border_type(false))
                 .padding(ratatui::widgets::Padding::new(1, 1, 0, 0));
 
             let help_para = Paragraph::new(help_lines)
@@ -656,7 +656,7 @@ impl GitHubAuthScreen {
                 .title(format!(" {} Help ", icons.lightbulb()))
                 .title_alignment(Alignment::Center)
                 .border_style(Style::default().fg(t.primary))
-                .border_type(BorderType::Rounded)
+                .border_type(theme().border_type(false))
                 .padding(ratatui::widgets::Padding::new(1, 1, 0, 0));
 
             let help_para = Paragraph::new(help_lines)
@@ -673,7 +673,7 @@ impl GitHubAuthScreen {
         if let Some(status) = &self.state.status_message {
             let status_block = Block::default()
                 .borders(Borders::ALL)
-                .border_type(BorderType::Rounded)
+                .border_type(theme().border_type(false))
                 .title(" Status ")
                 .title_alignment(Alignment::Center)
                 .border_style(Style::default().fg(t.success));
@@ -684,7 +684,7 @@ impl GitHubAuthScreen {
         } else if let Some(error) = &self.state.error_message {
             let error_block = Block::default()
                 .borders(Borders::ALL)
-                .border_type(BorderType::Rounded)
+                .border_type(theme().border_type(false))
                 .title(" Error ")
                 .title_alignment(Alignment::Center)
                 .border_style(Style::default().fg(t.error));
@@ -786,7 +786,7 @@ impl GitHubAuthScreen {
             let help_block = Block::default()
                 .borders(Borders::ALL)
                 .title(format!(" {} {} ", icons.info(), title))
-                .border_type(BorderType::Rounded)
+                .border_type(theme().border_type(false))
                 .title_alignment(Alignment::Center)
                 .border_style(Style::default().fg(t.primary));
             let help_para = Paragraph::new(help_lines.join("\n"))
@@ -824,11 +824,10 @@ impl GitHubAuthScreen {
         // Progress block
         let progress_block = Block::default()
             .borders(Borders::ALL)
-            .border_type(BorderType::Rounded)
+            .border_type(theme().border_type(false))
             .title(" Progress ")
             .title_alignment(Alignment::Center)
-            .border_style(Style::default().fg(t.primary))
-            .border_type(ratatui::widgets::BorderType::Rounded);
+            .border_style(Style::default().fg(t.primary));
 
         // Status message with styling
         let status_text = if let Some(status) = &self.state.status_message {
@@ -857,7 +856,7 @@ impl GitHubAuthScreen {
 
             let error_block = Block::default()
                 .borders(Borders::ALL)
-                .border_type(BorderType::Rounded)
+                .border_type(theme().border_type(false))
                 .title(" Error ")
                 .title_alignment(Alignment::Center)
                 .border_style(Style::default().fg(t.error));
@@ -946,7 +945,7 @@ impl GitHubAuthScreen {
         let instructions_block = Block::default()
             .borders(Borders::ALL)
             .border_style(Style::default().fg(t.tertiary))
-            .border_type(BorderType::Rounded);
+            .border_type(theme().border_type(false));
         let instructions = Paragraph::new("Fill in the details below to set up your dotfiles repository. Use Tab to navigate between fields.")
             .block(instructions_block)
             .style(t.text_style())

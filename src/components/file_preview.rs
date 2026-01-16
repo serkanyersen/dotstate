@@ -3,7 +3,7 @@ use anyhow::Result;
 use ratatui::prelude::*;
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{
-    Block, BorderType, Borders, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Wrap,
+    Block, Borders, Padding, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Wrap,
 };
 use std::path::PathBuf;
 use syntect::easy::HighlightLines;
@@ -40,10 +40,11 @@ impl FilePreview {
     ) -> Result<()> {
         let preview_title = title.unwrap_or("Preview");
         let no_color = crate::styles::theme().theme_type == crate::styles::ThemeType::NoColor;
-        let border_style = if focused {
-            focused_border_style()
+        let t = crate::styles::theme();
+        let (border_style, border_type) = if focused {
+            (focused_border_style(), t.border_focused_type)
         } else {
-            unfocused_border_style()
+            (unfocused_border_style(), t.border_type)
         };
 
         // Read file content or use override
@@ -181,9 +182,10 @@ impl FilePreview {
                             Block::default()
                                 .borders(Borders::ALL)
                                 .title(format!(" {} ", preview_title))
-                                .border_type(BorderType::Rounded)
+                                .border_type(border_type)
                                 .title_alignment(Alignment::Center)
-                                .border_style(border_style),
+                                .border_style(border_style)
+                                .padding(Padding::uniform(1)),
                         )
                         .wrap(Wrap { trim: false }); // Don't trim whitespace
 
@@ -207,33 +209,113 @@ impl FilePreview {
                         Block::default()
                             .borders(Borders::ALL)
                             .title(format!(" {} ", preview_title))
-                            .border_type(BorderType::Rounded)
+                            .border_type(border_type)
                             .title_alignment(Alignment::Center)
-                            .border_style(border_style),
+                            .border_style(border_style)
+                            .padding(Padding::uniform(1)),
                     );
                     frame.render_widget(preview, area);
                 }
             }
         } else if file_path.is_dir() {
-            let dir_text = format!("Directory: {:?}\n\nPress Enter to open", file_path);
-            let preview = Paragraph::new(dir_text).block(
+            let mut preview_lines = Vec::new();
+            let theme = crate::styles::theme();
+            let icons = crate::icons::Icons::new();
+
+            preview_lines.push(Line::from(vec![
+                Span::styled("Directory: ", theme.title_style()),
+                Span::styled(file_path.to_string_lossy(), theme.text_style()),
+            ]));
+            preview_lines.push(Line::from(""));
+
+            let mut total_entries = 0;
+            let visible_height = area.height.saturating_sub(4) as usize;
+
+            match std::fs::read_dir(file_path) {
+                Ok(read_dir) => {
+                    let mut entries: Vec<_> = read_dir.flatten().collect();
+
+                    // Sort: directories first, then files, both alphabetically
+                    entries.sort_by(|a, b| {
+                        let a_path = a.path();
+                        let b_path = b.path();
+                        let a_is_dir = a_path.is_dir();
+                        let b_is_dir = b_path.is_dir();
+
+                        if a_is_dir == b_is_dir {
+                            a.file_name().cmp(&b.file_name())
+                        } else if a_is_dir {
+                            std::cmp::Ordering::Less
+                        } else {
+                            std::cmp::Ordering::Greater
+                        }
+                    });
+
+                    total_entries = entries.len();
+
+                    if entries.is_empty() {
+                        preview_lines.push(Line::from(Span::styled(
+                            "  (Empty directory)",
+                            theme.muted_style(),
+                        )));
+                    } else {
+                        for entry in entries.iter().skip(scroll_offset).take(visible_height) {
+                            let path = entry.path();
+                            let name = entry.file_name().to_string_lossy().to_string();
+                            let is_dir = path.is_dir();
+
+                            let icon = if is_dir { icons.folder() } else { icons.file() };
+                            let item_style = if is_dir {
+                                theme.title_style()
+                            } else {
+                                theme.text_style()
+                            };
+
+                            preview_lines.push(Line::from(vec![
+                                Span::styled(format!("{} ", icon), item_style),
+                                Span::styled(name, item_style),
+                            ]));
+                        }
+                    }
+                }
+                Err(e) => {
+                    preview_lines.push(Line::from(Span::styled(
+                        format!("Error reading directory: {}", e),
+                        theme.error_style(),
+                    )));
+                }
+            }
+
+            let preview = Paragraph::new(Text::from(preview_lines)).block(
                 Block::default()
                     .borders(Borders::ALL)
                     .title(format!(" {} ", preview_title))
-                    .border_type(BorderType::Rounded)
+                    .border_type(border_type)
                     .title_alignment(Alignment::Center)
-                    .border_style(border_style),
+                    .border_style(border_style)
+                    .padding(Padding::uniform(1)),
             );
             frame.render_widget(preview, area);
+
+            if total_entries > visible_height {
+                let mut scrollbar_state = ScrollbarState::new(total_entries).position(scroll_offset);
+                let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
+                    .begin_symbol(Some("↑"))
+                    .end_symbol(Some("↓"))
+                    .track_symbol(Some("│"))
+                    .thumb_symbol("█");
+                frame.render_stateful_widget(scrollbar, area, &mut scrollbar_state);
+            }
         } else {
             let path_text = format!("Path: {:?}", file_path);
             let preview = Paragraph::new(path_text).block(
                 Block::default()
                     .borders(Borders::ALL)
                     .title(format!(" {} ", preview_title))
-                    .border_type(BorderType::Rounded)
+                    .border_type(border_type)
                     .title_alignment(Alignment::Center)
-                    .border_style(border_style),
+                    .border_style(border_style)
+                    .padding(Padding::uniform(1)),
             );
             frame.render_widget(preview, area);
         }

@@ -14,7 +14,7 @@ use crossterm::event::Event;
 use ratatui::layout::{Alignment, Rect};
 use ratatui::prelude::*;
 use ratatui::widgets::{
-    Block, BorderType, Borders, Clear, List, ListItem, Paragraph, Scrollbar, ScrollbarOrientation,
+    Block, Borders, Clear, List, ListItem, Paragraph, Scrollbar, ScrollbarOrientation,
     StatefulWidget, Wrap,
 };
 use ratatui::Frame;
@@ -164,7 +164,7 @@ impl SyncWithRemoteScreen {
             .block(
                 Block::default()
                     .borders(Borders::ALL)
-                    .border_type(BorderType::Rounded)
+                    .border_type(ui_theme().border_type(false))
                     .title(" Progress ")
                     .title_alignment(Alignment::Center)
                     .border_style(focused_border_style())
@@ -196,7 +196,7 @@ impl SyncWithRemoteScreen {
             .block(
                 Block::default()
                     .borders(Borders::ALL)
-                    .border_type(BorderType::Rounded)
+                    .border_type(ui_theme().border_type(false))
                     .title(" No Changes ")
                     .title_alignment(Alignment::Center)
                     .padding(ratatui::widgets::Padding::new(2, 2, 2, 2)),
@@ -228,7 +228,7 @@ impl SyncWithRemoteScreen {
                 .block(
                     Block::default()
                         .borders(Borders::ALL)
-                        .border_type(BorderType::Rounded)
+                        .border_type(ui_theme().border_type(false))
                         .title(" Sync Status ")
                         .title_alignment(Alignment::Center)
                         .padding(ratatui::widgets::Padding::new(2, 2, 2, 2)),
@@ -274,7 +274,7 @@ impl SyncWithRemoteScreen {
                 Block::default()
                     .borders(Borders::ALL)
                     .border_style(focused_border_style())
-                    .border_type(BorderType::Rounded)
+                    .border_type(ui_theme().border_type(false))
                     .title(format!(
                         " Changed Files ({}) ",
                         self.state.changed_files.len()

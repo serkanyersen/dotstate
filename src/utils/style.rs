@@ -8,12 +8,12 @@ pub fn focused_border_style() -> Style {
 
 /// Get the border style for an unfocused pane
 pub fn unfocused_border_style() -> Style {
-    theme().border_style()
+    theme().border_style(false)
 }
 
 /// Get the border style for a disabled input
 pub fn disabled_border_style() -> Style {
-    theme().border_style()
+    theme().border_style(false)
 }
 
 /// Get the text style for disabled input

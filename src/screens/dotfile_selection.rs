@@ -23,7 +23,7 @@ use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 
 use ratatui::widgets::{
-    Block, BorderType, Borders, Clear, List, ListItem, ListState, Paragraph, Scrollbar,
+    Block, Borders, Clear, List, ListItem, ListState, Paragraph, Scrollbar,
     ScrollbarOrientation, ScrollbarState, StatefulWidget, Wrap,
 };
 use ratatui::Frame;
@@ -988,7 +988,7 @@ impl DotfileSelectionScreen {
                 Block::default()
                     .borders(Borders::ALL)
                     .title(list_title)
-                    .border_type(BorderType::Rounded)
+                    .border_type(ui_theme().border_type(self.state.focus == DotfileSelectionFocus::FileBrowserList))
                     .title_alignment(Alignment::Center)
                     .border_style(list_border_style),
             )
@@ -1048,7 +1048,7 @@ impl DotfileSelectionScreen {
                 let empty_preview = Paragraph::new("No selection").block(
                     Block::default()
                         .borders(Borders::ALL)
-                        .border_type(BorderType::Rounded)
+                        .border_type(ui_theme().border_type(false))
                         .title(" Preview ")
                         .title_alignment(Alignment::Center),
                 );
@@ -1058,7 +1058,7 @@ impl DotfileSelectionScreen {
             let empty_preview = Paragraph::new("No selection").block(
                 Block::default()
                     .borders(Borders::ALL)
-                    .border_type(BorderType::Rounded)
+                    .border_type(ui_theme().border_type(false))
                     .title(" Preview ")
                     .title_alignment(Alignment::Center),
             );
@@ -1288,7 +1288,7 @@ impl DotfileSelectionScreen {
                     .borders(Borders::ALL)
                     .title(list_title)
                     .title_alignment(Alignment::Center)
-                    .border_type(BorderType::Rounded)
+                    .border_type(t.border_type(self.state.focus == DotfileSelectionFocus::FilesList))
                     .border_style(list_border_style),
             )
             .highlight_style(t.highlight_style())
@@ -1341,7 +1341,7 @@ impl DotfileSelectionScreen {
                     Block::default()
                         .borders(Borders::ALL)
                         .title(" Description ")
-                        .border_type(BorderType::Rounded)
+                        .border_type(t.border_type(false))
                         .title_alignment(Alignment::Center)
                         .border_style(unfocused_border_style()),
                 )
@@ -1353,7 +1353,7 @@ impl DotfileSelectionScreen {
                 Block::default()
                     .borders(Borders::ALL)
                     .title(" Description ")
-                    .border_type(BorderType::Rounded)
+                    .border_type(ui_theme().border_type(false))
                     .title_alignment(Alignment::Center)
                     .border_style(unfocused_border_style()),
             );
@@ -1382,7 +1382,7 @@ impl DotfileSelectionScreen {
                     Block::default()
                         .borders(Borders::ALL)
                         .title(" Preview ")
-                        .border_type(BorderType::Rounded)
+                        .border_type(ui_theme().border_type(false))
                         .title_alignment(Alignment::Center),
                 );
                 frame.render_widget(empty_preview, preview_rect);
@@ -1404,7 +1404,7 @@ impl DotfileSelectionScreen {
 
             let status_block = Block::default()
                 .borders(Borders::ALL)
-                .border_type(BorderType::Rounded)
+                .border_type(ui_theme().border_type(false))
                 .title(" Sync Summary ")
                 .title_alignment(Alignment::Center)
                 .style(Style::default().bg(t.background));

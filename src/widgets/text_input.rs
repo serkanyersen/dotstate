@@ -14,7 +14,7 @@ use crate::utils::{
     input_text_style, unfocused_border_style,
 };
 use ratatui::prelude::*;
-use ratatui::widgets::{Block, BorderType, Borders, Paragraph};
+use ratatui::widgets::{Block, Borders, Paragraph};
 
 /// A widget for rendering TextInput with consistent styling.
 ///
@@ -152,7 +152,7 @@ impl<'a> TextInputWidget<'a> {
             // Default block
             let mut block = Block::default()
                 .borders(Borders::ALL)
-                .border_type(BorderType::Rounded)
+                .border_type(crate::styles::theme().border_type(self.focused))
                 .border_style(self.border_style());
 
             if let Some(title) = self.title {

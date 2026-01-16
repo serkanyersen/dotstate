@@ -4,6 +4,7 @@
 //! light and dark themes.
 
 use ratatui::style::{Color, Modifier, Style};
+use ratatui::widgets::BorderType;
 use std::str::FromStr;
 use std::sync::RwLock;
 
@@ -27,6 +28,9 @@ static THEME: RwLock<Theme> = RwLock::new(Theme {
     border_focused: Color::Cyan,
     highlight_bg: Color::DarkGray,
     background: Color::Reset,
+    border_type: BorderType::Plain,
+    border_focused_type: BorderType::Thick,
+    dialog_border_type: BorderType::Double,
 });
 
 /// Initialize the global theme (call once at startup, or to update at runtime)
@@ -103,6 +107,14 @@ pub struct Theme {
     pub highlight_bg: Color,
     /// Background color (use Reset for terminal default)
     pub background: Color,
+
+    // === Border Types ===
+    /// Default border type (unfocused)
+    pub border_type: BorderType,
+    /// Focused border type
+    pub border_focused_type: BorderType,
+    /// Dialog border type
+    pub dialog_border_type: BorderType,
 }
 
 impl Theme {
@@ -140,6 +152,10 @@ impl Theme {
             border_focused: Color::Cyan,
             highlight_bg: Color::DarkGray,
             background: Color::Reset,
+
+            border_type: BorderType::Plain,
+            border_focused_type: BorderType::Thick,
+            dialog_border_type: BorderType::Double,
         }
     }
 
@@ -169,6 +185,10 @@ impl Theme {
             border_focused: Color::Blue,
             highlight_bg: Color::Gray,
             background: Color::Reset,
+
+            border_type: BorderType::Plain,
+            border_focused_type: BorderType::Thick,
+            dialog_border_type: BorderType::Double,
         }
     }
 
@@ -198,6 +218,10 @@ impl Theme {
             border_focused: Color::Reset,
             highlight_bg: Color::Reset,
             background: Color::Reset,
+
+            border_type: BorderType::Rounded,
+            border_focused_type: BorderType::Thick,
+            dialog_border_type: BorderType::Double,
         }
     }
 
@@ -257,22 +281,6 @@ impl Theme {
         Style::default().fg(self.error)
     }
 
-    /// Style for focused borders
-    pub fn border_focused_style(&self) -> Style {
-        if self.theme_type == ThemeType::NoColor {
-            return Style::default().add_modifier(Modifier::BOLD);
-        }
-        Style::default().fg(self.border_focused)
-    }
-
-    /// Style for unfocused borders
-    pub fn border_style(&self) -> Style {
-        if self.theme_type == ThemeType::NoColor {
-            return Style::default();
-        }
-        Style::default().fg(self.border)
-    }
-
     /// Style for list item highlight (selected row)
     pub fn highlight_style(&self) -> Style {
         if self.theme_type == ThemeType::NoColor {
@@ -282,6 +290,40 @@ impl Theme {
             .fg(self.text_emphasis)
             .bg(self.highlight_bg)
             .add_modifier(Modifier::BOLD)
+    }
+
+    /// Get the border style based on focus
+    pub fn border_style(&self, focused: bool) -> Style {
+        if focused {
+            self.border_focused_style()
+        } else {
+            self.unfocused_border_style()
+        }
+    }
+
+    /// Get the border type based on focus
+    pub fn border_type(&self, focused: bool) -> BorderType {
+        if focused {
+            self.border_focused_type
+        } else {
+            self.border_type
+        }
+    }
+
+    /// Style for focused borders
+    pub fn border_focused_style(&self) -> Style {
+        if self.theme_type == ThemeType::NoColor {
+            return Style::default().add_modifier(Modifier::BOLD);
+        }
+        Style::default().fg(self.border_focused)
+    }
+
+    /// Style for unfocused borders
+    pub fn unfocused_border_style(&self) -> Style {
+        if self.theme_type == ThemeType::NoColor {
+            return Style::default();
+        }
+        Style::default().fg(self.border)
     }
 
     /// Style for disabled items

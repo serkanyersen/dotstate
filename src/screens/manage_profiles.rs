@@ -11,7 +11,7 @@ use anyhow::Result;
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
 use ratatui::prelude::*;
 use ratatui::widgets::{
-    Block, BorderType, Borders, Clear, List, ListItem, ListState, Paragraph, Scrollbar,
+    Block, Borders, Clear, List, ListItem, ListState, Paragraph, Scrollbar,
     ScrollbarOrientation, Wrap,
 };
 
@@ -220,7 +220,7 @@ impl ManageProfilesScreen {
             .block(
                 Block::default()
                     .borders(Borders::ALL)
-                    .border_type(BorderType::Rounded)
+                    .border_type(theme().border_type(false))
                     .title(" Profiles ")
                     .border_style(focused_border_style()),
             )
@@ -344,7 +344,7 @@ impl ManageProfilesScreen {
                     Block::default()
                         .borders(Borders::ALL)
                         .title(" Profile Details ")
-                        .border_type(BorderType::Rounded)
+                        .border_type(theme().border_type(false))
                         .border_style(unfocused_border_style())
                         .padding(ratatui::widgets::Padding::new(1, 1, 1, 1)),
                 )
@@ -358,7 +358,7 @@ impl ManageProfilesScreen {
                         Block::default()
                             .borders(Borders::ALL)
                             .title(" Profile Details ")
-                            .border_type(BorderType::Rounded)
+                            .border_type(theme().border_type(false))
                             .border_style(unfocused_border_style())
                             .padding(ratatui::widgets::Padding::new(1, 1, 1, 1)),
                     )
@@ -509,7 +509,7 @@ impl ManageProfilesScreen {
                     Block::default()
                         .borders(Borders::ALL)
                         .title(" Copy From ")
-                        .border_type(BorderType::Rounded)
+                        .border_type(theme().border_type(false))
                         .border_style(border_style),
                 )
                 .highlight_style(t.highlight_style())
