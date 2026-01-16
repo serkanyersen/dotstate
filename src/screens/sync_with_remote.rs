@@ -5,12 +5,11 @@
 use crate::components::file_preview::FilePreview;
 use crate::components::footer::Footer;
 use crate::components::header::Header;
-use crate::components::message_box::MessageBox;
 use crate::screens::screen_trait::{RenderContext, Screen, ScreenAction, ScreenContext};
 use crate::styles::{theme as ui_theme, LIST_HIGHLIGHT_SYMBOL};
 use crate::ui::{Screen as ScreenId, SyncWithRemoteState};
 use crate::utils::{
-    center_popup, create_split_layout, create_standard_layout, focused_border_style,
+    create_split_layout, create_standard_layout, focused_border_style,
 };
 use anyhow::Result;
 use crossterm::event::Event;
@@ -111,9 +110,8 @@ impl SyncWithRemoteScreen {
     }
 
     /// Render the result popup
-    fn render_result_popup(&self, frame: &mut Frame, area: Rect) -> Result<()> {
-        let popup_area = center_popup(area, 80, 50);
-        frame.render_widget(Clear, popup_area);
+    fn render_result_popup(&self, frame: &mut Frame, area: Rect, config: &crate::config::Config) -> Result<()> {
+        use crate::components::dialog::{Dialog, DialogVariant};
 
         let result_text = self
             .state
@@ -125,18 +123,21 @@ impl SyncWithRemoteScreen {
         let is_error = result_text.to_lowercase().contains("error")
             || result_text.to_lowercase().contains("failed");
 
-        let t = ui_theme();
-        MessageBox::render(
-            frame,
-            popup_area,
+        let k = |a| config.keymap.get_key_display_for_action(a);
+        let footer_text = format!("{}: Close", k(crate::keymap::Action::Confirm));
+
+        let dialog = Dialog::new(
+            if is_error { "Sync Error" } else { "Sync Result" },
             &result_text,
-            None,
-            if is_error {
-                Some(t.error)
-            } else {
-                Some(t.success)
-            },
-        )?;
+        )
+        .height(50)
+        .variant(if is_error {
+            DialogVariant::Error
+        } else {
+            DialogVariant::Default
+        })
+        .footer(&footer_text);
+        frame.render_widget(dialog, area);
 
         Ok(())
     }
@@ -357,13 +358,16 @@ impl Screen for SyncWithRemoteScreen {
             description,
         )?;
 
-        // Render content based on state
-        if self.state.show_result_popup {
-            self.render_result_popup(frame, area)?;
-        } else if self.state.is_syncing {
+        // Always render main content first
+        if self.state.is_syncing {
             self.render_progress(frame, content_chunk);
         } else {
             self.render_changes_list(frame, content_chunk, ctx)?;
+        }
+
+        // Render popups on top of the content (not instead of it)
+        if self.state.show_result_popup {
+            self.render_result_popup(frame, area, ctx.config)?;
         }
 
         // Footer

@@ -6,7 +6,7 @@ use crate::screens::{RenderContext, Screen, ScreenAction, ScreenContext};
 use crate::styles::{theme, LIST_HIGHLIGHT_SYMBOL};
 use crate::ui::Screen as ScreenId;
 use crate::utils::{
-    center_popup, create_standard_layout, focused_border_style, unfocused_border_style,
+    create_standard_layout, focused_border_style, unfocused_border_style,
 };
 use crate::widgets::{TextInputWidget, TextInputWidgetExt};
 use anyhow::Result;
@@ -376,7 +376,7 @@ impl ManageProfilesScreen {
         match self.state.popup_type {
             ProfilePopupType::Create => self.render_create_popup(frame, area, config),
             ProfilePopupType::Switch => self.render_switch_popup(frame, area, config),
-            ProfilePopupType::Rename => self.render_rename_popup(frame, area),
+            ProfilePopupType::Rename => self.render_rename_popup(frame, area, config),
             ProfilePopupType::Delete => self.render_delete_popup(frame, area, config),
             ProfilePopupType::None => Ok(()),
         }
@@ -384,14 +384,30 @@ impl ManageProfilesScreen {
 
     /// Render create profile popup
     fn render_create_popup(&self, frame: &mut Frame, area: Rect, config: &Config) -> Result<()> {
-        let popup_area = center_popup(area, 60, 50);
+        use crate::components::Popup;
+
         let icons = crate::icons::Icons::from_config(config);
-        frame.render_widget(Clear, popup_area);
+        let k = |a| config.keymap.get_key_display_for_action(a);
+        let footer_text = format!(
+            "{}: Next Field | {}: Navigate Copy From | {}: Toggle Selection | {}: Create | {}: Cancel",
+            k(crate::keymap::Action::NextTab),
+            config.keymap.navigation_display(),
+            k(crate::keymap::Action::ToggleSelect),
+            k(crate::keymap::Action::Confirm),
+            k(crate::keymap::Action::Cancel)
+        );
+
+        let result = Popup::new()
+            .width(60)
+            .height(55)
+            .title("Create New Profile")
+            .dim_background(true)
+            .footer(&footer_text)
+            .render(frame, area);
 
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Length(1), // Title (no border)
                 Constraint::Length(3), // Name input
                 Constraint::Length(if self.state.error_message.is_some() {
                     1
@@ -402,35 +418,29 @@ impl ManageProfilesScreen {
                 Constraint::Min(8),    // Copy from option (at least 8 lines, can grow)
                 Constraint::Min(0),    // Spacer
             ])
-            .split(popup_area);
+            .split(result.content_area);
 
         let t = theme();
-        // Title (no border, just text)
-        let title = Paragraph::new("Create New Profile")
-            .alignment(Alignment::Center)
-            .style(t.title_style());
-        frame.render_widget(title, chunks[0]);
-
         // Name input
         let widget = TextInputWidget::new(&self.state.create_name_input)
             .title("Profile Name")
             .placeholder("e.g., Personal-Mac, Work-Linux")
             .focused(self.state.create_focused_field == CreateField::Name);
-        frame.render_text_input_widget(widget, chunks[1]);
+        frame.render_text_input_widget(widget, chunks[0]);
 
         // Error message
         if let Some(msg) = &self.state.error_message {
             let error_para = Paragraph::new(msg.as_str())
                 .style(Style::default().fg(Color::Red))
                 .alignment(Alignment::Center);
-            frame.render_widget(error_para, chunks[2]);
+            frame.render_widget(error_para, chunks[1]);
         }
 
         // Description input
         let widget = TextInputWidget::new(&self.state.create_description_input)
             .title("Description (optional)")
             .focused(self.state.create_focused_field == CreateField::Description);
-        frame.render_text_input_widget(widget, chunks[3]);
+        frame.render_text_input_widget(widget, chunks[2]);
 
         // Copy from option - show list of profiles to select from
         let is_focused = self.state.create_focused_field == CreateField::CopyFrom;
@@ -449,7 +459,7 @@ impl ManageProfilesScreen {
                         .border_style(border_style),
                 )
                 .wrap(Wrap { trim: true });
-            frame.render_widget(copy_para, chunks[4]);
+            frame.render_widget(copy_para, chunks[3]);
         } else {
             // Create a list with "Start Blank" first, then profiles
             let mut items = Vec::new();
@@ -518,12 +528,12 @@ impl ManageProfilesScreen {
             list_state.select(ui_selected_idx);
 
             // Calculate if we need a scrollbar (if items exceed visible area)
-            let visible_height = chunks[4].height.saturating_sub(2); // Subtract borders
+            let visible_height = chunks[3].height.saturating_sub(2); // Subtract borders
             let total_items = (self.state.profiles.len() + 1) as u16; // +1 for "Start Blank"
             let needs_scrollbar = total_items > visible_height;
 
             // Render the list
-            frame.render_stateful_widget(list, chunks[4], &mut list_state);
+            frame.render_stateful_widget(list, chunks[3], &mut list_state);
 
             // Render scrollbar if needed
             if needs_scrollbar {
@@ -537,7 +547,7 @@ impl ManageProfilesScreen {
                     .begin_symbol(Some("↑"))
                     .end_symbol(Some("↓"));
 
-                frame.render_stateful_widget(scrollbar, chunks[4], &mut scrollbar_state);
+                frame.render_stateful_widget(scrollbar, chunks[3], &mut scrollbar_state);
             }
         }
 
@@ -546,8 +556,7 @@ impl ManageProfilesScreen {
 
     /// Render switch profile confirmation popup
     fn render_switch_popup(&self, frame: &mut Frame, area: Rect, config: &Config) -> Result<()> {
-        let popup_area = center_popup(area, 70, 40);
-        frame.render_widget(Clear, popup_area);
+        use crate::components::dialog::{Dialog, DialogVariant};
 
         let selected_idx = self.state.list_state.selected();
         let current_profile = self
@@ -557,44 +566,71 @@ impl ManageProfilesScreen {
             .find(|p| p.name == config.active_profile);
         let target_profile = selected_idx.and_then(|idx| self.state.profiles.get(idx));
 
-        let content = if let (Some(current), Some(target)) = (current_profile, target_profile) {
-            format!(
-                "Switch Profile\n\n\
-                Current: {} ({} files)\n\
-                Target: {} ({} files)\n\n\
-                This will:\n\
-                • Remove symlinks for current profile\n\
-                • Create symlinks for target profile\n\
-                • Backup existing files (if backups are enabled)\n\n\
-                Continue?",
-                current.name,
-                current.synced_files.len(),
-                target.name,
-                target.synced_files.len()
+        let (title, content) = if let (Some(current), Some(target)) = (current_profile, target_profile) {
+            (
+                "Switch Profile",
+                format!(
+                    "Current: {} ({} files)\n\
+                    Target: {} ({} files)\n\n\
+                    This will:\n\
+                    • Remove symlinks for current profile\n\
+                    • Create symlinks for target profile\n\
+                    • Backup existing files (if backups are enabled)\n\n\
+                    Continue?",
+                    current.name,
+                    current.synced_files.len(),
+                    target.name,
+                    target.synced_files.len()
+                )
             )
         } else {
-            "Invalid profile selection".to_string()
+            ("Error", "Invalid profile selection".to_string())
         };
 
-        let para = Paragraph::new(content)
-            .block(Block::default().borders(Borders::ALL))
-            .wrap(Wrap { trim: true })
-            .alignment(Alignment::Center);
-        frame.render_widget(para, popup_area);
+        let k = |a| config.keymap.get_key_display_for_action(a);
+        let footer_text = format!(
+            "{}: Confirm | {}: Cancel",
+            k(crate::keymap::Action::Confirm),
+            k(crate::keymap::Action::Quit)
+        );
+
+        let dialog = Dialog::new(title, &content)
+            .height(40)
+            .variant(if title == "Error" { DialogVariant::Error } else { DialogVariant::Default })
+            .footer(&footer_text);
+        frame.render_widget(dialog, area);
 
         Ok(())
     }
 
     /// Render rename profile popup
-    fn render_rename_popup(&self, frame: &mut Frame, area: Rect) -> Result<()> {
-        let t = theme();
-        let popup_area = center_popup(area, 60, 30);
-        frame.render_widget(Clear, popup_area);
+    fn render_rename_popup(&self, frame: &mut Frame, area: Rect, config: &Config) -> Result<()> {
+        use crate::components::Popup;
+
+        let selected_idx = self.state.list_state.selected();
+        let profile_name = selected_idx
+            .and_then(|idx| self.state.profiles.get(idx))
+            .map(|p| p.name.as_str())
+            .unwrap_or("Profile");
+
+        let k = |a| config.keymap.get_key_display_for_action(a);
+        let footer_text = format!(
+            "{}: Confirm Rename | {}: Cancel",
+            k(crate::keymap::Action::Confirm),
+            k(crate::keymap::Action::Cancel)
+        );
+
+        let result = Popup::new()
+            .width(60)
+            .height(35)
+            .title(&format!("Rename Profile: {}", profile_name))
+            .dim_background(true)
+            .footer(&footer_text)
+            .render(frame, area);
 
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Length(1), // Title (no border)
                 Constraint::Length(3), // Input
                 Constraint::Length(if self.state.error_message.is_some() {
                     1
@@ -603,33 +639,21 @@ impl ManageProfilesScreen {
                 }), // Error message
                 Constraint::Min(0),    // Spacer
             ])
-            .split(popup_area);
-
-        // Title (no border, just text)
-        let selected_idx = self.state.list_state.selected();
-        let profile_name = selected_idx
-            .and_then(|idx| self.state.profiles.get(idx))
-            .map(|p| p.name.as_str())
-            .unwrap_or("Profile");
-
-        let title = Paragraph::new(format!("Rename Profile: {}", profile_name))
-            .alignment(Alignment::Center)
-            .style(t.title_style());
-        frame.render_widget(title, chunks[0]);
+            .split(result.content_area);
 
         // Name input
         let widget = TextInputWidget::new(&self.state.rename_input)
             .title("New Name")
             .placeholder("Enter new profile name")
             .focused(true);
-        frame.render_text_input_widget(widget, chunks[1]);
+        frame.render_text_input_widget(widget, chunks[0]);
 
         // Error message
         if let Some(msg) = &self.state.error_message {
             let error_para = Paragraph::new(msg.as_str())
                 .style(Style::default().fg(Color::Red))
                 .alignment(Alignment::Center);
-            frame.render_widget(error_para, chunks[2]);
+            frame.render_widget(error_para, chunks[1]);
         }
 
         Ok(())
@@ -637,68 +661,87 @@ impl ManageProfilesScreen {
 
     /// Render delete profile confirmation popup
     fn render_delete_popup(&self, frame: &mut Frame, area: Rect, config: &Config) -> Result<()> {
-        let popup_area = center_popup(area, 70, 60);
-        let icons = crate::icons::Icons::from_config(config);
-        frame.render_widget(Clear, popup_area);
+        use crate::components::dialog::{Dialog, DialogVariant};
 
+        let icons = crate::icons::Icons::from_config(config);
         let selected_idx = self.state.list_state.selected();
         let profile = selected_idx.and_then(|idx| self.state.profiles.get(idx));
         let active_profile = &config.active_profile;
         let is_active = profile.map(|p| p.name == *active_profile).unwrap_or(false);
 
-        let chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Length(11), // Warning text (8 lines + 2 for borders + 1 padding)
-                Constraint::Length(3),  // Confirmation input
-                Constraint::Min(0),     // Spacer
-            ])
-            .split(popup_area);
-
-        let warning_text = if let Some(p) = profile {
+        let (title, content, variant) = if let Some(p) = profile {
             if is_active {
-                format!(
-                    "{} WARNING: Cannot Delete Active Profile\n\n\
-                    Profile '{}' is currently active.\n\
-                    Please switch to another profile first.",
-                    icons.warning(),
-                    p.name
+                (
+                    "Cannot Delete Active Profile",
+                    format!(
+                        "{} WARNING: Cannot Delete Active Profile\n\n\
+                        Profile '{}' is currently active.\n\
+                        Please switch to another profile first.",
+                        icons.warning(),
+                        p.name
+                    ),
+                    DialogVariant::Error,
                 )
             } else {
-                format!(
-                    "{} WARNING: Delete Profile\n\n\
-                    This will permanently delete:\n\
-                    • Profile '{}'\n\
-                    • All {} synced files in the repo\n\
-                    • Profile folder: ~/.config/dotstate/storage/{}/\n\n\
-                    Type the profile name to confirm:",
-                    icons.warning(),
-                    p.name,
-                    p.synced_files.len(),
-                    p.name
+                (
+                    "Delete Profile",
+                    format!(
+                        "{} WARNING: Delete Profile\n\n\
+                        This will permanently delete:\n\
+                        • Profile '{}'\n\
+                        • All {} synced files in the repo\n\
+                        • Profile folder: ~/.config/dotstate/storage/{}/\n\n\
+                        Type the profile name below to confirm:",
+                        icons.warning(),
+                        p.name,
+                        p.synced_files.len(),
+                        p.name
+                    ),
+                    DialogVariant::Warning,
                 )
             }
         } else {
-            "Invalid profile selection".to_string()
+            (
+                "Error",
+                "Invalid profile selection".to_string(),
+                DialogVariant::Error,
+            )
         };
 
-        let warning = Paragraph::new(warning_text)
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .border_type(BorderType::Rounded),
-            )
-            .wrap(Wrap { trim: false });
-        frame.render_widget(warning, chunks[0]);
+        let k = |a| config.keymap.get_key_display_for_action(a);
+        let footer_text = if is_active {
+            format!("{}: Close", k(crate::keymap::Action::Confirm))
+        } else {
+            format!("{}: Cancel", k(crate::keymap::Action::Quit))
+        };
 
-        // Confirmation input (only if not active)
+        let dialog_height = 30;
+        let dialog = Dialog::new(title, &content)
+            .height(dialog_height)
+            .variant(variant)
+            .footer(&footer_text);
+        frame.render_widget(dialog, area);
+
+        // For non-active profiles, render confirmation input below the dialog
         if let Some(p) = profile {
             if !is_active {
-                let widget = TextInputWidget::new(&self.state.delete_confirm_input)
-                    .title("Type profile name to confirm")
-                    .placeholder(&p.name)
-                    .focused(true);
-                frame.render_text_input_widget(widget, chunks[1]);
+                // Calculate dialog position to match Dialog's internal calculation
+                let dialog_height = (area.height as f32 * (dialog_height as f32 / 100.0)) as u16;
+                let dialog_y = area.y + (area.height.saturating_sub(dialog_height)) / 2;
+                let input_y = dialog_y + dialog_height + 2; // 2 lines spacing
+
+                if input_y + 3 <= area.height {
+                    // Center a 50-char wide input, matching dialog width approximately
+                    let input_width = 60.min(area.width);
+                    let input_x = area.x + (area.width.saturating_sub(input_width)) / 2;
+                    let input_area = Rect::new(input_x, input_y, input_width, 3);
+
+                    let widget = TextInputWidget::new(&self.state.delete_confirm_input)
+                        .title("Type profile name to confirm")
+                        .placeholder(&p.name)
+                        .focused(true);
+                    frame.render_text_input_widget(widget, input_area);
+                }
             }
         }
 
@@ -734,64 +777,32 @@ impl Screen for ManageProfilesScreen {
         let left_chunk = chunks[0];
         let right_chunk = chunks[1];
 
-        // Check if popup is active
+        // Always render main content first
+        // Left: Profiles list
+        self.render_profiles_list(frame, left_chunk, ctx.config)?;
+
+        // Right: Profile details
+        self.render_profile_details(frame, right_chunk, ctx.config)?;
+
+        // Render popups on top of the content (not instead of it)
         if self.state.popup_type != ProfilePopupType::None {
             self.render_popup(frame, area, ctx.config)?;
-        } else {
-            // Left: Profiles list
-            self.render_profiles_list(frame, left_chunk, ctx.config)?;
-
-            // Right: Profile details
-            self.render_profile_details(frame, right_chunk, ctx.config)?;
         }
 
-        // Footer
-        let k = |a| ctx.config.keymap.get_key_display_for_action(a);
-        let footer_text = match self.state.popup_type {
-            ProfilePopupType::Create => {
-                format!(
-                    "{}: Next Field | {}: Navigate Copy From | {}: Toggle Selection | {}: Create | {}: Cancel",
-                    k(crate::keymap::Action::NextTab),
-                    ctx.config.keymap.navigation_display(),
-                    k(crate::keymap::Action::ToggleSelect),
-                    k(crate::keymap::Action::Confirm),
-                    k(crate::keymap::Action::Cancel)
-                )
-            }
-            ProfilePopupType::Switch => {
-                format!(
-                    "{}: Confirm Switch | {}: Cancel",
-                    k(crate::keymap::Action::Confirm),
-                    k(crate::keymap::Action::Cancel)
-                )
-            }
-            ProfilePopupType::Rename => {
-                format!(
-                    "{}: Confirm Rename | {}: Cancel",
-                    k(crate::keymap::Action::Confirm),
-                    k(crate::keymap::Action::Cancel)
-                )
-            }
-            ProfilePopupType::Delete => {
-                format!(
-                    "Type profile name to confirm | {}: Delete | {}: Cancel",
-                    k(crate::keymap::Action::Confirm),
-                    k(crate::keymap::Action::Cancel)
-                )
-            }
-            ProfilePopupType::None => {
-                format!(
-                    "{}: Navigate | {}: Switch Profile | {}: Create | {}: Rename | {}: Delete | {}: Back",
-                    ctx.config.keymap.navigation_display(),
-                    k(crate::keymap::Action::Confirm),
-                    k(crate::keymap::Action::Create),
-                    k(crate::keymap::Action::Edit),
-                    k(crate::keymap::Action::Delete),
-                    k(crate::keymap::Action::Cancel)
-                )
-            }
-        };
-        Footer::render(frame, footer_chunk, &footer_text)?;
+        // Footer (only show when no popup is active, as popups have their own footers)
+        if self.state.popup_type == ProfilePopupType::None {
+            let k = |a| ctx.config.keymap.get_key_display_for_action(a);
+            let footer_text = format!(
+                "{}: Navigate | {}: Switch Profile | {}: Create | {}: Rename | {}: Delete | {}: Back",
+                ctx.config.keymap.navigation_display(),
+                k(crate::keymap::Action::Confirm),
+                k(crate::keymap::Action::Create),
+                k(crate::keymap::Action::Edit),
+                k(crate::keymap::Action::Delete),
+                k(crate::keymap::Action::Cancel)
+            );
+            Footer::render(frame, footer_chunk, &footer_text)?;
+        }
 
         Ok(())
     }
@@ -1275,5 +1286,27 @@ impl Screen for ManageProfilesScreen {
         }
 
         Ok(ScreenAction::None)
+    }
+
+    fn is_input_focused(&self) -> bool {
+        // Check if we're in a popup with text input fields
+        match self.state.popup_type {
+            ProfilePopupType::Create => {
+                // Return true if Name or Description field is focused (these are text inputs)
+                matches!(
+                    self.state.create_focused_field,
+                    CreateField::Name | CreateField::Description
+                )
+            }
+            ProfilePopupType::Rename => {
+                // Rename popup has a text input
+                true
+            }
+            ProfilePopupType::Delete => {
+                // Delete popup has a text input for confirmation
+                true
+            }
+            ProfilePopupType::Switch | ProfilePopupType::None => false,
+        }
     }
 }

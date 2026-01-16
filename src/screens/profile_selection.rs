@@ -11,7 +11,7 @@ use anyhow::Result;
 use crossterm::event::{Event, KeyCode, KeyEventKind};
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::prelude::*;
-use ratatui::widgets::{Block, BorderType, Borders, Clear, List, ListItem, Paragraph};
+use ratatui::widgets::{Block, BorderType, Borders, Clear, List, ListItem};
 use ratatui::Frame;
 
 /// Profile selection screen controller.
@@ -52,22 +52,9 @@ impl ProfileSelectionScreen {
 
     /// Render the exit warning popup.
     fn render_exit_warning(&self, frame: &mut Frame, area: Rect, config: &Config) {
-        use crate::components::footer::Footer;
-        use crate::utils::center_popup;
+        use crate::components::dialog::{Dialog, DialogVariant};
 
         let icons = crate::icons::Icons::from_config(config);
-        let popup_area = center_popup(area, 60, 35);
-        frame.render_widget(Clear, popup_area);
-
-        let chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Length(8),
-                Constraint::Min(0),
-                Constraint::Length(2),
-            ])
-            .split(popup_area);
-
         let warning_text = format!(
             "{} Profile Selection Required\n\n\
             You MUST select a profile before continuing.\n\
@@ -78,26 +65,18 @@ impl ProfileSelectionScreen {
             icons.warning()
         );
 
-        let warning = Paragraph::new(warning_text)
-            .block(
-                Block::default()
-                    .title(" Warning ")
-                    .borders(Borders::ALL)
-                    .border_type(BorderType::Rounded)
-                    .border_style(Style::default().fg(Color::Yellow)),
-            )
-            .style(Style::default().fg(Color::Yellow))
-            .wrap(ratatui::widgets::Wrap { trim: true });
-
-        frame.render_widget(warning, chunks[0]);
-
         let footer_text = format!(
             "{}: Cancel & Return to Main Menu",
             config
                 .keymap
                 .get_key_display_for_action(crate::keymap::Action::Cancel)
         );
-        let _ = Footer::render(frame, chunks[2], &footer_text);
+
+        let dialog = Dialog::new("Warning", &warning_text)
+            .height(35)
+            .variant(DialogVariant::Warning)
+            .footer(&footer_text);
+        frame.render_widget(dialog, area);
     }
 
     /// Render the create profile popup.
@@ -213,13 +192,18 @@ impl Default for ProfileSelectionScreen {
 
 impl Screen for ProfileSelectionScreen {
     fn render(&mut self, frame: &mut Frame, area: Rect, ctx: &RenderContext) -> Result<()> {
-        if self.state.show_exit_warning {
-            self.render_exit_warning(frame, area, ctx.config);
-        } else if self.state.show_create_popup {
+        // Always render main content first
+        if self.state.show_create_popup {
             self.render_create_popup(frame, area, ctx.config);
         } else {
             self.render_profile_list(frame, area, ctx.config);
         }
+
+        // Render dialogs on top of the content (not instead of it)
+        if self.state.show_exit_warning {
+            self.render_exit_warning(frame, area, ctx.config);
+        }
+
         Ok(())
     }
 

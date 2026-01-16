@@ -13,13 +13,13 @@ use crate::utils::package_installer::PackageInstaller;
 use crate::utils::package_manager::PackageManagerImpl;
 use crate::utils::profile_manifest::{Package, PackageManager};
 use crate::utils::{
-    center_popup, create_standard_layout, focused_border_style, unfocused_border_style,
+    create_standard_layout, focused_border_style, unfocused_border_style,
 };
 use crate::widgets::{TextInputWidget, TextInputWidgetExt};
 use anyhow::Result;
 use crossterm::event::{Event, KeyCode, KeyModifiers};
 use ratatui::prelude::*;
-use ratatui::widgets::{Block, BorderType, Borders, Clear, List, ListItem, Paragraph, Wrap};
+use ratatui::widgets::{Block, BorderType, Borders, List, ListItem, Paragraph, Wrap};
 use std::time::Duration;
 use tracing::{debug, error, info, warn};
 
@@ -185,16 +185,22 @@ impl ManagePackagesScreen {
                 }
             }
 
-            // Clear checking_index immediately after checking
+            // Store the index we just checked before clearing it
+            let checked_index = index;
             state.checking_index = None;
 
-            // Schedule next tick to look for more work context switch
-            state.checking_delay_until =
-                Some(std::time::Instant::now() + Duration::from_millis(10));
+            // If we were checking a specific package (checking_index was Some),
+            // this means "Check Selected" was triggered. After checking it,
+            // we should stop and not continue to check other Unknown packages.
+            // "Check All" sets checking_index to None initially, so STEP 2 handles it.
+            // So if checking_index was Some when we entered STEP 1, we're done after checking it.
+            state.is_checking = false;
+            info!("Finished checking selected package at index {}", checked_index);
             return Ok(());
         }
 
         // STEP 2: Look for more work (next 'Unknown' package)
+        // This only runs for "check all" mode (when checking_index was None initially)
         if let Some(index) = state
             .package_statuses
             .iter()
@@ -404,19 +410,12 @@ impl Screen for ManagePackagesScreen {
             self.state.list_state.select(Some(0));
         }
 
-        // Check if popup is active or installation is in progress
-        if self.state.popup_type != PackagePopupType::None {
-            // Render background to dim the screen
-            let background = Block::default().style(Style::default().bg(Color::Reset));
-            frame.render_widget(background, area);
-
-            // Render popup
-            self.render_popup(frame, area, config)?;
-        } else if !matches!(self.state.installation_step, InstallationStep::NotStarted) {
+        // Always render main content first
+        if !matches!(self.state.installation_step, InstallationStep::NotStarted) {
             // Installation in progress - show progress screen
             self.render_installation_progress(frame, area)?;
         } else {
-            // Normal rendering when no popup
+            // Normal rendering
             let layout = create_standard_layout(area, 5, 2);
 
             // Header
@@ -462,6 +461,11 @@ impl Screen for ManagePackagesScreen {
                 )
             };
             Footer::render(frame, layout.2, &footer_text)?;
+        }
+
+        // Render popups on top of the content (not instead of it)
+        if self.state.popup_type != PackagePopupType::None {
+            self.render_popup(frame, area, config)?;
         }
 
         Ok(())
@@ -588,6 +592,8 @@ impl ManagePackagesScreen {
                             state.package_statuses[idx] = PackageStatus::Unknown;
                             state.is_checking = true;
                             state.checking_index = Some(idx);
+                            // Mark that we're checking only the selected package (not all)
+                            // We'll use checking_index = Some(idx) to indicate "check selected" mode
                             state.checking_delay_until =
                                 Some(std::time::Instant::now() + Duration::from_millis(100));
                             return Ok(ScreenAction::Refresh);
@@ -1358,12 +1364,17 @@ impl ManagePackagesScreen {
         area: Rect,
         config: &Config,
     ) -> Result<()> {
+        use crate::components::Popup;
+
         let t = theme();
         // Make popup larger to fit all fields, especially for custom packages
-        let popup_width = 80;
         let popup_height = if self.state.add_is_custom { 60 } else { 50 };
-        let popup_area = center_popup(area, popup_width, popup_height);
-        frame.render_widget(Clear, popup_area);
+        let result = Popup::new()
+            .width(80)
+            .height(popup_height)
+            .dim_background(true)
+            .render(frame, area);
+        let popup_area = result.content_area;
 
         let title = if self.state.add_editing_index.is_some() {
             "Edit Package"
@@ -1590,8 +1601,7 @@ impl ManagePackagesScreen {
         area: Rect,
         config: &Config,
     ) -> Result<()> {
-        let popup_area = center_popup(area, 50, 35);
-        frame.render_widget(Clear, popup_area);
+        use crate::components::dialog::{Dialog, DialogVariant};
 
         let package_name = if let Some(idx) = self.state.delete_index {
             self.state
@@ -1603,51 +1613,44 @@ impl ManagePackagesScreen {
             "Unknown"
         };
 
-        let chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Length(8), // Warning text (5 lines + 2 borders + padding)
-                Constraint::Length(3), // Confirmation input
-                Constraint::Min(0),    // Spacer
-                Constraint::Length(2), // Footer
-            ])
-            .split(popup_area);
-
-        // Warning text
-        let warning_text = format!(
+        let content = format!(
             "⚠️  Delete Package\n\n\
             Are you sure you want to delete '{}'?\n\n\
-            Type 'DELETE' to confirm:",
+            Type 'DELETE' below to confirm:",
             package_name
         );
 
-        let paragraph = Paragraph::new(warning_text)
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .border_type(BorderType::Rounded)
-                    .title(" Delete Package "),
-            )
-            .wrap(Wrap { trim: true })
-            .alignment(Alignment::Center);
-
-        frame.render_widget(paragraph, chunks[0]);
-
-        // Confirmation input
-        let widget = TextInputWidget::new(&self.state.delete_confirm_input)
-            .title("Confirmation")
-            .placeholder("Type 'DELETE' to confirm")
-            .focused(true);
-        frame.render_text_input_widget(widget, chunks[1]);
-
-        // Footer
         let k = |a| config.keymap.get_key_display_for_action(a);
         let footer_text = format!(
-            "{}: Confirm | {}: Cancel",
-            k(crate::keymap::Action::Confirm),
+            "{}: Cancel",
             k(crate::keymap::Action::Quit)
         );
-        Footer::render(frame, chunks[3], &footer_text)?;
+
+        let dialog_height = 35;
+        let dialog = Dialog::new("Delete Package", &content)
+            .height(dialog_height)
+            .variant(DialogVariant::Warning)
+            .footer(&footer_text);
+        frame.render_widget(dialog, area);
+
+        // Render confirmation input below the dialog
+        // Calculate dialog position to match Dialog's internal calculation
+        let calculated_dialog_height = (area.height as f32 * (dialog_height as f32 / 100.0)) as u16;
+        let dialog_y = area.y + (area.height.saturating_sub(calculated_dialog_height)) / 2;
+        let input_y = dialog_y + calculated_dialog_height + 2; // 2 lines spacing
+
+        if input_y + 3 <= area.height {
+            // Center a 60-char wide input, matching dialog width approximately
+            let input_width = 60.min(area.width);
+            let input_x = area.x + (area.width.saturating_sub(input_width)) / 2;
+            let input_area = Rect::new(input_x, input_y, input_width, 3);
+
+            let widget = TextInputWidget::new(&self.state.delete_confirm_input)
+                .title("Confirmation")
+                .placeholder("Type 'DELETE' to confirm")
+                .focused(true);
+            frame.render_text_input_widget(widget, input_area);
+        }
 
         Ok(())
     }
@@ -1670,8 +1673,13 @@ impl ManagePackagesScreen {
                 failed,
                 ..
             } => {
-                let popup_area = center_popup(area, 70, 40);
-                frame.render_widget(Clear, popup_area);
+                use crate::components::Popup;
+                let result = Popup::new()
+                    .width(70)
+                    .height(40)
+                    .dim_background(true)
+                    .render(frame, area);
+                let popup_area = result.content_area;
 
                 let chunks = Layout::default()
                     .direction(Direction::Vertical)
@@ -1728,27 +1736,9 @@ impl ManagePackagesScreen {
                 Footer::render(frame, chunks[3], footer_text)?;
             }
             InstallationStep::Complete { installed, failed } => {
-                // Show completion summary
-                let popup_area = center_popup(area, 60, 30);
-                frame.render_widget(Clear, popup_area);
+                use crate::components::dialog::{Dialog, DialogVariant};
 
-                let chunks = Layout::default()
-                    .direction(Direction::Vertical)
-                    .constraints([
-                        Constraint::Length(1), // Title
-                        Constraint::Min(15),   // Summary
-                        Constraint::Length(2), // Footer
-                    ])
-                    .split(popup_area);
-
-                let t = theme();
-                // Title
-                let title = Paragraph::new("Installation Complete")
-                    .alignment(Alignment::Center)
-                    .style(t.success_style().add_modifier(Modifier::BOLD));
-                frame.render_widget(title, chunks[0]);
-
-                // Summary
+                // Build summary content
                 let mut summary = format!(
                     "✅ Successfully installed: {} package(s)\n",
                     installed.len()
@@ -1763,20 +1753,16 @@ impl ManagePackagesScreen {
                     }
                 }
 
-                let summary_para = Paragraph::new(summary)
-                    .block(
-                        Block::default()
-                            .borders(Borders::ALL)
-                            .border_type(BorderType::Rounded)
-                            .title(" Summary "),
-                    )
-                    .wrap(Wrap { trim: true })
-                    .style(t.text_style());
-                frame.render_widget(summary_para, chunks[1]);
-
-                // Footer
                 let footer_text = "Press any key to continue";
-                Footer::render(frame, chunks[2], footer_text)?;
+                let dialog = Dialog::new("Installation Complete", &summary)
+                    .height(30)
+                    .variant(if failed.is_empty() {
+                        DialogVariant::Default
+                    } else {
+                        DialogVariant::Warning
+                    })
+                    .footer(footer_text);
+                frame.render_widget(dialog, area);
             }
         }
 
@@ -1789,8 +1775,7 @@ impl ManagePackagesScreen {
         area: Rect,
         config: &Config,
     ) -> Result<()> {
-        let popup_area = center_popup(area, 60, 25);
-        frame.render_widget(Clear, popup_area);
+        use crate::components::dialog::{Dialog, DialogVariant};
 
         // Count missing packages
         let missing_count = self
@@ -1817,34 +1802,7 @@ impl ManagePackagesScreen {
             })
             .collect();
 
-        let chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Length(3), // Title
-                Constraint::Length(1), // Spacer
-                Constraint::Length(3), // Message
-                Constraint::Min(0),    // Package list
-                Constraint::Length(1), // Spacer
-                Constraint::Length(1), // Instructions
-            ])
-            .split(popup_area);
-
-        let t = theme();
-        // Title
-        let title = Paragraph::new("Install Missing Packages")
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .border_type(BorderType::Rounded)
-                    .title(" Package Manager ")
-                    .title_alignment(Alignment::Center)
-                    .style(t.background_style()),
-            )
-            .alignment(Alignment::Center)
-            .style(Style::default().fg(t.warning).add_modifier(Modifier::BOLD));
-        frame.render_widget(title, chunks[0]);
-
-        // Message
+        // Build content message
         let message = if missing_count == 1 {
             "1 package is missing. Do you want to install it?".to_string()
         } else {
@@ -1853,42 +1811,35 @@ impl ManagePackagesScreen {
                 missing_count
             )
         };
-        let message_para = Paragraph::new(message)
-            .wrap(Wrap { trim: true })
-            .style(t.text_style());
-        frame.render_widget(message_para, chunks[2]);
 
-        // Package list
-        if !missing_packages.is_empty() {
-            let package_list: Vec<ListItem> = missing_packages
-                .iter()
-                .map(|name| {
-                    ListItem::new(format!("  • {}", name)).style(Style::default().fg(t.primary))
-                })
-                .collect();
-            let list = List::new(package_list).block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .border_type(BorderType::Rounded)
-                    .title(" Packages to Install ")
-                    .border_style(t.border_style()),
-            );
-            frame.render_widget(list, chunks[3]);
-        }
+        // Format package list
+        let package_list_text = if !missing_packages.is_empty() {
+            format!(
+                "\n\nPackages to install:\n{}",
+                missing_packages
+                    .iter()
+                    .map(|name| format!("  • {}", name))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            )
+        } else {
+            String::new()
+        };
 
-        // Instructions
-        let instructions = Paragraph::new(format!(
-            "Press {} to install, {} to cancel",
-            config
-                .keymap
-                .get_key_display_for_action(crate::keymap::Action::Confirm),
-            config
-                .keymap
-                .get_key_display_for_action(crate::keymap::Action::Cancel)
-        ))
-        .alignment(Alignment::Center)
-        .style(t.muted_style());
-        frame.render_widget(instructions, chunks[5]);
+        let content = format!("{}{}", message, package_list_text);
+
+        let k = |a| config.keymap.get_key_display_for_action(a);
+        let footer_text = format!(
+            "{}: Install | {}: Cancel",
+            k(crate::keymap::Action::Confirm),
+            k(crate::keymap::Action::Cancel)
+        );
+
+        let dialog = Dialog::new("Install Missing Packages", &content)
+            .height(25)
+            .variant(DialogVariant::Warning)
+            .footer(&footer_text);
+        frame.render_widget(dialog, area);
 
         Ok(())
     }

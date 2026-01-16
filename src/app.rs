@@ -1193,6 +1193,7 @@ impl App {
             ScreenAction::MoveToCommon {
                 file_index,
                 is_common,
+                profiles_to_cleanup,
             } => {
                 let state = self.dotfile_selection_screen.get_state_mut();
                 if file_index < state.dotfiles.len() {
@@ -1222,7 +1223,18 @@ impl App {
                         }
                     } else {
                         // File is currently profile -> Move FROM profile TO common
-                        match SyncService::move_to_common(&self.config, &relative_path) {
+                        // Use the cleanup version if we have profiles to cleanup
+                        let result = if !profiles_to_cleanup.is_empty() {
+                            SyncService::move_to_common_with_cleanup(
+                                &self.config,
+                                &relative_path,
+                                &profiles_to_cleanup,
+                            )
+                        } else {
+                            SyncService::move_to_common(&self.config, &relative_path)
+                        };
+
+                        match result {
                             Ok(_) => {
                                 info!("Moved {} to common", relative_path);
                                 // Refresh list to update UI

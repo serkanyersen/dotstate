@@ -1,6 +1,7 @@
 pub mod backup_manager;
 pub mod layout;
 pub mod list_navigation;
+pub mod move_to_common_validation;
 pub mod package_installer;
 pub mod package_manager;
 pub mod path;
@@ -17,6 +18,9 @@ pub mod text_input;
 pub use backup_manager::BackupManager;
 pub use layout::{center_popup, create_split_layout, create_standard_layout};
 pub use list_navigation::{ListStateExt, DEFAULT_PAGE_SIZE};
+pub use move_to_common_validation::{
+    validate_move_to_common, MoveToCommonConflict, MoveToCommonValidation,
+};
 pub use path::{
     expand_path, get_config_dir, get_config_path, get_home_dir, get_repository_path, is_git_repo,
     is_safe_to_add,

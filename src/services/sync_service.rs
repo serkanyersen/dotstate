@@ -672,6 +672,71 @@ impl SyncService {
         Ok(RemoveFileResult::Success)
     }
 
+    /// Move a file from a profile to common, cleaning up specified profiles.
+    ///
+    /// This is the validated version that handles cleanup of the same file
+    /// in other profiles before moving to common.
+    ///
+    /// # Arguments
+    ///
+    /// * `config` - Application configuration.
+    /// * `relative_path` - Path relative to home directory.
+    /// * `profiles_to_cleanup` - Profiles that have the same file and should be cleaned up.
+    ///
+    /// # Returns
+    ///
+    /// Result indicating success or failure.
+    pub fn move_to_common_with_cleanup(
+        config: &Config,
+        relative_path: &str,
+        profiles_to_cleanup: &[String],
+    ) -> Result<()> {
+        let repo_path = &config.repo_path;
+        let profile_name = &config.active_profile;
+
+        info!(
+            "Moving {} from profile '{}' to common (cleaning up {} profiles)",
+            relative_path,
+            profile_name,
+            profiles_to_cleanup.len()
+        );
+
+        // Clean up the file from other profiles first
+        for profile in profiles_to_cleanup {
+            if profile == profile_name {
+                continue; // Skip the source profile
+            }
+
+            info!("Cleaning up {} from profile '{}'", relative_path, profile);
+
+            // Remove from manifest
+            let mut manifest = ProfileManifest::load_or_backfill(repo_path)?;
+            if let Some(p) = manifest.profiles.iter_mut().find(|p| p.name == *profile) {
+                p.synced_files.retain(|f| f != relative_path);
+            }
+            manifest.save(repo_path)?;
+
+            // Remove file from profile directory if it exists
+            let profile_file_path = repo_path.join(profile).join(relative_path);
+            if profile_file_path.exists() {
+                if profile_file_path.is_dir() {
+                    std::fs::remove_dir_all(&profile_file_path)
+                        .context("Failed to remove directory from profile")?;
+                } else {
+                    std::fs::remove_file(&profile_file_path)
+                        .context("Failed to remove file from profile")?;
+                }
+            }
+
+            // Remove symlink tracking if it exists
+            let mut symlink_mgr = SymlinkManager::new(repo_path.clone())?;
+            symlink_mgr.remove_symlink_from_tracking(profile, relative_path)?;
+        }
+
+        // Now perform the normal move
+        Self::move_to_common(config, relative_path)
+    }
+
     /// Move a file from a profile to common.
     ///
     /// # Arguments

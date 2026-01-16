@@ -6,6 +6,7 @@
 use crate::components::file_preview::FilePreview;
 use crate::components::footer::Footer;
 use crate::components::header::Header;
+use crate::components::dialog::{Dialog, DialogVariant};
 use crate::config::Config;
 use crate::file_manager::Dotfile;
 use crate::screens::screen_trait::{RenderContext, Screen, ScreenAction, ScreenContext};
@@ -77,6 +78,8 @@ pub struct DotfileSelectionState {
     pub custom_file_confirm_relative: Option<String>, // Relative path for confirmation
     // Move to/from common confirmation
     pub confirm_move: Option<usize>, // Index of dotfile to move (in dotfiles vec)
+    // Move to common validation
+    pub move_validation: Option<crate::utils::MoveToCommonValidation>, // Validation result when conflicts detected
 }
 
 impl Default for DotfileSelectionState {
@@ -107,6 +110,7 @@ impl Default for DotfileSelectionState {
             custom_file_confirm_path: None,
             custom_file_confirm_relative: None,
             confirm_move: None,
+            move_validation: None,
         }
     }
 }
@@ -777,9 +781,39 @@ impl DotfileSelectionScreen {
                             if let DisplayItem::File(file_idx) = &display_items[idx] {
                                 let dotfile = &self.state.dotfiles[*file_idx];
                                 if dotfile.synced {
-                                    // Trigger confirmation
-                                    self.state.confirm_move = Some(*file_idx);
-                                    return Ok(ScreenAction::Refresh);
+                                    // Validate before showing confirmation
+                                    if !dotfile.is_common {
+                                        // Moving from profile to common - validate first
+                                        let relative_path =
+                                            dotfile.relative_path.to_string_lossy().to_string();
+                                        match crate::utils::validate_move_to_common(
+                                            &config.repo_path,
+                                            &config.active_profile,
+                                            &relative_path,
+                                        ) {
+                                            Ok(validation) => {
+                                                self.state.move_validation = Some(validation);
+                                                // If there are blocking conflicts, we'll show a different dialog
+                                                // Otherwise, proceed with normal confirmation
+                                                self.state.confirm_move = Some(*file_idx);
+                                                return Ok(ScreenAction::Refresh);
+                                            }
+                                            Err(e) => {
+                                                // Validation error - show error message
+                                                return Ok(ScreenAction::ShowMessage {
+                                                    title: "Validation Error".to_string(),
+                                                    content: format!(
+                                                        "Failed to validate move: {}",
+                                                        e
+                                                    ),
+                                                });
+                                            }
+                                        }
+                                    } else {
+                                        // Moving from common to profile - no validation needed
+                                        self.state.confirm_move = Some(*file_idx);
+                                        return Ok(ScreenAction::Refresh);
+                                    }
                                 }
                             }
                         }
@@ -1436,15 +1470,6 @@ impl DotfileSelectionScreen {
         area: Rect,
         config: &Config,
     ) -> Result<()> {
-        let t = ui_theme();
-        // Dim the background
-        let dim = Block::default().style(Style::default().bg(Color::Reset).fg(t.text_muted));
-        frame.render_widget(dim, area);
-
-        // Create centered popup
-        let popup_area = crate::utils::center_popup(area, 70, 40);
-        frame.render_widget(Clear, popup_area);
-
         let path = self
             .state
             .custom_file_confirm_path
@@ -1452,65 +1477,25 @@ impl DotfileSelectionScreen {
             .map(|p| p.display().to_string())
             .unwrap_or_else(|| "Unknown".to_string());
 
-        let chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Length(3), // Title
-                Constraint::Length(1), // Spacer
-                Constraint::Length(3), // Path label
-                Constraint::Length(3), // Path value (highlighted)
-                Constraint::Length(1), // Spacer
-                Constraint::Length(3), // Warning message
-                Constraint::Length(1), // Spacer
-                Constraint::Length(1), // Instructions
-            ])
-            .split(popup_area);
+        let content = format!(
+            "Path: {}\n\n\
+            ⚠️  This will move this path to the storage repo and replace it with a symlink.\n\
+            Make sure you know what you are doing.",
+            path
+        );
 
-        // Title
-        let title = Paragraph::new("Confirm Add Custom File")
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .border_type(BorderType::Rounded)
-                    .title(" Confirmation ")
-                    .title_alignment(Alignment::Center)
-                    .style(Style::default().bg(Color::Reset)),
-            )
-            .alignment(Alignment::Center)
-            .style(
-                Style::default()
-                    .fg(t.text_emphasis)
-                    .add_modifier(Modifier::BOLD),
-            );
-        frame.render_widget(title, chunks[0]);
-
-        // Path label
-        let path_label = Paragraph::new("Path:").style(t.text_style());
-        frame.render_widget(path_label, chunks[2]);
-
-        // Path value (highlighted in different color)
-        let path_value = Paragraph::new(path.as_str())
-            .wrap(Wrap { trim: true })
-            .style(Style::default().fg(t.primary).add_modifier(Modifier::BOLD));
-        frame.render_widget(path_value, chunks[3]);
-
-        // Warning message
-        let warning = Paragraph::new("⚠️  This will move this path to the storage repo and replace it with a symlink.\nMake sure you know what you are doing.")
-            .wrap(Wrap { trim: true })
-            .style(Style::default().fg(t.warning));
-        frame.render_widget(warning, chunks[5]);
-
-        // Instructions
         let k = |a| config.keymap.get_key_display_for_action(a);
-        let instruction_text = format!(
-            "Press Y/{} to confirm, N/{} to cancel",
+        let footer_text = format!(
+            "{}: Confirm | {}: Cancel",
             k(crate::keymap::Action::Confirm),
             k(crate::keymap::Action::Quit)
         );
-        let instructions = Paragraph::new(instruction_text)
-            .alignment(Alignment::Center)
-            .style(Style::default().fg(t.text_muted));
-        frame.render_widget(instructions, chunks[7]);
+
+        let dialog = Dialog::new("Confirm Add Custom File", &content)
+            .height(40)
+            .dim_background(true)
+            .footer(&footer_text);
+        frame.render_widget(dialog, area);
 
         Ok(())
     }
@@ -1527,19 +1512,45 @@ impl DotfileSelectionScreen {
                     if let Some(idx) = self.state.confirm_move {
                         if idx < self.state.dotfiles.len() {
                             let dotfile = &self.state.dotfiles[idx];
+
+                            // Check if we're in a blocked dialog (path conflict)
+                            if let Some(ref validation) = self.state.move_validation {
+                                let has_path_conflict = validation.conflicts.iter().any(|c| {
+                                    matches!(c, crate::utils::MoveToCommonConflict::PathHierarchyConflict { .. })
+                                });
+                                if has_path_conflict {
+                                    // Just close the dialog - can't proceed
+                                    self.state.confirm_move = None;
+                                    self.state.move_validation = None;
+                                    return Ok(ScreenAction::Refresh);
+                                }
+                            }
+
+                            // Get profiles to cleanup from validation
+                            let profiles_to_cleanup = self
+                                .state
+                                .move_validation
+                                .as_ref()
+                                .map(|v| v.profiles_to_cleanup.clone())
+                                .unwrap_or_default();
+
                             let action = ScreenAction::MoveToCommon {
                                 file_index: idx,
                                 is_common: dotfile.is_common,
+                                profiles_to_cleanup,
                             };
                             self.state.confirm_move = None;
+                            self.state.move_validation = None;
                             return Ok(action);
                         }
                     }
                     self.state.confirm_move = None;
+                    self.state.move_validation = None;
                     return Ok(ScreenAction::Refresh);
                 }
                 crate::keymap::Action::Quit | crate::keymap::Action::Cancel => {
                     self.state.confirm_move = None;
+                    self.state.move_validation = None;
                     return Ok(ScreenAction::Refresh);
                 }
                 _ => {}
@@ -1548,23 +1559,52 @@ impl DotfileSelectionScreen {
 
         // Handle explicit chars 'y' and 'n'
         match key_code {
-            KeyCode::Char('y') => {
+            KeyCode::Char('y') | KeyCode::Char('f') => {
                 if let Some(idx) = self.state.confirm_move {
                     if idx < self.state.dotfiles.len() {
                         let dotfile = &self.state.dotfiles[idx];
+
+                        // Check if we're in a blocked dialog (path conflict)
+                        if let Some(ref validation) = self.state.move_validation {
+                            let has_path_conflict = validation.conflicts.iter().any(|c| {
+                                matches!(
+                                    c,
+                                    crate::utils::MoveToCommonConflict::PathHierarchyConflict { .. }
+                                )
+                            });
+                            if has_path_conflict {
+                                // Just close the dialog - can't proceed
+                                self.state.confirm_move = None;
+                                self.state.move_validation = None;
+                                return Ok(ScreenAction::Refresh);
+                            }
+                        }
+
+                        // Get profiles to cleanup from validation
+                        let profiles_to_cleanup = self
+                            .state
+                            .move_validation
+                            .as_ref()
+                            .map(|v| v.profiles_to_cleanup.clone())
+                            .unwrap_or_default();
+
                         let action = ScreenAction::MoveToCommon {
                             file_index: idx,
                             is_common: dotfile.is_common,
+                            profiles_to_cleanup,
                         };
                         self.state.confirm_move = None;
+                        self.state.move_validation = None;
                         return Ok(action);
                     }
                 }
                 self.state.confirm_move = None;
+                self.state.move_validation = None;
                 Ok(ScreenAction::Refresh)
             }
             KeyCode::Char('n') => {
                 self.state.confirm_move = None;
+                self.state.move_validation = None;
                 Ok(ScreenAction::Refresh)
             }
             _ => Ok(ScreenAction::None),
@@ -1572,14 +1612,6 @@ impl DotfileSelectionScreen {
     }
 
     fn render_move_confirm(&self, frame: &mut Frame, area: Rect, config: &Config) -> Result<()> {
-        let t = ui_theme();
-        // Dim the background
-        let dim = Block::default().style(Style::default().bg(Color::Reset).fg(t.text_muted));
-        frame.render_widget(dim, area);
-
-        // Create centered popup
-        let popup_area = crate::utils::center_popup(area, 60, 12);
-        frame.render_widget(Clear, popup_area);
 
         let dotfile_name = if let Some(idx) = self.state.confirm_move {
             if idx < self.state.dotfiles.len() {
@@ -1601,11 +1633,41 @@ impl DotfileSelectionScreen {
             false
         };
 
-        // Title
+        // Check validation result to determine which dialog to show
+        if let Some(ref validation) = self.state.move_validation {
+            // Check for blocking conflicts
+            let has_blocking = validation.conflicts.iter().any(|c| {
+                matches!(
+                    c,
+                    crate::utils::MoveToCommonConflict::DifferentContentInProfile { .. }
+                        | crate::utils::MoveToCommonConflict::PathHierarchyConflict { .. }
+                )
+            });
+
+            if has_blocking {
+                // Check if it's a path hierarchy conflict (most critical)
+                let has_path_conflict = validation.conflicts.iter().any(|c| {
+                    matches!(
+                        c,
+                        crate::utils::MoveToCommonConflict::PathHierarchyConflict { .. }
+                    )
+                });
+
+                if has_path_conflict {
+                    return self.render_move_blocked_dialog(frame, area, config);
+                } else {
+                    // Different content conflict
+                    return self.render_move_force_dialog(frame, area, config);
+                }
+            }
+            // Otherwise fall through to normal confirmation (same content conflicts are auto-resolved)
+        }
+
+        // Normal confirmation dialog (no blocking conflicts)
         let title_text = if is_moving_to_common {
-            " Confirm Move to Common "
+            "Confirm Move to Common"
         } else {
-            " Confirm Move to Profile "
+            "Confirm Move to Profile"
         };
 
         // Message
@@ -1621,49 +1683,157 @@ impl DotfileSelectionScreen {
             )
         };
 
-        // Main Block with borders
-        let block = Block::default()
-            .borders(Borders::ALL)
-            .border_type(BorderType::Rounded)
-            .title(title_text)
-            .title_alignment(Alignment::Center)
-            .style(Style::default().bg(Color::Reset));
-
-        let inner_area = block.inner(popup_area);
-        frame.render_widget(block, popup_area);
-
-        // Layout: Message + Spacer + Instructions
-        let layout = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Length(1), // Top spacer
-                Constraint::Min(3),    // Message
-                Constraint::Length(1), // Spacer
-                Constraint::Length(1), // Instructions
-                Constraint::Length(1), // Bottom padding
-            ])
-            .split(inner_area);
-
-        // Content centered inside
-        let message = Paragraph::new(msg)
-            .wrap(Wrap { trim: true })
-            .alignment(Alignment::Center)
-            .style(t.text_style());
-        frame.render_widget(message, layout[1]);
-
-        // Instructions
         let k = |a| config.keymap.get_key_display_for_action(a);
-        let instruction_text = format!(
+        let footer_text = format!(
             "{}: Confirm | {}: Cancel",
             k(crate::keymap::Action::Confirm),
             k(crate::keymap::Action::Quit)
         );
-        let instructions = Paragraph::new(instruction_text)
-            .alignment(Alignment::Center)
-            .style(Style::default().fg(t.text_muted));
-        frame.render_widget(instructions, layout[3]);
+
+        let dialog = Dialog::new(title_text, &msg)
+            .height(20)
+            .footer(&footer_text);
+        frame.render_widget(dialog, area);
 
         Ok(())
+    }
+
+    fn render_move_force_dialog(
+        &self,
+        frame: &mut Frame,
+        area: Rect,
+        config: &Config,
+    ) -> Result<()> {
+
+        let dotfile_name = if let Some(idx) = self.state.confirm_move {
+            if idx < self.state.dotfiles.len() {
+                self.state.dotfiles[idx].relative_path.display().to_string()
+            } else {
+                "Unknown".to_string()
+            }
+        } else {
+            "Unknown".to_string()
+        };
+
+        // Build conflict list
+        let mut conflict_lines = Vec::new();
+        if let Some(ref validation) = self.state.move_validation {
+            for conflict in &validation.conflicts {
+                if let crate::utils::MoveToCommonConflict::DifferentContentInProfile {
+                    profile_name,
+                    size_diff,
+                } = conflict
+                {
+                    let size_text = if let Some((size1, size2)) = size_diff {
+                        format!(" ({} vs {})", format_size(*size1), format_size(*size2))
+                    } else {
+                        String::new()
+                    };
+                    conflict_lines.push(format!("  • {}{}", profile_name, size_text));
+                }
+            }
+        }
+
+        let conflict_list = conflict_lines.join("\n");
+        let msg = format!(
+            "⚠ \"{}\" exists in other profiles with DIFFERENT\n\
+            content:\n\n{}\n\n\
+            If you proceed, their versions will be DELETED and\n\
+            replaced with the common version.\n\n\
+            Tip: To preserve different configs, remove them from\n\
+            sync first in each profile.",
+            dotfile_name, conflict_list
+        );
+
+        let k = |a| config.keymap.get_key_display_for_action(a);
+        let footer_text = format!(
+            "{}: Force (delete others) | {}: Cancel",
+            k(crate::keymap::Action::Confirm),
+            k(crate::keymap::Action::Quit)
+        );
+
+        let dialog = Dialog::new("Content Differs", &msg)
+            // .height(40)
+            .variant(DialogVariant::Warning)
+            .footer(&footer_text);
+        frame.render_widget(dialog, area);
+
+        Ok(())
+    }
+
+    fn render_move_blocked_dialog(
+        &self,
+        frame: &mut Frame,
+        area: Rect,
+        config: &Config,
+    ) -> Result<()> {
+
+        let dotfile_name = if let Some(idx) = self.state.confirm_move {
+            if idx < self.state.dotfiles.len() {
+                self.state.dotfiles[idx].relative_path.display().to_string()
+            } else {
+                "Unknown".to_string()
+            }
+        } else {
+            "Unknown".to_string()
+        };
+
+        // Build conflict message
+        let mut conflict_msg = String::new();
+        if let Some(ref validation) = self.state.move_validation {
+            for conflict in &validation.conflicts {
+                if let crate::utils::MoveToCommonConflict::PathHierarchyConflict {
+                    profile_name,
+                    conflicting_path,
+                    is_parent,
+                } = conflict
+                {
+                    if *is_parent {
+                        conflict_msg.push_str(&format!(
+                            "  You are trying to move: {}\n\
+                            But profile \"{}\" has: {} (directory)\n\n",
+                            dotfile_name, profile_name, conflicting_path
+                        ));
+                    } else {
+                        conflict_msg.push_str(&format!(
+                            "  You are trying to move: {} (directory)\n\
+                            But profile \"{}\" has: {}\n\n",
+                            dotfile_name, profile_name, conflicting_path
+                        ));
+                    }
+                }
+            }
+        }
+
+        let msg = format!(
+            "✗ Path conflict detected:\n\n{}\
+            This would create an invalid state.\n\n\
+            To fix: Remove the conflicting path from sync in the\n\
+            affected profile first.",
+            conflict_msg
+        );
+
+        let k = |a| config.keymap.get_key_display_for_action(a);
+        let footer_text = format!("{}: OK", k(crate::keymap::Action::Confirm));
+
+        let dialog = Dialog::new("Cannot Move to Common", &msg)
+            // .height(35)
+            .variant(DialogVariant::Error)
+            .footer(&footer_text);
+        frame.render_widget(dialog, area);
+
+        Ok(())
+    }
+}
+
+// Helper function to format file sizes
+fn format_size(bytes: u64) -> String {
+    if bytes < 1024 {
+        format!("{}B", bytes)
+    } else if bytes < 1024 * 1024 {
+        format!("{:.1}KB", bytes as f64 / 1024.0)
+    } else {
+        format!("{:.1}MB", bytes as f64 / (1024.0 * 1024.0))
     }
 }
 
@@ -1693,16 +1863,8 @@ impl Screen for DotfileSelectionScreen {
             "Add or remove files to your repository. You can also add custom files. We have automatically detected some common dotfiles for you."
         )?;
 
-        // Check if confirmation modal is showing
-        if self.state.show_custom_file_confirm {
-            self.render_custom_file_confirm(frame, area, ctx.config)?;
-        }
-        // Check if move confirmation modal is showing
-        else if self.state.confirm_move.is_some() {
-            self.render_move_confirm(frame, area, ctx.config)?;
-        }
-        // Check if file browser is active - render as popup
-        else if self.state.file_browser_mode {
+        // Check if file browser is active - render as popup (instead of main content)
+        if self.state.file_browser_mode {
             self.render_file_browser(
                 frame,
                 area,
@@ -1714,6 +1876,7 @@ impl Screen for DotfileSelectionScreen {
         } else if self.state.adding_custom_file {
             self.render_custom_file_input(frame, content_chunk, footer_chunk, ctx.config)?;
         } else {
+            // Render main dotfile list content
             self.render_dotfile_list(
                 frame,
                 content_chunk,
@@ -1722,6 +1885,14 @@ impl Screen for DotfileSelectionScreen {
                 ctx.syntax_set,
                 ctx.syntax_theme,
             )?;
+        }
+
+        // Render modals on top of the content (not instead of it)
+        if self.state.show_custom_file_confirm {
+            self.render_custom_file_confirm(frame, area, ctx.config)?;
+        } else if self.state.confirm_move.is_some() {
+            // Move confirmation modals render on top of the main content
+            self.render_move_confirm(frame, area, ctx.config)?;
         }
 
         Ok(())

@@ -171,6 +171,8 @@ pub enum ScreenAction {
         file_index: usize,
         /// Whether the file is currently in common (true = move to profile, false = move to common).
         is_common: bool,
+        /// Profiles that need cleanup (same file with same content) - only used when moving to common.
+        profiles_to_cleanup: Vec<String>,
     },
     // Profile management actions
     /// Create a new profile.
