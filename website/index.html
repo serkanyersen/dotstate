@@ -79,6 +79,7 @@
             "Automatic Backups",
             "Symlink Management",
             "Package Management",
+            "Common Files Support",
             "Beautiful TUI",
             "CLI Support",
             "Local Repository Mode"
@@ -347,9 +348,9 @@ brew install dotstate" aria-label="Copy install command">📋</button>
                                 <p>Automatic creation and management of symlinks. No manual linking required.</p>
                             </div>
                             <div class="feature-card">
-                                <div class="feature-icon" aria-hidden="true">📄</div>
-                                <h4>Custom Files</h4>
-                                <p>Add any file or directory, not just dotfiles. Full control over what you sync.</p>
+                                <div class="feature-icon" aria-hidden="true">📁</div>
+                                <h4>Common Files Support</h4>
+                                <p>Share dotfiles (like .gitconfig, .tmux.conf, .ssh/config) across all profiles automatically. Update once, sync everywhere.</p>
                             </div>
                         </div>
 
@@ -698,6 +699,17 @@ brew install dotstate" aria-label="Copy command">📋</button>
                                 <li><strong>Linux:</strong> Linux-specific settings</li>
                             </ul>
                             <p>Switch between profiles easily in the TUI or activate them via CLI. Perfect for managing different dotfile sets.</p>
+                        </div>
+
+                        <div class="example-card">
+                            <h4>Sharing common files</h4>
+                            <p>Use the <code>common</code> profile to share files across all environments:</p>
+                            <ol>
+                                <li>Add a file like <code>.gitconfig</code> to your collection</li>
+                                <li>Move it to the <strong>Common</strong> section</li>
+                                <li>The file will now be symlinked in every profile you activate</li>
+                            </ol>
+                            <p>Share global configurations like editor settings, git aliases, or shell themes effortlessly.</p>
                         </div>
 
                         <div class="example-card">

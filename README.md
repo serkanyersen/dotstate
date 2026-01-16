@@ -41,6 +41,7 @@ Managing dotfiles can be a pain. You want your `.zshrc`, `.vimrc`, and other con
 ### 🎯 Core Features
 
 - **Profile Management**: Create separate profiles for different contexts (work, personal, Mac, Linux, etc.)
+- **Common Files Support**: Share dotfiles (like `.gitconfig` or `.tmux.conf`) across all profiles automatically.
 - **Flexible Git Sync**: Automatic sync with GitHub, GitLab, Bitbucket, or any git host
 - **Two Setup Modes**: Let DotState create a GitHub repo for you, or use your own repository
 - **Smart File Detection**: Automatically finds common dotfiles in your home directory
@@ -161,7 +162,8 @@ dotstate help
 1. **Storage**: Your dotfiles are stored in a Git repository (default: `~/.config/dotstate/storage`)
 2. **Symlinks**: Original files are replaced with symlinks pointing to the repo
 3. **Profiles**: Different profiles can have different sets of files
-4. **Sync**: Changes are committed and synced with GitHub automatically
+4. **Common Files**: Files that are shared across all profiles are stored in the `common` section and linked regardless of the active profile
+5. **Sync**: Changes are committed and synced with GitHub automatically
 
 ## Configuration
 

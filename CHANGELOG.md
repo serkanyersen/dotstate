@@ -13,6 +13,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 ---
+## [0.2.5] - 2026-01-16
+
+### Added
+- **Common Files Support**: Core implementation for shared dotfiles that persist across multiple profiles
+- **Improved File Management**:
+  - New 'Move' action with dedicated keybindings for better file organization
+  - Dialog-based validation and confirmation when moving files to the common profile
+- **Sync Enhancements**:
+  - Automatic management of common file symlinks after remote sync operations
+  - Sync service now detects and includes files from the manifest that are missing in the local configuration
+  - Integration of profile symlink verification into the sync process for better consistency
+- **UI Improvements**:
+  - Visual error display during profile creation for better feedback
+  - Standardized title padding across all screens
+
+### Changed
+- **UI Component Standardization**:
+  - Standardized all Popups and Dialogs (Delete, Switch, Create, Rename) for a uniform look and feel
+  - Improved popup rendering with footers now correctly placed inside borders
+- **GitHub Authentication**: Refactored `GitHubAuthScreen` for improved rendering and more robust event handling
+
+### Removed
+- **ViewSyncedFiles Screen**: Removed the redundant "View Synced Files" screen to streamline the user flow
+
+---
 ## [0.2.4] - 2026-01-14
 
 ### Added
