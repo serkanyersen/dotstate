@@ -2,6 +2,7 @@ pub mod backup_manager;
 pub mod layout;
 pub mod list_navigation;
 pub mod move_to_common_validation;
+pub mod package_cache;
 pub mod package_installer;
 pub mod package_manager;
 pub mod path;
@@ -13,7 +14,6 @@ pub mod sync_validation;
 pub mod syntax_theme;
 pub mod text;
 pub mod text_input;
-pub mod package_cache;
 
 // Export utilities that are used
 pub use backup_manager::BackupManager;

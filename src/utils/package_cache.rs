@@ -32,7 +32,10 @@ impl Default for PackageCache {
         match Self::new() {
             Ok(cache) => cache,
             Err(e) => {
-                warn!("Failed to initialize package cache with default path: {}", e);
+                warn!(
+                    "Failed to initialize package cache with default path: {}",
+                    e
+                );
                 // Fallback to a dummy path that probably won't write successfully but allows the app to validly construct the struct.
                 // Or better: use a sensible default path even if we couldn't create it right now.
                 let config_dir = crate::utils::get_config_dir();
@@ -76,7 +79,9 @@ impl PackageCache {
     }
 
     pub fn get_status(&self, profile_name: &str, package_name: &str) -> Option<&PackageCacheEntry> {
-        self.data.entries.get(&Self::get_key(profile_name, package_name))
+        self.data
+            .entries
+            .get(&Self::get_key(profile_name, package_name))
     }
 
     pub fn update_status(
@@ -108,8 +113,7 @@ impl PackageCache {
         let json = serde_json::to_string_pretty(&self.data)
             .context("Failed to serialize package cache")?;
 
-        std::fs::write(&self.cache_file, json)
-            .context("Failed to write package cache file")?;
+        std::fs::write(&self.cache_file, json).context("Failed to write package cache file")?;
 
         debug!("Package cache saved to {:?}", self.cache_file);
         Ok(())

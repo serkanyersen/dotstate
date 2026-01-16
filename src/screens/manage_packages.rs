@@ -1378,9 +1378,16 @@ impl ManagePackagesScreen {
         }
 
         // Cache details
-        if let Some(entry) = self.state.cache.get_status(&self.state.active_profile, &package.name) {
+        if let Some(entry) = self
+            .state
+            .cache
+            .get_status(&self.state.active_profile, &package.name)
+        {
             details.push_str("\n\n-- Last Check Details --");
-            details.push_str(&format!("\nTime: {}", entry.last_checked.format("%Y-%m-%d %H:%M:%S UTC")));
+            details.push_str(&format!(
+                "\nTime: {}",
+                entry.last_checked.format("%Y-%m-%d %H:%M:%S UTC")
+            ));
 
             if let Some(cmd) = &entry.check_command {
                 details.push_str(&format!("\nCommand: {}", cmd));

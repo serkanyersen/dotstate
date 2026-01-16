@@ -370,7 +370,8 @@ impl App {
                     .map(|p| p.packages.clone())
                     .unwrap_or_default();
 
-                self.manage_packages_screen.update_packages(packages, &self.config.active_profile);
+                self.manage_packages_screen
+                    .update_packages(packages, &self.config.active_profile);
             } else if self.last_screen == Some(Screen::ManagePackages) {
                 // We just left ManagePackages - clear installation state to prevent it from showing elsewhere
                 self.manage_packages_screen.reset_state();
@@ -880,7 +881,8 @@ impl App {
                     self.manage_packages_screen
                         .update_packages(active_profile.packages, &self.config.active_profile);
                 } else {
-                    self.manage_packages_screen.update_packages(Vec::new(), &self.config.active_profile);
+                    self.manage_packages_screen
+                        .update_packages(Vec::new(), &self.config.active_profile);
                 }
             }
             _ => {}

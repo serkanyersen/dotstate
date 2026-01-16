@@ -100,10 +100,9 @@ impl PackageService {
             Ok((true, check_cmd, _out)) => {
                 // Heuristic: if command is "which ...", used_fallback is false.
                 // Otherwise (manager check or custom check), it is true.
-                let used_fallback = check_cmd.as_ref().map_or(
-                    false,
-                    |cmd| !cmd.starts_with("which ")
-                );
+                let used_fallback = check_cmd
+                    .as_ref()
+                    .map_or(false, |cmd| !cmd.starts_with("which "));
 
                 debug!(
                     "Package {} found (used_fallback: {})",

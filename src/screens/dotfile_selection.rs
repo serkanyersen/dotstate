@@ -23,8 +23,8 @@ use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 
 use ratatui::widgets::{
-    Block, Borders, Clear, List, ListItem, ListState, Paragraph, Scrollbar,
-    ScrollbarOrientation, ScrollbarState, StatefulWidget, Wrap,
+    Block, Borders, Clear, List, ListItem, ListState, Paragraph, Scrollbar, ScrollbarOrientation,
+    ScrollbarState, StatefulWidget, Wrap,
 };
 use ratatui::Frame;
 use std::path::{Path, PathBuf};
@@ -983,17 +983,20 @@ impl DotfileSelectionScreen {
             unfocused_border_style().bg(Color::Reset)
         };
 
-        let list = List::new(items)
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .title(list_title)
-                    .border_type(ui_theme().border_type(self.state.focus == DotfileSelectionFocus::FileBrowserList))
-                    .title_alignment(Alignment::Center)
-                    .border_style(list_border_style),
-            )
-            .highlight_style(t.highlight_style())
-            .highlight_symbol(LIST_HIGHLIGHT_SYMBOL);
+        let list =
+            List::new(items)
+                .block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .title(list_title)
+                        .border_type(ui_theme().border_type(
+                            self.state.focus == DotfileSelectionFocus::FileBrowserList,
+                        ))
+                        .title_alignment(Alignment::Center)
+                        .border_style(list_border_style),
+                )
+                .highlight_style(t.highlight_style())
+                .highlight_symbol(LIST_HIGHLIGHT_SYMBOL);
 
         StatefulWidget::render(
             list,
@@ -1288,7 +1291,9 @@ impl DotfileSelectionScreen {
                     .borders(Borders::ALL)
                     .title(list_title)
                     .title_alignment(Alignment::Center)
-                    .border_type(t.border_type(self.state.focus == DotfileSelectionFocus::FilesList))
+                    .border_type(
+                        t.border_type(self.state.focus == DotfileSelectionFocus::FilesList),
+                    )
                     .border_style(list_border_style),
             )
             .highlight_style(t.highlight_style())

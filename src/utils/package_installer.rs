@@ -211,6 +211,10 @@ impl PackageInstaller {
 
         // All checks failed
         debug!("All checks failed for package {}", package.name);
-        Ok((false, None, Some("No suitable check method found".to_string())))
+        Ok((
+            false,
+            None,
+            Some("No suitable check method found".to_string()),
+        ))
     }
 }

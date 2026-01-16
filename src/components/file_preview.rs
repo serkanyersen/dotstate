@@ -298,7 +298,8 @@ impl FilePreview {
             frame.render_widget(preview, area);
 
             if total_entries > visible_height {
-                let mut scrollbar_state = ScrollbarState::new(total_entries).position(scroll_offset);
+                let mut scrollbar_state =
+                    ScrollbarState::new(total_entries).position(scroll_offset);
                 let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
                     .begin_symbol(Some("↑"))
                     .end_symbol(Some("↓"))
