@@ -97,7 +97,14 @@ impl PackageService {
     /// Result of the check including status and whether fallback was used.
     pub fn check_package(package: &Package) -> PackageCheckResult {
         match PackageInstaller::check_exists(package) {
-            Ok((true, used_fallback)) => {
+            Ok((true, check_cmd, _out)) => {
+                // Heuristic: if command is "which ...", used_fallback is false.
+                // Otherwise (manager check or custom check), it is true.
+                let used_fallback = check_cmd.as_ref().map_or(
+                    false,
+                    |cmd| !cmd.starts_with("which ")
+                );
+
                 debug!(
                     "Package {} found (used_fallback: {})",
                     package.name, used_fallback
@@ -107,7 +114,7 @@ impl PackageService {
                     used_fallback,
                 }
             }
-            Ok((false, _)) => {
+            Ok((false, _, _)) => {
                 // Package not found - check if manager is installed
                 if !PackageManagerImpl::is_manager_installed(&package.manager) {
                     warn!(

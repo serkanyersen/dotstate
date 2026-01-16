@@ -177,15 +177,15 @@ impl ManagePackagesScreen {
                 let pkg_manager = package.manager.clone();
 
                 match check_result {
-                    Ok((exists, _used_fallback)) => {
+                    Ok((exists, check_cmd, output)) => {
                         // Update cache
                         if !state.active_profile.is_empty() {
                             if let Err(e) = state.cache.update_status(
                                 &state.active_profile,
                                 &pkg_name,
                                 exists,
-                                None,
-                                None,
+                                check_cmd.clone(),
+                                output.clone(),
                             ) {
                                 warn!("Failed to update package cache: {}", e);
                             }
@@ -1375,6 +1375,28 @@ impl ManagePackagesScreen {
                     .keymap
                     .get_key_display_for_action(crate::keymap::Action::CheckStatus)
             )),
+        }
+
+        // Cache details
+        if let Some(entry) = self.state.cache.get_status(&self.state.active_profile, &package.name) {
+            details.push_str("\n\n-- Last Check Details --");
+            details.push_str(&format!("\nTime: {}", entry.last_checked.format("%Y-%m-%d %H:%M:%S UTC")));
+
+            if let Some(cmd) = &entry.check_command {
+                details.push_str(&format!("\nCommand: {}", cmd));
+            }
+
+            if let Some(output) = &entry.output {
+                // Truncate output if too long to avoid cluttering the view too much,
+                // but keep enough to be useful.
+                // Maybe just show first few lines?
+                let display_output = if output.len() > 500 {
+                    format!("{}... (truncated)", &output[..500])
+                } else {
+                    output.clone()
+                };
+                details.push_str(&format!("\nOutput:\n{}", display_output));
+            }
         }
 
         details

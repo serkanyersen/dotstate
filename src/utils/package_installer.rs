@@ -135,12 +135,12 @@ impl PackageInstaller {
         lines
     }
     /// Check if package exists (binary check first, then manager-native fallback)
-    /// Returns (exists: bool, used_fallback: bool)
+    /// Returns (exists: bool, check_command: Option<String>, output: Option<String>)
     ///
     /// Important: Binary check is tried FIRST regardless of manager presence.
     /// This allows packages installed manually (without manager) to be detected.
     /// Manager is only required for manager-native fallback and installation.
-    pub fn check_exists(package: &Package) -> Result<(bool, bool)> {
+    pub fn check_exists(package: &Package) -> Result<(bool, Option<String>, Option<String>)> {
         // First, try binary check (no manager required)
         // This works even if package was installed manually
         debug!(
@@ -149,7 +149,11 @@ impl PackageInstaller {
         );
         if PackageManagerImpl::check_binary_in_path(&package.binary_name) {
             debug!("Package {} found via binary check", package.name);
-            return Ok((true, false));
+            return Ok((
+                true,
+                Some(format!("which {}", package.binary_name)),
+                Some("Binary found in PATH".to_string()),
+            ));
         }
         debug!("Binary '{}' not found in PATH", package.binary_name);
 
@@ -163,8 +167,12 @@ impl PackageInstaller {
                 .arg(manager_check)
                 .output()?;
             let found = output.status.success();
+            let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+            let combined_output = format!("STDOUT:\n{}\nSTDERR:\n{}", stdout, stderr);
+
             debug!("Custom manager check for {}: {}", package.name, found);
-            return Ok((found, true));
+            return Ok((found, Some(manager_check.clone()), Some(combined_output)));
         }
 
         // Try auto-generated manager check (requires manager installed)
@@ -178,13 +186,20 @@ impl PackageInstaller {
                 if let Some(mut manager_cmd) =
                     PackageManagerImpl::build_manager_check_command(&package.manager, package_name)
                 {
+                    // Capture command string representation for cache
+                    let cmd_str = format!("{:?}", manager_cmd);
+
                     let output = manager_cmd.output()?;
                     let found = output.status.success();
+                    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+                    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+                    let combined_output = format!("STDOUT:\n{}\nSTDERR:\n{}", stdout, stderr);
+
                     debug!(
                         "Auto-generated manager check for {}: {}",
                         package.name, found
                     );
-                    return Ok((found, true));
+                    return Ok((found, Some(cmd_str), Some(combined_output)));
                 }
             } else {
                 debug!(
@@ -196,6 +211,6 @@ impl PackageInstaller {
 
         // All checks failed
         debug!("All checks failed for package {}", package.name);
-        Ok((false, false))
+        Ok((false, None, Some("No suitable check method found".to_string())))
     }
 }
