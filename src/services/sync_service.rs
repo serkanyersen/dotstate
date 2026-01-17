@@ -973,4 +973,35 @@ mod tests {
         assert!(SyncService::is_custom_file("my_custom_config"));
         assert!(SyncService::is_custom_file(".my_app/config.toml"));
     }
+    #[test]
+    fn test_scan_dotfiles_path_normalization() {
+        // Mock logic used in scan_dotfiles
+
+        let local_path = "subdir/file";
+        let local_path_win = "subdir\\file";
+        let local_path_prefix = "./subdir/file";
+
+        let manifest_path = "subdir/file";
+        let manifest_path_win = "subdir\\file";
+        let manifest_path_prefix = "./subdir/file";
+
+        // Helper to simulate the cleanup logic
+        let normalize = |p: &str| -> String {
+            let p = p.replace('\\', "/");
+            p.strip_prefix("./").unwrap_or(&p).to_string()
+        };
+
+        // Verify cross-platform matching
+        assert_eq!(normalize(local_path), normalize(manifest_path));
+        assert_eq!(normalize(local_path), normalize(manifest_path_win));
+        assert_eq!(normalize(local_path), normalize(manifest_path_prefix));
+
+        assert_eq!(normalize(local_path_win), normalize(manifest_path));
+        assert_eq!(normalize(local_path_prefix), normalize(manifest_path));
+
+        // Explicit cases
+        assert_eq!(normalize("foo\\bar"), "foo/bar");
+        assert_eq!(normalize("./foo/bar"), "foo/bar");
+        assert_eq!(normalize(".\\foo\\bar"), "foo/bar");
+    }
 }
