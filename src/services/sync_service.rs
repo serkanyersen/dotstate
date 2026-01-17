@@ -343,15 +343,30 @@ impl SyncService {
         let manifest = ProfileManifest::load_or_backfill(&config.repo_path)?;
 
         // Mark files that are already synced
-        let synced_set =
-            Self::get_synced_files(&config.repo_path, &config.active_profile).unwrap_or_default();
+        let synced_set: HashSet<String> =
+            Self::get_synced_files(&config.repo_path, &config.active_profile)
+                .unwrap_or_default()
+                .iter()
+                .map(|p| {
+                    let p = p.replace('\\', "/");
+                    p.strip_prefix("./").unwrap_or(&p).to_string()
+                })
+                .collect();
 
         // Also check if any found files are common files
-        let common_files_set: HashSet<String> =
-            manifest.get_common_files().iter().cloned().collect();
+        let common_files_set: HashSet<String> = manifest
+            .get_common_files()
+            .iter()
+            .map(|p| {
+                let p = p.replace('\\', "/");
+                p.strip_prefix("./").unwrap_or(&p).to_string()
+            })
+            .collect();
 
         for dotfile in &mut found {
-            let rel = dotfile.relative_path.to_string_lossy().to_string();
+            let rel_raw = dotfile.relative_path.to_string_lossy().replace('\\', "/");
+            let rel = rel_raw.strip_prefix("./").unwrap_or(&rel_raw).to_string();
+
             if synced_set.contains(&rel) {
                 dotfile.synced = true;
             }
@@ -421,10 +436,15 @@ impl SyncService {
         let common_files = manifest.get_common_files();
         for common_path in common_files {
             // Skip if already in the list (shouldn't happen, but be safe)
-            if found
-                .iter()
-                .any(|d| d.relative_path.to_string_lossy() == *common_path)
-            {
+            if found.iter().any(|d| {
+                let d_path_raw = d.relative_path.to_string_lossy().replace('\\', "/");
+                let d_path = d_path_raw.strip_prefix("./").unwrap_or(&d_path_raw);
+
+                let c_path_raw = common_path.replace('\\', "/");
+                let c_path = c_path_raw.strip_prefix("./").unwrap_or(&c_path_raw);
+
+                d_path == c_path
+            }) {
                 continue;
             }
 
