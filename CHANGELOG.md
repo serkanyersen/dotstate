@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ---
+## [0.2.7] - 2026-01-17
+### Added
+- **Theme**: Added new fixed theme with unified colors
+
+### Fixed
+- **Keymap**: Fixed keyhandling issues when inputs are focused
+
+### Changed
+- **Theme**: Updated color definitions to be more consistent
+
 ## [0.2.6] - 2026-01-16
 
 ### Added
