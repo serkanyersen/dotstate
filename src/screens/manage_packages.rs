@@ -778,8 +778,11 @@ impl ManagePackagesScreen {
             // Generalized input filtering
             if !crate::utils::TextInput::is_action_allowed_when_focused(&action) {
                 if let KeyCode::Char(c) = key.code {
-                    if !key.modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SUPER) {
-                         match state.add_focused_field {
+                    if !key
+                        .modifiers
+                        .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SUPER)
+                    {
+                        match state.add_focused_field {
                             AddPackageField::Name => {
                                 state.add_name_input.insert_char(c);
                             }
@@ -792,8 +795,9 @@ impl ManagePackagesScreen {
                                 let old_suggestion = PackageManagerImpl::suggest_binary_name(
                                     state.add_package_name_input.text(),
                                 );
-                                let should_auto_update = state.add_binary_name_input.text().is_empty()
-                                    || state.add_binary_name_input.text() == old_suggestion;
+                                let should_auto_update =
+                                    state.add_binary_name_input.text().is_empty()
+                                        || state.add_binary_name_input.text() == old_suggestion;
 
                                 state.add_package_name_input.insert_char(c);
 

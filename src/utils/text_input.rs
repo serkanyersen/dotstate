@@ -543,7 +543,9 @@ mod tests {
         assert!(TextInput::is_action_allowed_when_focused(&Action::Cancel));
         assert!(TextInput::is_action_allowed_when_focused(&Action::Confirm));
         assert!(TextInput::is_action_allowed_when_focused(&Action::NextTab));
-        assert!(TextInput::is_action_allowed_when_focused(&Action::Backspace));
+        assert!(TextInput::is_action_allowed_when_focused(
+            &Action::Backspace
+        ));
         assert!(TextInput::is_action_allowed_when_focused(&Action::MoveLeft));
 
         // Blocked actions (should be suppressed for typing)

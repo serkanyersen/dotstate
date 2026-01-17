@@ -1932,7 +1932,9 @@ impl Screen for DotfileSelectionScreen {
                         // Generalized input filtering
                         if !crate::utils::TextInput::is_action_allowed_when_focused(&action) {
                             if let KeyCode::Char(c) = key.code {
-                                if !key.modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SUPER) {
+                                if !key.modifiers.intersects(
+                                    KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SUPER,
+                                ) {
                                     self.state.file_browser_path_input.insert_char(c);
                                     return Ok(ScreenAction::Refresh);
                                 }
@@ -1957,10 +1959,12 @@ impl Screen for DotfileSelectionScreen {
             if let Event::Key(key) = event {
                 if key.kind == KeyEventKind::Press {
                     if let Some(action) = ctx.config.keymap.get_action(key.code, key.modifiers) {
-                         // Generalized input filtering
+                        // Generalized input filtering
                         if !crate::utils::TextInput::is_action_allowed_when_focused(&action) {
                             if let KeyCode::Char(c) = key.code {
-                                if !key.modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SUPER) {
+                                if !key.modifiers.intersects(
+                                    KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SUPER,
+                                ) {
                                     self.state.custom_file_input.insert_char(c);
                                     return Ok(ScreenAction::Refresh);
                                 }

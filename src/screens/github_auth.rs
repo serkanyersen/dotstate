@@ -1199,15 +1199,20 @@ impl GitHubAuthScreen {
             if !crate::utils::TextInput::is_action_allowed_when_focused(&act) {
                 // Determine if we should consume the key as text input instead
                 if let KeyCode::Char(c) = key.code {
-                   if !key.modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SUPER) {
+                    if !key
+                        .modifiers
+                        .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SUPER)
+                    {
                         match self.state.focused_field {
                             GitHubAuthField::Token => self.state.token_input.insert_char(c),
                             GitHubAuthField::RepoName => self.state.repo_name_input.insert_char(c),
-                            GitHubAuthField::RepoLocation => self.state.repo_location_input.insert_char(c),
+                            GitHubAuthField::RepoLocation => {
+                                self.state.repo_location_input.insert_char(c)
+                            }
                             GitHubAuthField::IsPrivate => {}
                         }
                         return Ok(ScreenAction::None);
-                   }
+                    }
                 }
             }
 
