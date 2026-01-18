@@ -153,7 +153,8 @@ impl<'a> TextInputWidget<'a> {
             let mut block = Block::default()
                 .borders(Borders::ALL)
                 .border_type(crate::styles::theme().border_type(self.focused))
-                .border_style(self.border_style());
+                .border_style(self.border_style())
+                .style(crate::styles::theme().background_style());
 
             if let Some(title) = self.title {
                 block = block

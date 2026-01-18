@@ -110,7 +110,7 @@ impl<'a> Popup<'a> {
         // Optionally dim the background
         if self.dim_background {
             // Dim the entire background (page content becomes darker)
-            let dim = Block::default().style(Style::default().bg(Color::Reset).fg(t.text_muted));
+            let dim = Block::default().style(t.dim_style());
             frame.render_widget(dim, area);
         }
 

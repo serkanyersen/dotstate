@@ -347,7 +347,8 @@ impl Screen for SyncWithRemoteScreen {
         frame.render_widget(Clear, area);
 
         // Background - use Reset to inherit terminal's native background
-        let background = Block::default().style(Style::default().bg(Color::Reset));
+        let t = ui_theme();
+        let background = Block::default().style(t.background_style());
         frame.render_widget(background, area);
 
         let (header_chunk, content_chunk, footer_chunk) = create_standard_layout(area, 5, 2);

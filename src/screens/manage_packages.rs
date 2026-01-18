@@ -17,7 +17,7 @@ use crate::widgets::{TextInputWidget, TextInputWidgetExt};
 use anyhow::Result;
 use crossterm::event::{Event, KeyCode, KeyModifiers};
 use ratatui::prelude::*;
-use ratatui::widgets::{Block, Borders, List, ListItem, Paragraph, Wrap};
+use ratatui::widgets::{Block, Borders, List, ListItem, Padding, Paragraph, Wrap};
 use std::time::Duration;
 use tracing::{debug, error, info, warn};
 
@@ -437,6 +437,11 @@ impl ManagePackagesScreen {
 
 impl Screen for ManagePackagesScreen {
     fn render(&mut self, frame: &mut Frame, area: Rect, ctx: &RenderContext) -> Result<()> {
+        // Background
+        let t = theme();
+        let background = Block::default().style(t.background_style());
+        frame.render_widget(background, area);
+
         let config = ctx.config;
 
         // Ensure list state is initialized if we have packages
@@ -1295,7 +1300,7 @@ impl ManagePackagesScreen {
                     .border_type(theme().border_type(false))
                     .title(" Packages ")
                     .border_style(unfocused_border_style())
-                    .padding(ratatui::widgets::Padding::new(1, 1, 1, 1)),
+                    .padding(Padding::uniform(1)),
             )
             .wrap(Wrap { trim: true })
             .alignment(Alignment::Center);
@@ -1360,18 +1365,22 @@ impl ManagePackagesScreen {
             if let Some(package) = self.state.packages.get(idx) {
                 self.format_package_details(package, idx, config)
             } else {
-                "No package selected".to_string()
+                vec![Line::from("No package selected")]
             }
         } else {
-            "No package selected".to_string()
+            vec![Line::from("No package selected")]
         };
 
         let paragraph = Paragraph::new(details)
+            .style(theme().text_style())
             .block(
                 Block::default()
                     .borders(Borders::ALL)
                     .border_type(theme().border_type(false))
-                    .title(" Package Details "),
+                    .padding(Padding::uniform(1))
+                    .title(" Package Details ")
+                    .style(theme().background_style())
+                    .title_style(theme().title_style()),
             )
             .wrap(Wrap { trim: true });
 
@@ -1380,53 +1389,112 @@ impl ManagePackagesScreen {
         Ok(())
     }
 
-    fn format_package_details(&self, package: &Package, idx: usize, config: &Config) -> String {
+    fn format_package_details(
+        &self,
+        package: &Package,
+        idx: usize,
+        config: &Config,
+    ) -> Vec<Line<'_>> {
+        let t = theme();
         let icons = crate::icons::Icons::from_config(config);
-        let mut details = format!("Name: {}\n", package.name);
+        let mut lines = Vec::new();
+
+        // Helper for labeled fields
+        let add_field = |lines: &mut Vec<Line>, label: &str, value: &str| {
+            lines.push(Line::from(vec![
+                Span::styled(format!("{}: ", label), t.title_style()),
+                Span::styled(value.to_string(), t.text_style()),
+            ]));
+        };
+
+        add_field(&mut lines, "Name", &package.name);
 
         if let Some(desc) = &package.description {
-            details.push_str(&format!("Description: {}\n", desc));
+            lines.push(Line::from(""));
+            lines.push(Line::from(vec![Span::styled(
+                "Description:",
+                t.title_style(),
+            )]));
+            lines.push(Line::from(vec![Span::styled(
+                desc.to_string(),
+                t.muted_style(),
+            )]));
         }
 
-        details.push_str(&format!("Manager: {:?}\n", package.manager));
+        lines.push(Line::from(""));
+        add_field(&mut lines, "Manager", &format!("{:?}", package.manager));
 
         if let Some(pkg_name) = &package.package_name {
-            details.push_str(&format!("Package Name: {}\n", pkg_name));
+            add_field(&mut lines, "Package Name", pkg_name);
         }
 
-        details.push_str(&format!("Binary Name: {}\n", package.binary_name));
+        add_field(&mut lines, "Binary Name", &package.binary_name);
 
         // Status
+        lines.push(Line::from(""));
         let status = self.state.package_statuses.get(idx);
         match status {
             Some(PackageStatus::Installed) => {
-                details.push_str(&format!("\n\nStatus: {} Installed", icons.success()))
+                lines.push(Line::from(vec![
+                    Span::styled("Status: ", t.title_style()),
+                    Span::styled(format!("{} Installed", icons.success()), t.success_style()),
+                ]));
             }
             Some(PackageStatus::NotInstalled) => {
-                details.push_str(&format!("\n\nStatus: {} Not Installed", icons.error()));
+                lines.push(Line::from(vec![
+                    Span::styled("Status: ", t.title_style()),
+                    Span::styled(format!("{} Not Installed", icons.error()), t.error_style()),
+                ]));
+
                 // Check if manager is installed for installation purposes
                 if !PackageManagerImpl::is_manager_installed(&package.manager) {
-                    details.push_str(&format!(
-                        "\n{} Package manager '{:?}' is not installed",
-                        icons.warning(),
-                        package.manager
-                    ));
-                    details.push_str(&format!(
-                        "\n\nInstallation instructions:\n{}",
-                        PackageManagerImpl::installation_instructions(&package.manager)
-                    ));
+                    lines.push(Line::from(""));
+                    lines.push(Line::from(vec![Span::styled(
+                        format!(
+                            "{} Package manager '{:?}' is not installed",
+                            icons.warning(),
+                            package.manager
+                        ),
+                        t.warning_style(),
+                    )]));
+
+                    lines.push(Line::from(""));
+                    lines.push(Line::from(vec![Span::styled(
+                        "Installation instructions:",
+                        t.title_style(),
+                    )]));
+
+                    let instructions =
+                        PackageManagerImpl::installation_instructions(&package.manager);
+                    for line in instructions.lines() {
+                        lines.push(Line::from(vec![Span::styled(
+                            line.to_string(),
+                            t.muted_style(),
+                        )]));
+                    }
                 }
             }
             Some(PackageStatus::Error(msg)) => {
-                details.push_str(&format!("\n\nStatus: {} Error: {}", icons.warning(), msg))
+                lines.push(Line::from(vec![
+                    Span::styled("Status: ", t.title_style()),
+                    Span::styled(format!("{} Error: ", icons.warning()), t.warning_style()),
+                    Span::styled(msg.to_string(), t.text_style()),
+                ]));
             }
-            _ => details.push_str(&format!(
-                "\n\nStatus: {} Unknown (press '{}' to check)",
-                icons.loading(),
-                config
-                    .keymap
-                    .get_key_display_for_action(crate::keymap::Action::CheckStatus)
-            )),
+            _ => {
+                lines.push(Line::from(vec![
+                    Span::styled("Status: ", t.title_style()),
+                    Span::styled(format!("{} Unknown", icons.loading()), t.muted_style()),
+                    Span::styled(" (press ", t.muted_style()),
+                    Span::styled(
+                        config
+                            .keymap
+                            .get_key_display_for_action(crate::keymap::Action::CheckStatus),
+                        t.emphasis_style(),
+                    ),
+                    Span::styled(" to check)", t.muted_style()),
+                ]));
+            }
         }
 
         // Cache details
@@ -1435,30 +1503,51 @@ impl ManagePackagesScreen {
             .cache
             .get_status(&self.state.active_profile, &package.name)
         {
-            details.push_str("\n\n-- Last Check Details --");
-            details.push_str(&format!(
-                "\nTime: {}",
-                entry.last_checked.format("%Y-%m-%d %H:%M:%S UTC")
-            ));
+            lines.push(Line::from(""));
+            lines.push(Line::from(""));
+            lines.push(Line::from(vec![Span::styled(
+                "-- Last Check Details --",
+                t.muted_style(),
+            )]));
+
+            lines.push(Line::from(vec![
+                Span::styled("Time: ", t.title_style()),
+                Span::styled(
+                    entry
+                        .last_checked
+                        .format("%Y-%m-%d %H:%M:%S UTC")
+                        .to_string(),
+                    t.text_style(),
+                ),
+            ]));
 
             if let Some(cmd) = &entry.check_command {
-                details.push_str(&format!("\nCommand: {}", cmd));
+                lines.push(Line::from(vec![
+                    Span::styled("Command: ", t.title_style()),
+                    Span::styled(cmd.to_string(), t.emphasis_style()),
+                ]));
             }
 
             if let Some(output) = &entry.output {
-                // Truncate output if too long to avoid cluttering the view too much,
-                // but keep enough to be useful.
-                // Maybe just show first few lines?
+                // Truncate output if too long
                 let display_output = if output.len() > 500 {
                     format!("{}... (truncated)", &output[..500])
                 } else {
                     output.clone()
                 };
-                details.push_str(&format!("\nOutput:\n{}", display_output));
+
+                lines.push(Line::from(vec![Span::styled("Output:", t.title_style())]));
+
+                for line in display_output.lines() {
+                    lines.push(Line::from(vec![Span::styled(
+                        line.to_string(),
+                        t.muted_style(),
+                    )]));
+                }
             }
         }
 
-        details
+        lines
     }
 
     fn render_popup(&mut self, frame: &mut Frame, area: Rect, config: &Config) -> Result<()> {
@@ -1773,7 +1862,8 @@ impl ManagePackagesScreen {
 
     fn render_installation_progress(&mut self, frame: &mut Frame, area: Rect) -> Result<()> {
         // Render background
-        let background = Block::default().style(Style::default().bg(Color::Reset));
+        let t = theme();
+        let background = Block::default().style(t.background_style());
         frame.render_widget(background, area);
 
         match &self.state.installation_step {

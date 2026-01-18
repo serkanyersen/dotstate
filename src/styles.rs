@@ -28,6 +28,7 @@ static THEME: RwLock<Theme> = RwLock::new(Theme {
     border_focused: Color::Cyan,
     highlight_bg: Color::DarkGray,
     background: Color::Reset,
+    dim_bg: Color::Black,
     border_type: BorderType::Plain,
     border_focused_type: BorderType::Thick,
     dialog_border_type: BorderType::Double,
@@ -110,6 +111,8 @@ pub struct Theme {
     pub highlight_bg: Color,
     /// Background color (use Reset for terminal default)
     pub background: Color,
+    /// Dimmed background color for modals
+    pub dim_bg: Color,
 
     // === Border Types ===
     /// Default border type (unfocused)
@@ -146,7 +149,7 @@ impl Theme {
             error: Color::Rgb(200, 40, 40),   // Fire Brick
 
             // Text colors
-            text: Color::Reset, // Adapt to terminal default (Black on White / White on Black)
+            text: Color::Rgb(200, 200, 200),       // Light gray
             text_muted: Color::Rgb(128, 128, 128), // Gray works on both
             text_dimmed: Color::Rgb(100, 100, 100),
             text_emphasis: Color::Rgb(220, 140, 0), // Match warning/orange
@@ -155,7 +158,8 @@ impl Theme {
             border: Color::Rgb(100, 100, 100),       // Dark Gray
             border_focused: Color::Rgb(0, 150, 200), // Match primary
             highlight_bg: Color::Rgb(60, 60, 60), // Dark gray for selection (assuming text becomes white-ish or readable)
-            background: Color::Reset,
+            background: Color::Rgb(20, 20, 20),
+            dim_bg: Color::Rgb(40, 40, 40),
 
             border_type: BorderType::Plain,
             border_focused_type: BorderType::Thick,
@@ -189,6 +193,7 @@ impl Theme {
             border_focused: Color::LightBlue,
             highlight_bg: Color::DarkGray,
             background: Color::Reset,
+            dim_bg: Color::Reset,
 
             border_type: BorderType::Plain,
             border_focused_type: BorderType::Thick,
@@ -222,6 +227,7 @@ impl Theme {
             border_focused: Color::Blue,
             highlight_bg: Color::Gray,
             background: Color::Reset,
+            dim_bg: Color::Reset,
 
             border_type: BorderType::Plain,
             border_focused_type: BorderType::Thick,
@@ -255,6 +261,7 @@ impl Theme {
             border_focused: Color::Reset,
             highlight_bg: Color::Reset,
             background: Color::Reset,
+            dim_bg: Color::Reset,
 
             border_type: BorderType::Rounded,
             border_focused_type: BorderType::Thick,
@@ -377,6 +384,14 @@ impl Theme {
             return Style::default();
         }
         Style::default().bg(self.background)
+    }
+
+    /// Dimmed background style for modals
+    pub fn dim_style(&self) -> Style {
+        if self.theme_type == ThemeType::NoColor {
+            return Style::default();
+        }
+        Style::default().bg(self.dim_bg).fg(self.text_muted)
     }
 }
 

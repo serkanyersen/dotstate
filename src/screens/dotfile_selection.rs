@@ -20,7 +20,7 @@ use crate::widgets::{TextInputWidget, TextInputWidgetExt};
 use anyhow::Result;
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers};
 use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Modifier, Style};
 
 use ratatui::widgets::{
     Block, Borders, Clear, List, ListItem, ListState, Paragraph, Scrollbar, ScrollbarOrientation,
@@ -912,7 +912,8 @@ impl DotfileSelectionScreen {
                     // .borders(Borders::ALL)
                     .title(" Current Directory ")
                     .title_alignment(Alignment::Center)
-                    .style(Style::default().bg(Color::Reset)),
+                    .title_style(crate::styles::theme().title_style())
+                    .style(crate::styles::theme().background_style()),
             );
         frame.render_widget(path_display, browser_chunks[0]);
 
@@ -925,7 +926,8 @@ impl DotfileSelectionScreen {
         // Split list and preview
         let list_preview_chunks = create_split_layout(browser_chunks[2], &[50, 50]);
 
-        // File list using ListState
+        // Create list items
+        let t = ui_theme();
         let items: Vec<ListItem> = self
             .state
             .file_browser_entries
@@ -960,8 +962,9 @@ impl DotfileSelectionScreen {
                     format!("{} ", icons.file())
                 };
                 let display = format!("{}{}", prefix, name);
+                let style = t.text_style();
 
-                ListItem::new(display)
+                ListItem::new(display).style(style)
             })
             .collect();
 
@@ -975,12 +978,11 @@ impl DotfileSelectionScreen {
             .position(selected_index);
 
         // Add focus indicator to file browser list
-        let t = ui_theme();
         let list_title = " Select File or Directory (Enter to load path) ";
         let list_border_style = if self.state.focus == DotfileSelectionFocus::FileBrowserList {
-            focused_border_style().bg(Color::Reset)
+            focused_border_style().bg(t.background)
         } else {
-            unfocused_border_style().bg(Color::Reset)
+            unfocused_border_style().bg(t.background)
         };
 
         let list =
@@ -993,7 +995,8 @@ impl DotfileSelectionScreen {
                             self.state.focus == DotfileSelectionFocus::FileBrowserList,
                         ))
                         .title_alignment(Alignment::Center)
-                        .border_style(list_border_style),
+                        .border_style(list_border_style)
+                        .style(t.background_style()),
                 )
                 .highlight_style(t.highlight_style())
                 .highlight_symbol(LIST_HIGHLIGHT_SYMBOL);
@@ -1048,23 +1051,31 @@ impl DotfileSelectionScreen {
                     theme,
                 )?;
             } else {
-                let empty_preview = Paragraph::new("No selection").block(
-                    Block::default()
-                        .borders(Borders::ALL)
-                        .border_type(ui_theme().border_type(false))
-                        .title(" Preview ")
-                        .title_alignment(Alignment::Center),
-                );
+                let empty_preview = Paragraph::new("No selection")
+                    .style(t.muted_style())
+                    .alignment(Alignment::Center)
+                    .block(
+                        Block::default()
+                            .borders(Borders::ALL)
+                            .border_type(t.border_type(false))
+                            .title(" Preview ")
+                            .title_alignment(Alignment::Center)
+                            .style(t.background_style()),
+                    );
                 frame.render_widget(empty_preview, list_preview_chunks[1]);
             }
         } else {
-            let empty_preview = Paragraph::new("No selection").block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .border_type(ui_theme().border_type(false))
-                    .title(" Preview ")
-                    .title_alignment(Alignment::Center),
-            );
+            let empty_preview = Paragraph::new("No selection")
+                .style(t.muted_style())
+                .alignment(Alignment::Center)
+                .block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .border_type(t.border_type(false))
+                        .title(" Preview ")
+                        .title_alignment(Alignment::Center)
+                        .style(t.background_style()),
+                );
             frame.render_widget(empty_preview, list_preview_chunks[1]);
         }
 
@@ -1073,7 +1084,7 @@ impl DotfileSelectionScreen {
             let footer_block = Block::default()
                 .borders(Borders::TOP)
                 .border_style(Style::default().fg(t.text_muted))
-                .style(Style::default().bg(Color::Reset));
+                .style(t.background_style());
             let footer_inner = footer_block.inner(browser_chunks[3]);
             let k = |a| config.keymap.get_key_display_for_action(a);
             let footer_text = format!(
@@ -1851,7 +1862,8 @@ impl Screen for DotfileSelectionScreen {
         frame.render_widget(Clear, area);
 
         // Background - use Reset to inherit terminal's native background
-        let background = Block::default().style(Style::default().bg(Color::Reset));
+        let t = ui_theme();
+        let background = Block::default().style(t.background_style());
         frame.render_widget(background, area);
 
         // Layout: Title/Description, Content (list + preview), Footer

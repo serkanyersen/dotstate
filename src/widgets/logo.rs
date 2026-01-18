@@ -1,4 +1,5 @@
 //! The [`DotstateLogo`] widget renders the dotstate logo.
+use crate::styles::theme;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::text::Text;
@@ -97,7 +98,9 @@ impl DotstateLogo {
 impl Widget for DotstateLogo {
     fn render(self, area: Rect, buf: &mut Buffer) {
         let logo = self.size.as_str();
-        Text::raw(logo).render(area, buf);
+        Text::raw(logo)
+            .style(theme().text_style())
+            .render(area, buf);
     }
 }
 

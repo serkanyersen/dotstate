@@ -185,6 +185,7 @@ impl FilePreview {
                                 .border_type(border_type)
                                 .title_alignment(Alignment::Center)
                                 .border_style(border_style)
+                                .style(t.background_style())
                                 .padding(Padding::uniform(1)),
                         )
                         .wrap(Wrap { trim: false }); // Don't trim whitespace
@@ -212,6 +213,7 @@ impl FilePreview {
                             .border_type(border_type)
                             .title_alignment(Alignment::Center)
                             .border_style(border_style)
+                            .style(t.background_style())
                             .padding(Padding::uniform(1)),
                     );
                     frame.render_widget(preview, area);
@@ -293,6 +295,7 @@ impl FilePreview {
                     .border_type(border_type)
                     .title_alignment(Alignment::Center)
                     .border_style(border_style)
+                    .style(t.background_style())
                     .padding(Padding::uniform(1)),
             );
             frame.render_widget(preview, area);
@@ -316,6 +319,7 @@ impl FilePreview {
                     .border_type(border_type)
                     .title_alignment(Alignment::Center)
                     .border_style(border_style)
+                    .style(t.background_style())
                     .padding(Padding::uniform(1)),
             );
             frame.render_widget(preview, area);

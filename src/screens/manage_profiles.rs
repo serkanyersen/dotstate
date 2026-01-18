@@ -758,7 +758,8 @@ impl Screen for ManageProfilesScreen {
         frame.render_widget(Clear, area);
 
         // Background - use Reset to inherit terminal's native background
-        let background = Block::default().style(Style::default().bg(Color::Reset));
+        let t = theme();
+        let background = Block::default().style(t.background_style());
         frame.render_widget(background, area);
 
         // Layout: Header, Content (split), Footer

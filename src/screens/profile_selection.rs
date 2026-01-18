@@ -193,6 +193,11 @@ impl Default for ProfileSelectionScreen {
 
 impl Screen for ProfileSelectionScreen {
     fn render(&mut self, frame: &mut Frame, area: Rect, ctx: &RenderContext) -> Result<()> {
+        // Background
+        let t = crate::styles::theme();
+        let background = ratatui::widgets::Block::default().style(t.background_style());
+        frame.render_widget(background, area);
+
         // Always render main content first
         if self.state.show_create_popup {
             self.render_create_popup(frame, area, ctx.config);
