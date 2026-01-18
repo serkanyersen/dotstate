@@ -951,7 +951,7 @@ impl MainMenuScreen {
                     crate::styles::ThemeType::SolarizedDark => "solarized-dark",
                     crate::styles::ThemeType::SolarizedLight => "solarized-light",
                     crate::styles::ThemeType::NoColor => "nocolor",
-                    crate::styles::ThemeType::Fixed => "fixed",
+                    crate::styles::ThemeType::Midnight => "midnight",
                 };
                 c.keymap.footer_navigation(theme_name)
             })

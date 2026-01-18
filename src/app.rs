@@ -295,7 +295,7 @@ impl App {
         Ok(())
     }
 
-    /// Cycle through themes: dark -> light -> nocolor -> fixed -> dark
+    /// Cycle through themes: dark -> light -> nocolor -> midnight -> dark
     fn cycle_theme(&mut self) -> Result<()> {
         use crate::styles::ThemeType;
 
@@ -305,14 +305,14 @@ impl App {
             .parse::<ThemeType>()
             .unwrap_or(ThemeType::Dark);
 
-        // Cycle through themes: dark -> light -> solarized-dark -> solarized-light -> nocolor -> fixed -> dark
+        // Cycle through themes: dark -> light -> solarized-dark -> solarized-light -> nocolor -> midnight -> dark
         let next_theme = match current_theme {
             ThemeType::Dark => ThemeType::Light,
             ThemeType::Light => ThemeType::SolarizedDark,
             ThemeType::SolarizedDark => ThemeType::SolarizedLight,
             ThemeType::SolarizedLight => ThemeType::NoColor,
-            ThemeType::NoColor => ThemeType::Fixed,
-            ThemeType::Fixed => ThemeType::Dark,
+            ThemeType::NoColor => ThemeType::Midnight,
+            ThemeType::Midnight => ThemeType::Dark,
         };
 
         // Update config
@@ -322,7 +322,7 @@ impl App {
             ThemeType::SolarizedDark => "solarized-dark".to_string(),
             ThemeType::SolarizedLight => "solarized-light".to_string(),
             ThemeType::NoColor => "nocolor".to_string(),
-            ThemeType::Fixed => "fixed".to_string(),
+            ThemeType::Midnight => "midnight".to_string(),
         };
 
         // Update NO_COLOR environment variable based on theme
@@ -336,7 +336,7 @@ impl App {
             | ThemeType::Light
             | ThemeType::SolarizedDark
             | ThemeType::SolarizedLight
-            | ThemeType::Fixed => {
+            | ThemeType::Midnight => {
                 // Unset NO_COLOR to allow colors
                 // Note: Some libraries may have already checked NO_COLOR at startup,
                 // but unsetting it allows future checks to see colors are enabled

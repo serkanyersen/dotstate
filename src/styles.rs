@@ -53,8 +53,8 @@ pub enum ThemeType {
     Light,
     /// Disable all UI colors (equivalent to `NO_COLOR=1` / `--no-colors`)
     NoColor,
-    /// Fixed colors regardless of Terminal color presets, RGB values only
-    Fixed,
+    /// Midnight colors regardless of Terminal color presets, RGB values only
+    Midnight,
     /// Solarized Dark theme
     SolarizedDark,
     /// Solarized Light theme
@@ -67,7 +67,7 @@ impl FromStr for ThemeType {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(match s.to_lowercase().as_str() {
             "light" => ThemeType::Light,
-            "fixed" => ThemeType::Fixed,
+            "midnight" => ThemeType::Midnight,
             "solarized-dark" | "solarized_dark" | "solarized" => ThemeType::SolarizedDark,
             "solarized-light" | "solarized_light" => ThemeType::SolarizedLight,
             "nocolor" | "no-color" | "no_color" => ThemeType::NoColor,
@@ -135,16 +135,16 @@ impl Theme {
             ThemeType::Dark => Self::dark(),
             ThemeType::Light => Self::light(),
             ThemeType::NoColor => Self::no_color(),
-            ThemeType::Fixed => Self::fixed(),
+            ThemeType::Midnight => Self::midnight(),
             ThemeType::SolarizedDark => Self::solarized_dark(),
             ThemeType::SolarizedLight => Self::solarized_light(),
         }
     }
 
-    /// Fixed theme - unified color palette
-    pub fn fixed() -> Self {
+    /// Midnight theme - unified color palette
+    pub fn midnight() -> Self {
         Self {
-            theme_type: ThemeType::Fixed,
+            theme_type: ThemeType::Midnight,
 
             // Primary colors - balanced mid-tones for visibility on light/dark
             primary: Color::Rgb(0, 150, 200),    // Cerulean Blue
