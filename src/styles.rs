@@ -61,6 +61,44 @@ pub enum ThemeType {
     SolarizedLight,
 }
 
+impl ThemeType {
+    /// Get the display name of this theme
+    pub fn name(&self) -> &'static str {
+        match self {
+            ThemeType::Dark => "Dark",
+            ThemeType::Light => "Light",
+            ThemeType::NoColor => "No Color",
+            ThemeType::Midnight => "Midnight",
+            ThemeType::SolarizedDark => "Solarized Dark",
+            ThemeType::SolarizedLight => "Solarized Light",
+        }
+    }
+
+    /// Get the config string value for this theme
+    pub fn to_config_string(&self) -> &'static str {
+        match self {
+            ThemeType::Dark => "dark",
+            ThemeType::Light => "light",
+            ThemeType::NoColor => "nocolor",
+            ThemeType::Midnight => "midnight",
+            ThemeType::SolarizedDark => "solarized-dark",
+            ThemeType::SolarizedLight => "solarized-light",
+        }
+    }
+
+    /// Get all available themes
+    pub fn all() -> &'static [ThemeType] {
+        &[
+            ThemeType::Dark,
+            ThemeType::Light,
+            ThemeType::Midnight,
+            ThemeType::SolarizedDark,
+            ThemeType::SolarizedLight,
+            ThemeType::NoColor,
+        ]
+    }
+}
+
 impl FromStr for ThemeType {
     type Err = ();
 

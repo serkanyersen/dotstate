@@ -39,7 +39,8 @@ impl Header {
                     .right_aligned()
                     .style(t.muted_style()),
             )
-            .padding(ratatui::widgets::Padding::new(1, 1, 0, 0));
+            .padding(ratatui::widgets::Padding::new(1, 1, 0, 0))
+            .style(t.background_style());
 
         // Get the inner area (inside borders and padding)
         let inner_area = header_block.inner(area);

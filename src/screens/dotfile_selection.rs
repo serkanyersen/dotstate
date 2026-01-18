@@ -877,6 +877,7 @@ impl DotfileSelectionScreen {
                     None,
                     syntax_set,
                     theme,
+                    config,
                 )?;
             } else {
                 let empty_preview = Paragraph::new("No file selected").block(

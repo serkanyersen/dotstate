@@ -55,6 +55,7 @@ pub mod manage_packages;
 pub mod manage_profiles;
 pub mod profile_selection;
 pub mod screen_trait;
+pub mod settings;
 pub mod sync_with_remote;
 
 pub use dotfile_selection::DotfileSelectionScreen;
@@ -64,4 +65,5 @@ pub use manage_packages::ManagePackagesScreen;
 pub use manage_profiles::ManageProfilesScreen;
 pub use profile_selection::ProfileSelectionScreen;
 pub use screen_trait::{RenderContext, Screen, ScreenAction, ScreenContext};
+pub use settings::SettingsScreen;
 pub use sync_with_remote::SyncWithRemoteScreen;

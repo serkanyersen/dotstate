@@ -322,6 +322,7 @@ impl SyncWithRemoteScreen {
                         self.state.diff_content.as_deref(),
                         ctx.syntax_set,
                         ctx.syntax_theme,
+                        ctx.config,
                     )?;
                 }
             }

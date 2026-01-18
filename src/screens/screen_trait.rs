@@ -204,6 +204,14 @@ pub enum ScreenAction {
     // Package management actions
     /// Trigger installation of all missing packages.
     InstallMissingPackages,
+    // Settings actions
+    /// Update a setting value.
+    UpdateSetting {
+        /// Name of the setting being updated.
+        setting: String,
+        /// Index of the selected option.
+        option_index: usize,
+    },
 }
 
 /// Trait for screen controllers.

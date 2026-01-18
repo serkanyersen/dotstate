@@ -70,6 +70,7 @@ pub struct App {
     profile_selection_screen: crate::screens::ProfileSelectionScreen,
     manage_profiles_screen: ManageProfilesScreen,
     manage_packages_screen: ManagePackagesScreen,
+    settings_screen: crate::screens::SettingsScreen,
     message_component: Option<MessageComponent>,
     // Syntax highlighting assets
     syntax_set: SyntaxSet,
@@ -125,6 +126,7 @@ impl App {
             profile_selection_screen: crate::screens::ProfileSelectionScreen::new(),
             manage_profiles_screen: ManageProfilesScreen::new(),
             manage_packages_screen: ManagePackagesScreen::new(),
+            settings_screen: crate::screens::SettingsScreen::new(),
 
             message_component: None,
             syntax_set,
@@ -538,6 +540,20 @@ impl App {
                         error!("Failed to render profile selection screen: {}", e);
                     }
                 }
+                Screen::Settings => {
+                    // Router pattern - delegate to screen's render method
+                    use crate::screens::{RenderContext, Screen as ScreenTrait};
+                    let syntax_theme = crate::utils::get_current_syntax_theme(&self.theme_set);
+                    let ctx = RenderContext::new(
+                        &config_clone,
+                        &self.syntax_set,
+                        &self.theme_set,
+                        syntax_theme,
+                    );
+                    if let Err(e) = self.settings_screen.render(frame, area, &ctx) {
+                        error!("Failed to render settings screen: {}", e);
+                    }
+                }
             }
 
             // Render help overlay on top of everything if active
@@ -793,6 +809,13 @@ impl App {
                 self.process_screen_action(action)?;
                 Ok(())
             }
+            Screen::Settings => {
+                use crate::screens::ScreenContext;
+                let ctx = ScreenContext::new(&self.config, &self.config_path);
+                let action = self.settings_screen.handle_event(event, &ctx)?;
+                self.process_screen_action(action)?;
+                Ok(())
+            }
         }
     }
 
@@ -937,6 +960,23 @@ impl App {
             ScreenAction::InstallMissingPackages => {
                 self.manage_packages_screen
                     .start_installing_missing_packages();
+            }
+            ScreenAction::UpdateSetting {
+                setting,
+                option_index,
+            } => {
+                // Apply the setting change using the same logic from SettingsScreen
+                let changed = self.settings_screen.apply_setting_to_config(
+                    &mut self.config,
+                    &setting,
+                    option_index,
+                );
+                if changed {
+                    // Save config
+                    if let Err(e) = self.config.save(&self.config_path) {
+                        error!("Failed to save config after settings change: {}", e);
+                    }
+                }
             }
             ScreenAction::SetHasChanges(has_changes) => {
                 self.ui_state.has_changes_to_push = has_changes;

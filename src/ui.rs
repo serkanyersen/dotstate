@@ -10,6 +10,7 @@ pub enum Screen {
     ManageProfiles,
     ProfileSelection, // For selecting which profile to activate after setup
     ManagePackages,
+    Settings,
 }
 
 /// GitHub auth state (also handles local repo setup)

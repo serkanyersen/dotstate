@@ -517,7 +517,7 @@ impl FileBrowser {
         self.render_list(frame, list_preview_chunks[0], config);
 
         // Render preview
-        self.render_preview(frame, list_preview_chunks[1], syntax_set, theme)?;
+        self.render_preview(frame, list_preview_chunks[1], syntax_set, theme, config)?;
 
         Ok(())
     }
@@ -597,6 +597,7 @@ impl FileBrowser {
         area: Rect,
         syntax_set: &SyntaxSet,
         theme: &Theme,
+        config: &crate::config::Config,
     ) -> Result<()> {
         let t = ui_theme();
 
@@ -628,6 +629,7 @@ impl FileBrowser {
                     None,
                     syntax_set,
                     theme,
+                    config,
                 )?;
 
                 return Ok(());

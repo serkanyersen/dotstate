@@ -264,7 +264,8 @@ impl Config {
 
         match self.icon_set.to_lowercase().as_str() {
             "nerd" | "nerdfont" | "nerdfonts" => IconSet::NerdFonts,
-            "unicode" | "emoji" => IconSet::Unicode,
+            "unicode" => IconSet::Unicode,
+            "emoji" => IconSet::Emoji,
             "ascii" | "plain" => IconSet::Ascii,
             _ => IconSet::detect(), // Auto-detect or fallback to detection
         }

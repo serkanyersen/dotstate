@@ -26,6 +26,7 @@ impl FilePreview {
     /// * `title` - Optional custom title (defaults to "Preview")
     /// * `syntax_set` - Syntax definitions for highlighting
     /// * `theme` - Theme for highlighting
+    /// * `config` - Application config for icon settings
     #[allow(clippy::too_many_arguments)]
     pub fn render(
         frame: &mut Frame,
@@ -37,6 +38,7 @@ impl FilePreview {
         content_override: Option<&str>,
         syntax_set: &SyntaxSet,
         theme: &Theme,
+        config: &crate::config::Config,
     ) -> Result<()> {
         let preview_title = title.unwrap_or("Preview");
         let no_color = crate::styles::theme().theme_type == crate::styles::ThemeType::NoColor;
@@ -222,7 +224,7 @@ impl FilePreview {
         } else if file_path.is_dir() {
             let mut preview_lines = Vec::new();
             let theme = crate::styles::theme();
-            let icons = crate::icons::Icons::new();
+            let icons = crate::icons::Icons::from_config(config);
 
             preview_lines.push(Line::from(vec![
                 Span::styled("Directory: ", theme.title_style()),

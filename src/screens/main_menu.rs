@@ -27,6 +27,7 @@ pub enum MenuItem {
     ManageProfiles,
     ManagePackages,
     SetupRepository,
+    Settings,
 }
 
 impl MenuItem {
@@ -38,13 +39,14 @@ impl MenuItem {
             MenuItem::ManageProfiles,
             MenuItem::ManagePackages,
             MenuItem::SetupRepository,
+            MenuItem::Settings,
         ]
     }
 
-    /// Check if this menu item requires repository setup
     pub fn requires_setup(&self) -> bool {
         match self {
             MenuItem::SetupRepository => false, // Always available
+            MenuItem::Settings => false,        // Always available
             _ => true,                          // All other items require setup
         }
     }
@@ -62,6 +64,7 @@ impl MenuItem {
             MenuItem::ManageProfiles => icons.profile(),
             MenuItem::ManagePackages => icons.package(),
             MenuItem::SetupRepository => icons.git(),
+            MenuItem::Settings => icons.cog(),
         }
     }
 
@@ -73,6 +76,7 @@ impl MenuItem {
             MenuItem::ManageProfiles => "Manage Profiles",
             MenuItem::ManagePackages => "Manage Packages",
             MenuItem::SetupRepository => "Setup git repository",
+            MenuItem::Settings => "Settings",
         }
     }
 
@@ -316,10 +320,65 @@ impl MenuItem {
                 ];
                 Text::from(lines)
             }
+            MenuItem::Settings => {
+                let lines = vec![
+                    Line::from(vec![Span::styled(
+                        "Customize Your Experience",
+                        t.title_style(),
+                    )]),
+                    Line::from(""),
+                    Line::from(vec![Span::styled(
+                        "Configure DotState to work exactly how you want:",
+                        t.text_style(),
+                    )]),
+                    Line::from(""),
+                    Line::from(vec![
+                        Span::styled("  • ", t.muted_style()),
+                        Span::styled("Theme", t.emphasis_style()),
+                        Span::styled(" - Choose your color scheme", t.text_style()),
+                    ]),
+                    Line::from(vec![
+                        Span::styled("  • ", t.muted_style()),
+                        Span::styled("Icons", t.emphasis_style()),
+                        Span::styled(" - NerdFonts, Unicode, or ASCII", t.text_style()),
+                    ]),
+                    Line::from(vec![
+                        Span::styled("  • ", t.muted_style()),
+                        Span::styled("Keymap", t.emphasis_style()),
+                        Span::styled(" - Standard, Vim, or Emacs bindings", t.text_style()),
+                    ]),
+                    Line::from(vec![
+                        Span::styled("  • ", t.muted_style()),
+                        Span::styled("Backups", t.emphasis_style()),
+                        Span::styled(" - Toggle automatic backup creation", t.text_style()),
+                    ]),
+                    Line::from(vec![
+                        Span::styled("  • ", t.muted_style()),
+                        Span::styled("Updates", t.emphasis_style()),
+                        Span::styled(" - Enable/disable update checks", t.text_style()),
+                    ]),
+                    Line::from(""),
+                    Line::from(vec![
+                        Span::styled(
+                            icons.lightbulb(),
+                            Style::default()
+                                .fg(t.secondary)
+                                .add_modifier(Modifier::BOLD),
+                        ),
+                        Span::styled(
+                            " Tip: ",
+                            Style::default()
+                                .fg(t.secondary)
+                                .add_modifier(Modifier::BOLD),
+                        ),
+                        Span::styled("Changes are applied instantly!", t.text_style()),
+                    ]),
+                ];
+                Text::from(lines)
+            }
         }
     }
 
-    /// Get the explanation panel icon (uses icon provider)
     pub fn explanation_icon(&self, icons: &Icons) -> &'static str {
         match self {
             MenuItem::ScanDotfiles => icons.lightbulb(),
@@ -327,6 +386,7 @@ impl MenuItem {
             MenuItem::ManageProfiles => icons.profile(),
             MenuItem::ManagePackages => icons.package(),
             MenuItem::SetupRepository => icons.git(),
+            MenuItem::Settings => icons.cog(),
         }
     }
 
@@ -553,6 +613,8 @@ impl MainMenuScreen {
 
     /// Update config (only updates config, doesn't change selection)
     pub fn update_config(&mut self, config: Config) {
+        // Update icons when config changes (e.g., icon set changed in settings)
+        self.icons = Icons::from_config(&config);
         self.config = Some(config);
     }
 
@@ -988,6 +1050,7 @@ impl MainMenuScreen {
             MenuItem::ManageProfiles => Ok(ScreenAction::Navigate(ScreenId::ManageProfiles)),
             MenuItem::ManagePackages => Ok(ScreenAction::Navigate(ScreenId::ManagePackages)),
             MenuItem::SetupRepository => Ok(ScreenAction::Navigate(ScreenId::GitHubAuth)),
+            MenuItem::Settings => Ok(ScreenAction::Navigate(ScreenId::Settings)),
         }
     }
 
