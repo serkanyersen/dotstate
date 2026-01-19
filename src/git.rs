@@ -4,6 +4,24 @@ use std::path::Path;
 use std::process::Command;
 use tracing::{debug, info};
 
+/// Redact credentials/tokens from a git URL for safe display/logging.
+///
+/// Handles formats like:
+/// - `https://ghp_TOKEN@github.com/user/repo.git` -> `https://***@github.com/user/repo.git`
+/// - `https://user:password@github.com/user/repo.git` -> `https://***@github.com/user/repo.git`
+/// - `https://oauth2:TOKEN@github.com/user/repo.git` -> `https://***@github.com/user/repo.git`
+/// - `https://github.com/user/repo.git` -> unchanged
+pub fn redact_credentials(url: &str) -> String {
+    if let Some(protocol_end) = url.find("://") {
+        let after_protocol = &url[protocol_end + 3..];
+        if let Some(at_pos) = after_protocol.find('@') {
+            let host_and_path = &after_protocol[at_pos + 1..];
+            return format!("{}://***@{}", &url[..protocol_end], host_and_path);
+        }
+    }
+    url.to_string()
+}
+
 /// Git operations for managing the dotfiles repository
 pub struct GitManager {
     repo: Repository,
@@ -350,8 +368,8 @@ impl GitManager {
         let refspec = format!("refs/heads/{}:refs/heads/{}", branch, branch);
         remote.push(&[&refspec], Some(&mut push_options))
             .with_context(|| {
-                // Get more detailed error information
-                let remote_url = remote.url().unwrap_or("unknown");
+                // Get more detailed error information - redact credentials for safety
+                let remote_url = remote.url().map(redact_credentials).unwrap_or_else(|| "unknown".to_string());
                 format!(
                     "Failed to push to remote '{}' (URL: {}). \
                     Check that:\n  - Your GitHub token has 'repo' scope\n  - The remote branch exists\n  - You have push permissions",
@@ -1177,8 +1195,8 @@ impl GitManager {
         if actual_normalized != expected_normalized {
             return Err(anyhow::anyhow!(
                 "Remote URL mismatch: expected '{}' but found '{}'",
-                expected_url,
-                actual_url
+                redact_credentials(expected_url),
+                redact_credentials(actual_url)
             ));
         }
 

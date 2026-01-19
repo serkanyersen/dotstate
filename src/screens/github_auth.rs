@@ -592,7 +592,11 @@ impl GitHubAuthScreen {
             let expanded_path = crate::git::expand_path(path);
             let validation = crate::git::validate_local_repo(&expanded_path);
 
-            let remote_url = validation.remote_url.as_deref().unwrap_or("unknown");
+            let remote_url = validation
+                .remote_url
+                .as_deref()
+                .map(crate::git::redact_credentials)
+                .unwrap_or_else(|| "unknown".to_string());
 
             let help_lines = vec![
                 Line::from(vec![Span::styled(
@@ -1095,9 +1099,14 @@ impl GitHubAuthScreen {
             }
 
             // Validation passed - signal to app to save config
+            let safe_url = validation
+                .remote_url
+                .as_deref()
+                .map(crate::git::redact_credentials)
+                .unwrap_or_else(|| "unknown".to_string());
             self.state.status_message = Some(format!(
                 "✅ Valid repository found!\n\nRemote: {}\n\nSaving configuration...",
-                validation.remote_url.as_deref().unwrap_or("unknown")
+                safe_url
             ));
 
             // Load profiles from the repository

@@ -57,6 +57,12 @@ pub enum Commands {
         /// Attempt to auto-fix detected issues
         #[arg(long)]
         fix: bool,
+        /// Show detailed diagnostic information
+        #[arg(short, long)]
+        verbose: bool,
+        /// Output results as JSON for scripting
+        #[arg(long)]
+        json: bool,
     },
     /// Shows logs location and how to view them
     Logs,
@@ -87,7 +93,7 @@ impl Cli {
             Some(Commands::Remove { path, common }) => Self::cmd_remove(path, common),
             Some(Commands::Activate) => Self::cmd_activate(),
             Some(Commands::Deactivate) => Self::cmd_deactivate(),
-            Some(Commands::Doctor { fix }) => Self::cmd_doctor(fix),
+            Some(Commands::Doctor { fix, verbose, json }) => Self::cmd_doctor(fix, verbose, json),
             Some(Commands::Help { command }) => Self::cmd_help(command),
             Some(Commands::Logs) => Self::cmd_logs(),
             Some(Commands::Config) => Self::cmd_config(),
@@ -721,55 +727,42 @@ impl Cli {
         Ok(())
     }
 
-    fn cmd_doctor(fix: bool) -> Result<()> {
+    fn cmd_doctor(fix: bool, verbose: bool, json: bool) -> Result<()> {
+        use crate::utils::doctor::{Doctor, DoctorOptions};
+
         let config_path = crate::utils::get_config_path();
         let config =
             Config::load_or_create(&config_path).context("Failed to load configuration")?;
 
         if !config.is_repo_configured() {
-            eprintln!("❌ Repository not configured. Please run 'dotstate' to set up repository.");
+            if json {
+                println!(
+                    r#"{{"error": "Repository not configured", "suggestion": "Run 'dotstate' to set up repository"}}"#
+                );
+            } else {
+                eprintln!(
+                    "❌ Repository not configured. Please run 'dotstate' to set up repository."
+                );
+            }
             std::process::exit(1);
         }
 
-        let mut doctor = crate::utils::doctor::Doctor::new(config, fix);
-        let results = doctor.run_diagnostics()?;
+        let options = DoctorOptions {
+            fix_mode: fix,
+            verbose,
+            json_output: json,
+        };
 
-        // Calculate summary
-        let passed = results
-            .iter()
-            .filter(|r| matches!(r.status, crate::utils::doctor::ValidationStatus::Pass))
-            .count();
-        let warnings = results
-            .iter()
-            .filter(|r| matches!(r.status, crate::utils::doctor::ValidationStatus::Warning))
-            .count();
-        let errors = results
-            .iter()
-            .filter(|r| matches!(r.status, crate::utils::doctor::ValidationStatus::Error))
-            .count();
-        let fixed = results.iter().filter(|r| r.fixable && fix).count();
+        let mut doctor = Doctor::new(config, options);
+        let report = doctor.run_diagnostics()?;
 
-        println!("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-        println!(
-            "Summary: {} passed, {} warnings, {} errors",
-            passed, warnings, errors
-        );
-        if fix {
-            println!(
-                "         Auto-fix attempt completed ({} issues addressed)",
-                fixed
-            );
+        if json {
+            println!("{}", serde_json::to_string_pretty(&report)?);
         } else {
-            let fixable_count = results
-                .iter()
-                .filter(|r| r.fixable && r.status != crate::utils::doctor::ValidationStatus::Pass)
-                .count();
-            if fixable_count > 0 {
-                println!("\n💡 {} issues can be auto-fixed with --fix", fixable_count);
-            }
+            // Summary is printed by doctor itself
         }
 
-        if errors > 0 {
+        if report.summary.errors > 0 {
             std::process::exit(1);
         }
 

@@ -821,35 +821,14 @@ impl SyncService {
             }
         }
 
-        // Update symlink to point to common folder
-        let home_dir = get_home_dir();
-        let target = home_dir.join(relative_path);
-
-        // Remove old symlink if exists
-        if target.symlink_metadata().is_ok() {
-            std::fs::remove_file(&target)?;
-        }
-
-        // Create new symlink to common
-        #[cfg(unix)]
-        std::os::unix::fs::symlink(&dest, &target)?;
-        #[cfg(windows)]
-        {
-            if dest.is_dir() {
-                std::os::windows::fs::symlink_dir(&dest, &target)?;
-            } else {
-                std::os::windows::fs::symlink_file(&dest, &target)?;
-            }
-        }
-
-        // Update manifest
+        // Update manifest first
         manifest.move_to_common(profile_name, relative_path)?;
         manifest.save(repo_path)?;
 
-        // Update symlink tracking: remove old profile tracking, add new common tracking
-        let mut symlink_mgr = SymlinkManager::new(repo_path.clone())?;
+        // Update symlink to point to common folder using SymlinkManager
+        // Disable backups since we're just updating a managed symlink (not replacing user's file)
+        let mut symlink_mgr = SymlinkManager::new_with_backup(repo_path.clone(), false)?;
         symlink_mgr.remove_symlink_from_tracking(profile_name, relative_path)?;
-        // Add the new common symlink to tracking
         symlink_mgr.add_common_symlink(relative_path)?;
 
         info!("Successfully moved {} to common", relative_path);
@@ -908,35 +887,14 @@ impl SyncService {
             }
         }
 
-        // Update symlink to point to profile folder
-        let home_dir = get_home_dir();
-        let target = home_dir.join(relative_path);
-
-        // Remove old symlink if exists
-        if target.symlink_metadata().is_ok() {
-            std::fs::remove_file(&target)?;
-        }
-
-        // Create new symlink to profile
-        #[cfg(unix)]
-        std::os::unix::fs::symlink(&dest, &target)?;
-        #[cfg(windows)]
-        {
-            if dest.is_dir() {
-                std::os::windows::fs::symlink_dir(&dest, &target)?;
-            } else {
-                std::os::windows::fs::symlink_file(&dest, &target)?;
-            }
-        }
-
-        // Update manifest
+        // Update manifest first
         manifest.move_from_common(profile_name, relative_path)?;
         manifest.save(repo_path)?;
 
-        // Update symlink tracking: remove old common tracking, add new profile tracking
-        let mut symlink_mgr = SymlinkManager::new(repo_path.clone())?;
+        // Update symlink to point to profile folder using SymlinkManager
+        // Disable backups since we're just updating a managed symlink (not replacing user's file)
+        let mut symlink_mgr = SymlinkManager::new_with_backup(repo_path.clone(), false)?;
         symlink_mgr.remove_common_symlink_from_tracking(relative_path)?;
-        // Add the new profile symlink to tracking
         symlink_mgr.add_symlink_to_profile(profile_name, relative_path)?;
 
         info!(

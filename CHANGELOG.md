@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **CLI**: Enhanced doctor command with comprehensive diagnostics:
+  - Added version check (shows if updates are available)
+  - Added 7 diagnostic categories: Environment, Configuration, Repository, Profiles, Symlinks, Backups, Filesystem
+  - Added `--verbose` flag for detailed output with file paths and extra info
+  - Added `--json` flag for machine-readable output (scripting support)
+  - Colored output with timing per check and summary statistics
+  - Fixed backup check to read actual config setting and correct backup location (~/.dotstate-backups)
+
+### Security
+- **Git URLs**: Credentials/tokens are now redacted from git remote URLs in all output (doctor, error messages, UI displays)
+
+### Fixed
+- **Sync Service**: Fixed `move_to_common` and `move_from_common` to use SymlinkManager instead of raw symlinks, ensuring proper symlink tracking
+
 ---
 ## [0.2.9] - 2026-01-19
 ### Added
