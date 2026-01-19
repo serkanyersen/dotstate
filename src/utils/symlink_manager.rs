@@ -66,10 +66,10 @@ pub struct TrackedSymlink {
 
 /// Tracking data for all symlinks we manage
 #[derive(Debug, Serialize, Deserialize)]
-struct SymlinkTracking {
-    version: u32,
-    active_profile: String,
-    symlinks: Vec<TrackedSymlink>,
+pub struct SymlinkTracking {
+    pub version: u32,
+    pub active_profile: String,
+    pub symlinks: Vec<TrackedSymlink>,
 }
 
 impl Default for SymlinkTracking {
@@ -89,7 +89,7 @@ pub struct SymlinkManager {
     /// Path to the tracking file
     tracking_file: PathBuf,
     /// Current tracking data
-    tracking: SymlinkTracking,
+    pub tracking: SymlinkTracking,
     /// Whether backups are enabled
     backup_enabled: bool,
     /// Backup manager for centralized backups
@@ -820,7 +820,7 @@ impl SymlinkManager {
     }
 
     /// Save tracking data to disk
-    fn save_tracking(&self) -> Result<()> {
+    pub fn save_tracking(&self) -> Result<()> {
         let json = serde_json::to_string_pretty(&self.tracking)
             .context("Failed to serialize tracking data")?;
 

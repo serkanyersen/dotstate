@@ -1,4 +1,5 @@
 pub mod backup_manager;
+pub mod doctor;
 pub mod layout;
 pub mod list_navigation;
 pub mod move_to_common_validation;
