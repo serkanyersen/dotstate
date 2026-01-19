@@ -20,7 +20,7 @@ use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, 
 use ratatui::layout::{Alignment, Rect};
 use ratatui::prelude::*;
 use ratatui::widgets::{
-    Block, Borders, Clear, HighlightSpacing, List, ListItem, ListState, Paragraph, Wrap,
+    Block, Borders, Clear, HighlightSpacing, List, ListItem, ListState, Padding, Paragraph, Wrap
 };
 use ratatui::Frame;
 
@@ -452,6 +452,14 @@ impl GitHubAuthScreen {
             ])
             .split(content_chunk);
 
+        // Render setup form block
+        let setup_block = Block::bordered()
+            .title(" Local Repository Setup ")
+            .border_style(Style::default().fg(t.primary))
+            .border_type(theme().border_type(false));
+        let setup_area = setup_block.inner(main_layout[0]);
+        frame.render_widget(setup_block, main_layout[0]);
+
         // Left side: instructions and input
         let left_layout = Layout::default()
             .direction(Direction::Vertical)
@@ -462,7 +470,7 @@ impl GitHubAuthScreen {
                 Constraint::Length(3),  // Path input
                 Constraint::Min(0),     // Spacer
             ])
-            .split(main_layout[0]);
+            .split(setup_area);
 
         // Instructions
         let instructions_lines = vec![
@@ -787,6 +795,7 @@ impl GitHubAuthScreen {
                 .borders(Borders::ALL)
                 .title(format!(" {} {} ", icons.info(), title))
                 .border_type(theme().border_type(false))
+                .padding(Padding::proportional(1))
                 .title_alignment(Alignment::Center)
                 .border_style(Style::default().fg(t.primary));
             let help_para = Paragraph::new(help_lines.join("\n"))
@@ -937,7 +946,7 @@ impl GitHubAuthScreen {
                 Constraint::Length(1), // Spacer
                 Constraint::Length(3), // Repo name input
                 if !self.state.repo_already_configured {
-                    Constraint::Length(2)
+                    Constraint::Length(4)
                 } else {
                     Constraint::Length(0)
                 }, // Reminder message (only shown for new installs)
@@ -966,10 +975,12 @@ impl GitHubAuthScreen {
 
         // Show reminder message for new installs (when repo is not already configured)
         if !self.state.repo_already_configured {
-            let reminder_text = " ⚠️  If you already had a repo with a different name, make sure to enter it here, otherwise a new repo with this name will be created";
+            let reminder_text = "⚠️  If you already had a repo with a different name, make sure to enter it here, otherwise a new repo with this name will be created";
             let reminder = Paragraph::new(reminder_text)
                 .style(t.warning_style())
-                .wrap(Wrap { trim: true });
+
+                .block(Block::default().padding(Padding::proportional(1)))
+                .wrap(Wrap { trim: false });
             frame.render_widget(reminder, left_layout[5]);
         }
 
@@ -1226,6 +1237,11 @@ impl GitHubAuthScreen {
 
             match act {
                 Action::Cancel | Action::Quit => {
+                    if !self.state.repo_already_configured {
+                        self.state.setup_mode = SetupMode::Choosing;
+                        self.state.error_message = None;
+                        return Ok(ScreenAction::None);
+                    }
                     self.reset();
                     return Ok(ScreenAction::Navigate(crate::ui::Screen::MainMenu));
                 }
