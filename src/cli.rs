@@ -51,11 +51,7 @@ pub enum Commands {
     /// Activate the symlinks, restores app state after deactivation.
     Activate,
     /// Deactivate symlinks. this might be useful if you are going to uninstall dotstate or you need the original files.
-    Deactivate {
-        /// Completely remove symlinks without restoring files
-        #[arg(long)]
-        completely: bool,
-    },
+    Deactivate,
     /// Shows logs location and how to view them
     Logs,
     /// Configuration file location
@@ -84,7 +80,7 @@ impl Cli {
             Some(Commands::Add { path, common }) => Self::cmd_add(path, common),
             Some(Commands::Remove { path, common }) => Self::cmd_remove(path, common),
             Some(Commands::Activate) => Self::cmd_activate(),
-            Some(Commands::Deactivate { completely }) => Self::cmd_deactivate(completely),
+            Some(Commands::Deactivate) => Self::cmd_deactivate(),
             Some(Commands::Help { command }) => Self::cmd_help(command),
             Some(Commands::Logs) => Self::cmd_logs(),
             Some(Commands::Config) => Self::cmd_config(),
@@ -602,14 +598,28 @@ impl Cli {
         let mut symlink_mgr =
             SymlinkManager::new_with_backup(config.repo_path.clone(), config.backup_enabled)?;
 
-        // Activate profile
-        let operations =
+        // Activate profile files
+        let mut operations =
             symlink_mgr.activate_profile(&active_profile_name, &active_profile_files)?;
 
+        // Also activate common files if any exist
+        let common_files: Vec<String> = manifest.get_common_files().into_iter().cloned().collect();
+        if !common_files.is_empty() {
+            let common_operations = symlink_mgr.activate_common_files(&common_files)?;
+            operations.extend(common_operations);
+        }
+
         // Report results
+        // Count Success and Skipped as successful (Skipped = symlink already correct)
         let success_count = operations
             .iter()
-            .filter(|op| op.status == crate::utils::symlink_manager::OperationStatus::Success)
+            .filter(|op| {
+                matches!(
+                    op.status,
+                    crate::utils::symlink_manager::OperationStatus::Success
+                        | crate::utils::symlink_manager::OperationStatus::Skipped(_)
+                )
+            })
             .count();
         let failed_count = operations.len() - success_count;
 
@@ -641,7 +651,7 @@ impl Cli {
         Ok(())
     }
 
-    fn cmd_deactivate(completely: bool) -> Result<()> {
+    fn cmd_deactivate() -> Result<()> {
         let config_path = crate::utils::get_config_path();
         let mut config =
             Config::load_or_create(&config_path).context("Failed to load configuration")?;
@@ -651,129 +661,33 @@ impl Cli {
             std::process::exit(1);
         }
 
-        // Get active profile
-        let active_profile_name = &config.active_profile;
-
-        if completely {
-            println!(
-                "🔓 Deactivating profile '{}' (completely)...",
-                active_profile_name
-            );
-            println!("   This will remove symlinks without restoring files");
-        } else {
-            println!("🔓 Deactivating profile '{}'...", active_profile_name);
-            println!("   This will restore original files from the repository");
-        }
+        println!("🔓 Deactivating dotstate...");
+        println!("   This will restore all files from the repository");
 
         // Create SymlinkManager
         let mut symlink_mgr =
             SymlinkManager::new_with_backup(config.repo_path.clone(), config.backup_enabled)?;
 
-        // Check if tracking file exists and has data
-        let tracking_file = crate::utils::get_config_dir().join("symlinks.json");
-        if !tracking_file.exists() {
-            eprintln!(
-                "⚠️  Warning: Tracking file not found at {:?}",
-                tracking_file
-            );
-            eprintln!("   No symlinks are currently tracked.");
-            eprintln!("   If you have symlinks, they may have been created outside of dotstate.");
-            return Ok(());
-        }
-
-        // Check what's in the tracking file
-        let tracking_data =
-            std::fs::read_to_string(&tracking_file).context("Failed to read tracking file")?;
-        let tracking: serde_json::Value =
-            serde_json::from_str(&tracking_data).context("Failed to parse tracking file")?;
-
-        if let Some(symlinks) = tracking.get("symlinks").and_then(|s| s.as_array()) {
-            if symlinks.is_empty() {
-                eprintln!("⚠️  Warning: Tracking file exists but contains no symlinks.");
-                eprintln!(
-                    "   Profile '{}' may not have any active symlinks.",
-                    active_profile_name
-                );
-                return Ok(());
-            }
-
-            // Debug: show what profiles are tracked
-            let profile_path = config.repo_path.join(active_profile_name);
-            let profile_path_str = profile_path.to_string_lossy().to_string();
-            let profile_symlinks: Vec<_> = symlinks
-                .iter()
-                .filter_map(|s| {
-                    s.get("source")
-                        .and_then(|src| src.as_str())
-                        .filter(|src| src.starts_with(&profile_path_str))
-                })
-                .collect();
-
-            if profile_symlinks.is_empty() {
-                eprintln!(
-                    "⚠️  Warning: No symlinks found for profile '{}'",
-                    active_profile_name
-                );
-                if let Some(active) = tracking.get("active_profile").and_then(|a| a.as_str()) {
-                    if !active.is_empty() && active != active_profile_name {
-                        eprintln!(
-                            "   Currently tracked active profile: '{}' (different from config)",
-                            active
-                        );
-                        eprintln!(
-                            "   Your config has active_profile = '{}'",
-                            active_profile_name
-                        );
-                        eprintln!("   This mismatch might be the issue.");
-                    }
-                }
-                eprintln!("   Profile path expected: {:?}", profile_path);
-                eprintln!("   Total symlinks in tracking file: {}", symlinks.len());
-
-                // Show what profiles are actually tracked
-                let mut tracked_profiles = std::collections::HashSet::new();
-                for symlink in symlinks {
-                    if let Some(source) = symlink.get("source").and_then(|s| s.as_str()) {
-                        // Extract profile name from source path
-                        if let Some(repo_path_str) = config.repo_path.to_str() {
-                            if let Some(relative) = source.strip_prefix(repo_path_str) {
-                                if let Some(profile_name) = relative.split('/').next() {
-                                    if !profile_name.is_empty() && profile_name != "." {
-                                        tracked_profiles.insert(profile_name);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                if !tracked_profiles.is_empty() {
-                    eprintln!("   Profiles found in tracking file: {:?}", tracked_profiles);
-                }
-
-                return Ok(());
-            }
-        }
-
-        // Deactivate profile
+        // Deactivate all symlinks (profile + common), always restore files
         let operations =
-            symlink_mgr.deactivate_profile_with_restore(active_profile_name, !completely)?;
+            symlink_mgr.deactivate_profile_with_restore(&config.active_profile, true)?;
 
         // Report results
+        // Count Success and Skipped as successful (Skipped = symlink already gone or not our symlink)
         let success_count = operations
             .iter()
-            .filter(|op| op.status == crate::utils::symlink_manager::OperationStatus::Success)
+            .filter(|op| {
+                matches!(
+                    op.status,
+                    crate::utils::symlink_manager::OperationStatus::Success
+                        | crate::utils::symlink_manager::OperationStatus::Skipped(_)
+                )
+            })
             .count();
         let failed_count = operations.len() - success_count;
 
         if operations.is_empty() {
-            eprintln!(
-                "⚠️  No symlinks found to deactivate for profile '{}'",
-                active_profile_name
-            );
-            eprintln!("   This could mean:");
-            eprintln!("   - The profile was never activated");
-            eprintln!("   - The symlinks were created outside of dotstate");
-            eprintln!("   - The profile name doesn't match what's in the tracking file");
+            println!("ℹ️  No symlinks were tracked. Nothing to deactivate.");
         } else if failed_count > 0 {
             eprintln!(
                 "⚠️  Deactivated {} files, {} failed",
@@ -792,20 +706,9 @@ impl Cli {
                 .save(&config_path)
                 .context("Failed to save configuration")?;
 
-            if completely {
-                println!(
-                    "✅ Successfully deactivated profile '{}'",
-                    active_profile_name
-                );
-                println!("   {} symlinks removed", success_count);
-            } else {
-                println!(
-                    "✅ Successfully deactivated profile '{}'",
-                    active_profile_name
-                );
-                println!("   {} files restored", success_count);
-            }
-            println!("💡 Profile is now deactivated. Use 'dotstate activate' to reactivate.");
+            println!("✅ Successfully deactivated dotstate");
+            println!("   {} files restored", success_count);
+            println!("💡 Dotstate is now deactivated. Use 'dotstate activate' to reactivate.");
         }
 
         Ok(())

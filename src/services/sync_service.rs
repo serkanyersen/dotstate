@@ -846,10 +846,11 @@ impl SyncService {
         manifest.move_to_common(profile_name, relative_path)?;
         manifest.save(repo_path)?;
 
-        // Update symlink tracking
+        // Update symlink tracking: remove old profile tracking, add new common tracking
         let mut symlink_mgr = SymlinkManager::new(repo_path.clone())?;
         symlink_mgr.remove_symlink_from_tracking(profile_name, relative_path)?;
-        // Note: The common symlink will be tracked when we add it through the normal flow
+        // Add the new common symlink to tracking
+        symlink_mgr.add_common_symlink(relative_path)?;
 
         info!("Successfully moved {} to common", relative_path);
 
@@ -932,9 +933,11 @@ impl SyncService {
         manifest.move_from_common(profile_name, relative_path)?;
         manifest.save(repo_path)?;
 
-        // Update symlink tracking
+        // Update symlink tracking: remove old common tracking, add new profile tracking
         let mut symlink_mgr = SymlinkManager::new(repo_path.clone())?;
         symlink_mgr.remove_common_symlink_from_tracking(relative_path)?;
+        // Add the new profile symlink to tracking
+        symlink_mgr.add_symlink_to_profile(profile_name, relative_path)?;
 
         info!(
             "Successfully moved {} to profile '{}'",

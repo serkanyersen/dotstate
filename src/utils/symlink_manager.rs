@@ -107,6 +107,23 @@ impl SymlinkManager {
     /// Create a new SymlinkManager with backup settings
     pub fn new_with_backup(repo_path: PathBuf, backup_enabled: bool) -> Result<Self> {
         let config_dir = crate::utils::get_config_dir();
+        Self::new_with_config_dir(repo_path, backup_enabled, config_dir)
+    }
+
+    /// Create a new SymlinkManager with a custom config directory.
+    ///
+    /// This is primarily used for testing to avoid polluting the real user's
+    /// config directory with test data.
+    pub fn new_with_config_dir(
+        repo_path: PathBuf,
+        backup_enabled: bool,
+        config_dir: PathBuf,
+    ) -> Result<Self> {
+        // Ensure config directory exists
+        if !config_dir.exists() {
+            fs::create_dir_all(&config_dir).context("Failed to create config directory")?;
+        }
+
         let tracking_file = config_dir.join("symlinks.json");
 
         // Load existing tracking data or create new
@@ -173,13 +190,18 @@ impl SymlinkManager {
         // Update tracking
         self.tracking.active_profile = profile_name.to_string();
         for op in &operations {
-            if matches!(op.status, OperationStatus::Success) {
-                self.tracking.symlinks.push(TrackedSymlink {
-                    target: op.target.clone(),
-                    source: op.source.clone(),
-                    created_at: op.timestamp,
-                    backup: op.backup.clone(),
-                });
+            // Track both Success AND Skipped (Skipped = symlink already correct, still ours)
+            if matches!(op.status, OperationStatus::Success | OperationStatus::Skipped(_)) {
+                // Check if already tracked (avoid duplicates)
+                let already_tracked = self.tracking.symlinks.iter().any(|s| s.target == op.target);
+                if !already_tracked {
+                    self.tracking.symlinks.push(TrackedSymlink {
+                        target: op.target.clone(),
+                        source: op.source.clone(),
+                        created_at: op.timestamp,
+                        backup: op.backup.clone(),
+                    });
+                }
             }
         }
 
@@ -198,29 +220,28 @@ impl SymlinkManager {
         self.deactivate_profile_with_restore(profile_name, true)
     }
 
-    /// Deactivate a profile, optionally restoring original files
+    /// Deactivate all symlinks, optionally restoring original files.
+    ///
+    /// This deactivates the ENTIRE app - all profile symlinks AND common file symlinks.
+    /// Useful for temporarily disabling dotstate or as a pre-uninstall step.
+    ///
+    /// When `restore_files` is true, each symlink is replaced with a copy of the file
+    /// from the repository, making it appear as if dotstate was never installed.
     pub fn deactivate_profile_with_restore(
         &mut self,
-        profile_name: &str,
+        _profile_name: &str, // Kept for API compatibility, but we deactivate ALL symlinks
         restore_files: bool,
     ) -> Result<Vec<SymlinkOperation>> {
         info!(
-            "Deactivating profile: {} (restore_files: {})",
-            profile_name, restore_files
+            "Deactivating all symlinks (restore_files: {})",
+            restore_files
         );
         let mut operations = Vec::new();
-        let profile_path = self.repo_path.join(profile_name);
 
-        // Find all symlinks for this profile
-        let profile_symlinks: Vec<_> = self
-            .tracking
-            .symlinks
-            .iter()
-            .filter(|s| s.source.starts_with(&profile_path))
-            .cloned()
-            .collect();
+        // Deactivate ALL tracked symlinks (profile + common)
+        let all_symlinks: Vec<_> = self.tracking.symlinks.clone();
 
-        for symlink in profile_symlinks {
+        for symlink in all_symlinks {
             debug!("Removing symlink: {:?}", symlink.target);
             let operation = if restore_files {
                 self.remove_symlink_with_restore(&symlink)?
@@ -230,19 +251,80 @@ impl SymlinkManager {
             operations.push(operation);
         }
 
-        // Remove from tracking
-        self.tracking
-            .symlinks
-            .retain(|s| !s.source.starts_with(&profile_path));
+        // Also scan for and remove untracked common file symlinks
+        // (These might exist from before tracking was implemented)
+        // We need to recursively walk the common directory for nested paths like .config/atuin/config.toml
+        let common_path = self.repo_path.join("common");
+        if common_path.exists() {
+            let home_dir = crate::utils::get_home_dir();
 
-        if self.tracking.active_profile == profile_name {
-            self.tracking.active_profile.clear();
+            // Recursively collect all files in common directory
+            fn collect_common_files(dir: &Path, base: &Path, files: &mut Vec<PathBuf>) {
+                if let Ok(entries) = fs::read_dir(dir) {
+                    for entry in entries.flatten() {
+                        let path = entry.path();
+                        if path.is_dir() {
+                            // Recurse into subdirectories
+                            collect_common_files(&path, base, files);
+                        } else {
+                            // Add file with relative path from common
+                            if let Ok(relative) = path.strip_prefix(base) {
+                                files.push(relative.to_path_buf());
+                            }
+                        }
+                    }
+                }
+            }
+
+            let mut common_files = Vec::new();
+            collect_common_files(&common_path, &common_path, &mut common_files);
+
+            for relative_path in common_files {
+                let target_path = home_dir.join(&relative_path);
+
+                // Check if this is a symlink pointing to our common folder
+                if target_path.is_symlink() {
+                    if let Ok(link_target) = fs::read_link(&target_path) {
+                        let resolved = if link_target.is_absolute() {
+                            link_target
+                        } else if let Some(parent) = target_path.parent() {
+                            parent.join(&link_target)
+                        } else {
+                            link_target
+                        };
+
+                        if resolved.starts_with(&common_path) {
+                            // Check if we already processed this in tracked symlinks
+                            let already_processed = operations.iter().any(|op| op.target == target_path);
+
+                            if !already_processed {
+                                info!("Found untracked common symlink: {:?}", target_path);
+                                let tracked = TrackedSymlink {
+                                    target: target_path.clone(),
+                                    source: common_path.join(&relative_path),
+                                    created_at: Utc::now(),
+                                    backup: None,
+                                };
+                                let operation = if restore_files {
+                                    self.remove_symlink_with_restore(&tracked)?
+                                } else {
+                                    self.remove_symlink_completely(&tracked)?
+                                };
+                                operations.push(operation);
+                            }
+                        }
+                    }
+                }
+            }
         }
+
+        // Clear all tracking
+        self.tracking.symlinks.clear();
+        self.tracking.active_profile.clear();
 
         self.save_tracking()?;
         info!(
-            "Profile deactivated: {} ({} symlinks removed)",
-            profile_name,
+            "Deactivated all symlinks ({} symlinks removed)",
             operations.len()
         );
 
@@ -348,7 +430,7 @@ impl SymlinkManager {
         })
     }
 
-    /// Check if a path is a symlink that we created
+    /// Check if a path is a symlink that we created (points to our repo)
     fn is_our_symlink(&self, path: &Path) -> Result<bool> {
         if !path.exists() && path.symlink_metadata().is_err() {
             return Ok(false);
@@ -363,8 +445,28 @@ impl SymlinkManager {
             return Ok(false);
         }
 
-        // Check if we're tracking it
-        Ok(self.tracking.symlinks.iter().any(|s| s.target == path))
+        // First check: is it tracked?
+        if self.tracking.symlinks.iter().any(|s| s.target == path) {
+            return Ok(true);
+        }
+
+        // Second check: does it point to our repo?
+        // This catches untracked symlinks that were created before tracking was implemented
+        if let Ok(link_target) = fs::read_link(path) {
+            let resolved = if link_target.is_absolute() {
+                link_target
+            } else if let Some(parent) = path.parent() {
+                parent.join(&link_target)
+            } else {
+                link_target
+            };
+
+            if resolved.starts_with(&self.repo_path) {
+                return Ok(true);
+            }
+        }
+
+        Ok(false)
     }
 
     /// Create a symlink, backing up any existing file
@@ -1397,13 +1499,18 @@ impl SymlinkManager {
 
             let operation = self.create_symlink(&source, &target, file)?;
 
-            if matches!(operation.status, OperationStatus::Success) {
-                self.tracking.symlinks.push(TrackedSymlink {
-                    target: operation.target.clone(),
-                    source: operation.source.clone(),
-                    created_at: operation.timestamp,
-                    backup: operation.backup.clone(),
-                });
+            // Track both Success AND Skipped (Skipped = symlink already correct, still ours)
+            if matches!(operation.status, OperationStatus::Success | OperationStatus::Skipped(_)) {
+                // Check if already tracked (avoid duplicates)
+                let already_tracked = self.tracking.symlinks.iter().any(|s| s.target == operation.target);
+                if !already_tracked {
+                    self.tracking.symlinks.push(TrackedSymlink {
+                        target: operation.target.clone(),
+                        source: operation.source.clone(),
+                        created_at: operation.timestamp,
+                        backup: operation.backup.clone(),
+                    });
+                }
             }
 
             operations.push(operation);
@@ -1440,10 +1547,12 @@ mod tests {
     fn setup_test_env() -> (TempDir, SymlinkManager) {
         let temp_dir = TempDir::new().unwrap();
         let repo_path = temp_dir.path().join("dotstate");
+        let config_dir = temp_dir.path().join("config"); // Isolated config directory
         fs::create_dir_all(&repo_path).unwrap();
+        fs::create_dir_all(&config_dir).unwrap();
 
-        // Disable backups to avoid issues with home directory in CI
-        let manager = SymlinkManager::new_with_backup(repo_path, false).unwrap();
+        // Use isolated config directory to avoid polluting real user config
+        let manager = SymlinkManager::new_with_config_dir(repo_path, false, config_dir).unwrap();
         (temp_dir, manager)
     }
 
