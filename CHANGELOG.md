@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ---
+## [0.2.9] - 2026-01-19
+### Added
+- **CLI**: Add doctor command to check for issues with the dotstate configuration
+
+### Fixed
+- **Package Manager**: Only update packages in the manage packages screen if the active profile has changed.
+- **Setup**: Fix an issue where common files were not created after setup.
+- **CLI**: Fix an issue where activate/deactivate commands were not working properly.
+- **Symlinks**: Fix an issue where symlinks tracking could go out of sync.
+- **UI**: Unified some more UI components
+
 ## [0.2.8] - 2026-01-17
 ### Added
 - **Settings**: Added new settings page with options to configure keymap, icon set, backups, and updates
