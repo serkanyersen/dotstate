@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+---
+## [0.2.11] - 2025-01-20
+
 ### Added
 - **Package Manager**: Import packages from installed package managers with `Shift+I`. Supports Homebrew, Pacman, APT, DNF, Yum, Snap, Cargo, npm, pip, and gem with a tabbed interface, multi-select filtering, and result caching
 - **Package Manager**: Prompt to install newly added packages if not already installed
