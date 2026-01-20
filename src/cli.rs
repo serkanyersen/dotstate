@@ -162,7 +162,7 @@ impl Cli {
             .commit_all(&commit_msg)
             .context("Failed to commit changes")?;
 
-        println!("📥 Pulling changes from remote (with rebase)...");
+        println!("📥 Pulling changes from remote...");
         let pulled_count = git_mgr
             .pull_with_rebase("origin", &branch, token)
             .context("Failed to pull from remote")?;

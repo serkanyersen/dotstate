@@ -693,83 +693,172 @@ impl GitManager {
             Err(_) => None,
         };
 
-        // Count commits in remote that we don't have locally
-        let mut pulled_count = 0;
         let fetch_commit_id = fetch_commit.id();
 
         if let Some(local_commit) = local_head {
             // Check if remote is ahead (different commits)
-            if local_commit.id() != fetch_commit_id {
-                // Find merge base between local and remote
-                let merge_base = self
-                    .repo
-                    .merge_base(local_commit.id(), fetch_commit_id)
-                    .context("Failed to find merge base")?;
-
-                // Count commits from merge base to remote HEAD
-                let mut commit = fetch_commit.clone();
-                loop {
-                    if commit.id() == merge_base {
-                        break;
-                    }
-                    pulled_count += 1;
-                    if commit.parent_count() == 0 {
-                        // Reached root without finding merge base - count all commits
-                        break;
-                    }
-                    commit = commit.parent(0)?;
-                }
-
-                // Perform merge (git2 doesn't have direct rebase API, so we use merge)
-                // The UI will call it "rebase" but technically it's a merge
-                let annotated_commit = self
-                    .repo
-                    .find_annotated_commit(fetch_commit_id)
-                    .context("Failed to create annotated commit")?;
-
-                self.repo
-                    .merge(&[&annotated_commit], None, None)
-                    .context("Failed to merge")?;
-
-                let mut index = self
-                    .repo
-                    .index()
-                    .context("Failed to get index after merge")?;
-
-                if index.has_conflicts() {
-                    return Err(anyhow::anyhow!(
-                        "Merge conflicts detected. Please resolve manually."
-                    ));
-                }
-
-                index.write().context("Failed to write index after merge")?;
-
-                let tree_id = index
-                    .write_tree()
-                    .context("Failed to write tree after merge")?;
-                let tree = self
-                    .repo
-                    .find_tree(tree_id)
-                    .context("Failed to find tree after merge")?;
-
-                let signature = Self::get_signature()?;
-                let fetch_commit_for_merge = self.repo.find_commit(fetch_commit_id)?;
-
-                self.repo
-                    .commit(
-                        Some("HEAD"),
-                        &signature,
-                        &signature,
-                        "Merge remote-tracking branch",
-                        &tree,
-                        &[&local_commit, &fetch_commit_for_merge],
-                    )
-                    .context("Failed to commit merge")?;
-
-                self.repo
-                    .cleanup_state()
-                    .context("Failed to cleanup merge state")?;
+            if local_commit.id() == fetch_commit_id {
+                // Already up to date
+                debug!("Already up to date with remote");
+                return Ok(0);
             }
+
+            // Find merge base between local and remote
+            let merge_base = self
+                .repo
+                .merge_base(local_commit.id(), fetch_commit_id)
+                .context("Failed to find merge base")?;
+
+            // Count commits from merge base to remote HEAD (commits we're pulling)
+            let mut pulled_count = 0;
+            let mut commit = fetch_commit.clone();
+            loop {
+                if commit.id() == merge_base {
+                    break;
+                }
+                pulled_count += 1;
+                if commit.parent_count() == 0 {
+                    break;
+                }
+                commit = commit.parent(0)?;
+            }
+
+            // Check if local is ahead of merge base (we have local commits to rebase)
+            let local_ahead = merge_base != local_commit.id();
+
+            if !local_ahead {
+                // Local is at merge base, we can fast-forward
+                debug!("Fast-forwarding to remote HEAD");
+                let branch_ref = format!("refs/heads/{}", branch);
+                self.repo.reference(
+                    &branch_ref,
+                    fetch_commit_id,
+                    true,
+                    "Fast-forward to remote",
+                )?;
+                self.repo
+                    .checkout_head(Some(git2::build::CheckoutBuilder::default().force()))?;
+                return Ok(pulled_count);
+            }
+
+            // We have local commits that need to be rebased on top of remote
+            info!(
+                "Rebasing local commits onto remote (merge_base: {}, local: {}, remote: {})",
+                merge_base,
+                local_commit.id(),
+                fetch_commit_id
+            );
+
+            // Create annotated commits for rebase
+            let upstream_annotated = self
+                .repo
+                .find_annotated_commit(fetch_commit_id)
+                .context("Failed to create annotated commit for upstream")?;
+
+            let branch_annotated = self
+                .repo
+                .find_annotated_commit(local_commit.id())
+                .context("Failed to create annotated commit for branch")?;
+
+            // Start the rebase: rebase local commits onto upstream (remote)
+            // branch = our local commits, upstream = remote HEAD, onto = None (use upstream)
+            let mut rebase = self
+                .repo
+                .rebase(
+                    Some(&branch_annotated),
+                    Some(&upstream_annotated),
+                    None,
+                    None,
+                )
+                .context("Failed to initialize rebase")?;
+
+            let signature = Self::get_signature()?;
+
+            // Process each rebase operation
+            loop {
+                match rebase.next() {
+                    Some(Ok(operation)) => {
+                        debug!("Rebase operation: {:?}", operation.kind());
+
+                        // Check for conflicts
+                        let index = self.repo.index().context("Failed to get index")?;
+                        if index.has_conflicts() {
+                            // Abort the rebase on conflict
+                            let _ = rebase.abort();
+                            return Err(anyhow::anyhow!(
+                                "Rebase conflicts detected. Please resolve manually:\n\
+                                1. Run 'git status' to see conflicted files\n\
+                                2. Edit files to resolve conflicts\n\
+                                3. Run 'git add <file>' for each resolved file\n\
+                                4. Run 'git rebase --continue'"
+                            ));
+                        }
+
+                        // Commit the rebased change
+                        match rebase.commit(None, &signature, None) {
+                            Ok(_oid) => {
+                                debug!("Rebased commit successfully");
+                            }
+                            Err(e) => {
+                                // If commit fails because there's nothing to commit (empty commit),
+                                // that's okay - just continue
+                                if e.code() == git2::ErrorCode::Applied {
+                                    debug!("Skipping already applied commit");
+                                    continue;
+                                }
+                                // For other errors, abort and return
+                                let _ = rebase.abort();
+                                return Err(anyhow::anyhow!(
+                                    "Failed to commit during rebase: {}",
+                                    e
+                                ));
+                            }
+                        }
+                    }
+                    Some(Err(e)) => {
+                        let _ = rebase.abort();
+                        return Err(anyhow::anyhow!("Rebase operation failed: {}", e));
+                    }
+                    None => {
+                        // No more operations, finish the rebase
+                        break;
+                    }
+                }
+            }
+
+            // Finish the rebase
+            rebase
+                .finish(Some(&signature))
+                .context("Failed to finish rebase")?;
+
+            // After rebase, we need to explicitly update the branch reference
+            // to point to the new HEAD (which now contains the rebased commits)
+            let head = self
+                .repo
+                .head()
+                .context("Failed to get HEAD after rebase")?;
+            let head_commit = head
+                .peel_to_commit()
+                .context("Failed to peel HEAD to commit after rebase")?;
+
+            let branch_ref = format!("refs/heads/{}", branch);
+            self.repo.reference(
+                &branch_ref,
+                head_commit.id(),
+                true,
+                "Update branch after rebase",
+            )?;
+
+            // Make sure working directory is up to date
+            self.repo
+                .checkout_head(Some(git2::build::CheckoutBuilder::default().force()))?;
+
+            info!(
+                "Rebase completed successfully, pulled {} commit(s), HEAD now at {}",
+                pulled_count,
+                head_commit.id()
+            );
+            Ok(pulled_count)
         } else {
             // No local commits, just update HEAD to point to remote
             let branch_ref = format!("refs/heads/{}", branch);
@@ -784,6 +873,7 @@ impl GitManager {
                 .checkout_head(Some(git2::build::CheckoutBuilder::default().force()))?;
 
             // Count all commits in remote
+            let mut pulled_count = 0;
             let mut commit = fetch_commit.clone();
             loop {
                 pulled_count += 1;
@@ -792,9 +882,8 @@ impl GitManager {
                 }
                 commit = commit.parent(0)?;
             }
+            Ok(pulled_count)
         }
-
-        Ok(pulled_count)
     }
 
     /// Fetch from remote (without merging)

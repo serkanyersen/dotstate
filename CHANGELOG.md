@@ -9,13 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **Package Manager**: Automatically prompt to install newly added packages if they are not already installed on the system
-- **Package Manager**: Import packages from system package managers (Homebrew, Pacman, APT, DNF, Yum) with `Shift+I`. Features tabbed interface to switch between sources with `←/→`, multi-select with filtering, async discovery with spinner animation, and per-source caching (5 minutes)
+- **Package Manager**: Import packages from package managers (Homebrew, Pacman, APT, DNF, Yum, Snap, Cargo, npm, pip, gem) with `Shift+I`. Features tabbed interface to switch between sources with `←/→`, multi-select with filtering, async discovery with spinner animation, and per-source caching (5 minutes)
 
 ### Changed
 - **Package Manager**: Deleted packages are now removed from the status cache
 - **Package Manager**: Newly added packages always get a fresh status check, ignoring any stale cache entries
 
 ### Fixed
+- **Sync**: Fixed sync creating unnecessary merge commits when pulling remote changes. Now uses proper git rebase instead of merge, resulting in a clean linear commit history
+- **Sync**: Fixed "cannot push non-fastforwardable reference" error after rebase by properly updating the branch reference to point to the rebased HEAD
 - **Package Manager**: Fixed race condition where successful package installations were incorrectly reported as both success and failure with "Installation thread disconnected" error
 - **Package Manager**: Fixed installation dialogs rendering without background dimming by ensuring main content is rendered first
 - **Package Manager**: Fixed validation errors showing as full-screen dialogs instead of inline in the add/edit popup
