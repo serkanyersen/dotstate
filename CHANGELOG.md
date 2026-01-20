@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **Package Manager**: Automatically prompt to install newly added packages if they are not already installed on the system
-- **Package Manager**: Import packages from system package managers (Homebrew, Pacman, APT) with `Shift+I`. Discovers explicitly installed packages and allows multi-select import with filtering. Discovery runs asynchronously with animated spinner, and results are cached for 5 minutes
+- **Package Manager**: Import packages from system package managers (Homebrew, Pacman, APT, DNF, Yum) with `Shift+I`. Features tabbed interface to switch between sources with `←/→`, multi-select with filtering, async discovery with spinner animation, and per-source caching (5 minutes)
 
 ### Changed
 - **Package Manager**: Deleted packages are now removed from the status cache

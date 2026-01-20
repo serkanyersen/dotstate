@@ -24,13 +24,19 @@ pub struct DiscoveredPackage {
 }
 
 /// Source package manager for discovery.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum DiscoverySource {
     Homebrew,
     Pacman,
     Apt,
     Dnf,
-    // Add more as needed
+    Yum,
+    Snap,
+    Cargo,
+    Npm,
+    Pip,
+    Pip3,
+    Gem,
 }
 
 impl DiscoverySource {
@@ -41,16 +47,71 @@ impl DiscoverySource {
             DiscoverySource::Pacman => "Pacman",
             DiscoverySource::Apt => "APT",
             DiscoverySource::Dnf => "DNF",
+            DiscoverySource::Yum => "YUM",
+            DiscoverySource::Snap => "Snap",
+            DiscoverySource::Cargo => "Cargo",
+            DiscoverySource::Npm => "NPM",
+            DiscoverySource::Pip => "pip",
+            DiscoverySource::Pip3 => "pip3",
+            DiscoverySource::Gem => "Gem",
         }
     }
 
     /// Convert to the profile manifest PackageManager type.
     pub fn to_package_manager(&self) -> crate::utils::profile_manifest::PackageManager {
+        use crate::utils::profile_manifest::PackageManager;
         match self {
-            DiscoverySource::Homebrew => crate::utils::profile_manifest::PackageManager::Brew,
-            DiscoverySource::Pacman => crate::utils::profile_manifest::PackageManager::Pacman,
-            DiscoverySource::Apt => crate::utils::profile_manifest::PackageManager::Apt,
-            DiscoverySource::Dnf => crate::utils::profile_manifest::PackageManager::Dnf,
+            DiscoverySource::Homebrew => PackageManager::Brew,
+            DiscoverySource::Pacman => PackageManager::Pacman,
+            DiscoverySource::Apt => PackageManager::Apt,
+            DiscoverySource::Dnf => PackageManager::Dnf,
+            DiscoverySource::Yum => PackageManager::Yum,
+            DiscoverySource::Snap => PackageManager::Snap,
+            DiscoverySource::Cargo => PackageManager::Cargo,
+            DiscoverySource::Npm => PackageManager::Npm,
+            DiscoverySource::Pip => PackageManager::Pip,
+            DiscoverySource::Pip3 => PackageManager::Pip3,
+            DiscoverySource::Gem => PackageManager::Gem,
+        }
+    }
+
+    /// Try to convert from a PackageManager.
+    /// Returns None for Custom (which doesn't have packages to discover).
+    pub fn from_package_manager(
+        manager: &crate::utils::profile_manifest::PackageManager,
+    ) -> Option<Self> {
+        use crate::utils::profile_manifest::PackageManager;
+        match manager {
+            PackageManager::Brew => Some(DiscoverySource::Homebrew),
+            PackageManager::Pacman => Some(DiscoverySource::Pacman),
+            PackageManager::Apt => Some(DiscoverySource::Apt),
+            PackageManager::Dnf => Some(DiscoverySource::Dnf),
+            PackageManager::Yum => Some(DiscoverySource::Yum),
+            PackageManager::Snap => Some(DiscoverySource::Snap),
+            PackageManager::Cargo => Some(DiscoverySource::Cargo),
+            PackageManager::Npm => Some(DiscoverySource::Npm),
+            PackageManager::Pip => Some(DiscoverySource::Pip),
+            PackageManager::Pip3 => Some(DiscoverySource::Pip3),
+            PackageManager::Gem => Some(DiscoverySource::Gem),
+            PackageManager::Custom => None, // Custom doesn't support discovery
+        }
+    }
+
+    /// Check if this source supports package discovery.
+    /// Some managers can list installed packages, others cannot.
+    pub fn supports_discovery(&self) -> bool {
+        match self {
+            DiscoverySource::Homebrew
+            | DiscoverySource::Pacman
+            | DiscoverySource::Apt
+            | DiscoverySource::Dnf
+            | DiscoverySource::Yum
+            | DiscoverySource::Snap
+            | DiscoverySource::Cargo
+            | DiscoverySource::Npm
+            | DiscoverySource::Pip
+            | DiscoverySource::Pip3
+            | DiscoverySource::Gem => true,
         }
     }
 }
@@ -359,6 +420,466 @@ impl PackageDiscoverer for AptDiscoverer {
     }
 }
 
+/// YUM package discoverer (RHEL/CentOS).
+pub struct YumDiscoverer;
+
+impl PackageDiscoverer for YumDiscoverer {
+    fn is_available(&self) -> bool {
+        Command::new("yum")
+            .arg("--version")
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+    }
+
+    fn source(&self) -> DiscoverySource {
+        DiscoverySource::Yum
+    }
+
+    fn discover_packages(&self) -> Result<Vec<DiscoveredPackage>> {
+        info!("Discovering YUM packages...");
+
+        let output = Command::new("yum")
+            .args(["list", "installed"])
+            .output()
+            .context("Failed to run yum list installed")?;
+
+        if !output.status.success() {
+            anyhow::bail!("yum list installed failed");
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let mut packages = Vec::new();
+
+        for line in stdout.lines().skip(1) {
+            // Skip header
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.is_empty() {
+                continue;
+            }
+
+            let package_full = parts[0];
+            // Remove .arch suffix (e.g., "git.x86_64" -> "git")
+            let package_name = package_full.split('.').next().unwrap_or(package_full);
+
+            packages.push(DiscoveredPackage {
+                package_name: package_name.to_string(),
+                binary_name: Some(package_name.to_string()),
+                description: None,
+                manager: DiscoverySource::Yum,
+            });
+        }
+
+        info!("Discovered {} YUM packages", packages.len());
+        Ok(packages)
+    }
+
+    fn detect_binary_name(&self, package_name: &str) -> Option<String> {
+        Some(package_name.to_string())
+    }
+}
+
+/// DNF package discoverer (Fedora).
+pub struct DnfDiscoverer;
+
+impl PackageDiscoverer for DnfDiscoverer {
+    fn is_available(&self) -> bool {
+        Command::new("dnf")
+            .arg("--version")
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+    }
+
+    fn source(&self) -> DiscoverySource {
+        DiscoverySource::Dnf
+    }
+
+    fn discover_packages(&self) -> Result<Vec<DiscoveredPackage>> {
+        info!("Discovering DNF packages...");
+
+        let output = Command::new("dnf")
+            .args(["list", "installed"])
+            .output()
+            .context("Failed to run dnf list installed")?;
+
+        if !output.status.success() {
+            anyhow::bail!("dnf list installed failed");
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let mut packages = Vec::new();
+
+        for line in stdout.lines().skip(1) {
+            // Skip header
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.is_empty() {
+                continue;
+            }
+
+            let package_full = parts[0];
+            // Remove .arch suffix
+            let package_name = package_full.split('.').next().unwrap_or(package_full);
+
+            packages.push(DiscoveredPackage {
+                package_name: package_name.to_string(),
+                binary_name: Some(package_name.to_string()),
+                description: None,
+                manager: DiscoverySource::Dnf,
+            });
+        }
+
+        info!("Discovered {} DNF packages", packages.len());
+        Ok(packages)
+    }
+
+    fn detect_binary_name(&self, package_name: &str) -> Option<String> {
+        Some(package_name.to_string())
+    }
+}
+
+/// Snap package discoverer.
+pub struct SnapDiscoverer;
+
+impl PackageDiscoverer for SnapDiscoverer {
+    fn is_available(&self) -> bool {
+        Command::new("snap")
+            .arg("--version")
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+    }
+
+    fn source(&self) -> DiscoverySource {
+        DiscoverySource::Snap
+    }
+
+    fn discover_packages(&self) -> Result<Vec<DiscoveredPackage>> {
+        info!("Discovering Snap packages...");
+
+        let output = Command::new("snap")
+            .arg("list")
+            .output()
+            .context("Failed to run snap list")?;
+
+        if !output.status.success() {
+            anyhow::bail!("snap list failed");
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let mut packages = Vec::new();
+
+        for line in stdout.lines().skip(1) {
+            // Skip header
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.is_empty() {
+                continue;
+            }
+
+            let package_name = parts[0];
+
+            packages.push(DiscoveredPackage {
+                package_name: package_name.to_string(),
+                binary_name: Some(package_name.to_string()),
+                description: None,
+                manager: DiscoverySource::Snap,
+            });
+        }
+
+        info!("Discovered {} Snap packages", packages.len());
+        Ok(packages)
+    }
+
+    fn detect_binary_name(&self, package_name: &str) -> Option<String> {
+        Some(package_name.to_string())
+    }
+}
+
+/// Cargo package discoverer (Rust).
+pub struct CargoDiscoverer;
+
+impl PackageDiscoverer for CargoDiscoverer {
+    fn is_available(&self) -> bool {
+        Command::new("cargo")
+            .arg("--version")
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+    }
+
+    fn source(&self) -> DiscoverySource {
+        DiscoverySource::Cargo
+    }
+
+    fn discover_packages(&self) -> Result<Vec<DiscoveredPackage>> {
+        info!("Discovering Cargo packages...");
+
+        let output = Command::new("cargo")
+            .args(["install", "--list"])
+            .output()
+            .context("Failed to run cargo install --list")?;
+
+        if !output.status.success() {
+            anyhow::bail!("cargo install --list failed");
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let mut packages = Vec::new();
+
+        for line in stdout.lines() {
+            // Lines with package names don't start with whitespace
+            if !line.starts_with(' ') && !line.is_empty() {
+                let parts: Vec<&str> = line.split_whitespace().collect();
+                if let Some(package_name) = parts.first() {
+                    packages.push(DiscoveredPackage {
+                        package_name: package_name.to_string(),
+                        binary_name: Some(package_name.to_string()),
+                        description: None,
+                        manager: DiscoverySource::Cargo,
+                    });
+                }
+            }
+        }
+
+        info!("Discovered {} Cargo packages", packages.len());
+        Ok(packages)
+    }
+
+    fn detect_binary_name(&self, package_name: &str) -> Option<String> {
+        Some(package_name.to_string())
+    }
+}
+
+/// NPM package discoverer.
+pub struct NpmDiscoverer;
+
+impl PackageDiscoverer for NpmDiscoverer {
+    fn is_available(&self) -> bool {
+        Command::new("npm")
+            .arg("--version")
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+    }
+
+    fn source(&self) -> DiscoverySource {
+        DiscoverySource::Npm
+    }
+
+    fn discover_packages(&self) -> Result<Vec<DiscoveredPackage>> {
+        info!("Discovering NPM packages...");
+
+        let output = Command::new("npm")
+            .args(["list", "-g", "--depth=0", "--parseable"])
+            .output()
+            .context("Failed to run npm list -g")?;
+
+        if !output.status.success() {
+            // npm list returns non-zero even on success sometimes
+            warn!("npm list returned non-zero status, continuing anyway");
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let mut packages = Vec::new();
+
+        for line in stdout.lines() {
+            // Lines are paths, e.g. /usr/lib/node_modules/npm or /usr/lib/node_modules/@scope/pkg
+            // We want to extract the package name part after .../node_modules/
+            if let Some(pos) = line.rfind("/node_modules/") {
+                let package_part = &line[pos + 14..];
+                if !package_part.is_empty() {
+                    let package_name = package_part.to_string();
+                    packages.push(DiscoveredPackage {
+                        package_name: package_name.clone(),
+                        binary_name: Some(package_name), // Usually binary name matches package name
+                        description: None,
+                        manager: DiscoverySource::Npm,
+                    });
+                }
+            } else if let Some(package_name) = line.split('/').next_back() {
+                // Fallback for flat paths if node_modules not found (unlikely with -g)
+                if !package_name.is_empty()
+                    && package_name != "lib"
+                    && package_name != "node_modules"
+                {
+                    packages.push(DiscoveredPackage {
+                        package_name: package_name.to_string(),
+                        binary_name: Some(package_name.to_string()),
+                        description: None,
+                        manager: DiscoverySource::Npm,
+                    });
+                }
+            }
+        }
+
+        info!("Discovered {} NPM packages", packages.len());
+        Ok(packages)
+    }
+
+    fn detect_binary_name(&self, package_name: &str) -> Option<String> {
+        Some(package_name.to_string())
+    }
+}
+
+/// Pip package discoverer (Python 2/3).
+pub struct PipDiscoverer;
+
+impl PackageDiscoverer for PipDiscoverer {
+    fn is_available(&self) -> bool {
+        Command::new("pip")
+            .arg("--version")
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+    }
+
+    fn source(&self) -> DiscoverySource {
+        DiscoverySource::Pip
+    }
+
+    fn discover_packages(&self) -> Result<Vec<DiscoveredPackage>> {
+        info!("Discovering pip packages...");
+
+        let output = Command::new("pip")
+            .args(["list", "--format=freeze"])
+            .output()
+            .context("Failed to run pip list")?;
+
+        if !output.status.success() {
+            anyhow::bail!("pip list failed");
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let mut packages = Vec::new();
+
+        for line in stdout.lines() {
+            if let Some(package_name) = line.split("==").next() {
+                if !package_name.is_empty() {
+                    packages.push(DiscoveredPackage {
+                        package_name: package_name.to_string(),
+                        binary_name: Some(package_name.to_string()),
+                        description: None,
+                        manager: DiscoverySource::Pip,
+                    });
+                }
+            }
+        }
+
+        info!("Discovered {} pip packages", packages.len());
+        Ok(packages)
+    }
+
+    fn detect_binary_name(&self, package_name: &str) -> Option<String> {
+        Some(package_name.to_string())
+    }
+}
+
+/// Pip3 package discoverer (Python 3).
+pub struct Pip3Discoverer;
+
+impl PackageDiscoverer for Pip3Discoverer {
+    fn is_available(&self) -> bool {
+        Command::new("pip3")
+            .arg("--version")
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+    }
+
+    fn source(&self) -> DiscoverySource {
+        DiscoverySource::Pip3
+    }
+
+    fn discover_packages(&self) -> Result<Vec<DiscoveredPackage>> {
+        info!("Discovering pip3 packages...");
+
+        let output = Command::new("pip3")
+            .args(["list", "--format=freeze"])
+            .output()
+            .context("Failed to run pip3 list")?;
+
+        if !output.status.success() {
+            anyhow::bail!("pip3 list failed");
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let mut packages = Vec::new();
+
+        for line in stdout.lines() {
+            if let Some(package_name) = line.split("==").next() {
+                if !package_name.is_empty() {
+                    packages.push(DiscoveredPackage {
+                        package_name: package_name.to_string(),
+                        binary_name: Some(package_name.to_string()),
+                        description: None,
+                        manager: DiscoverySource::Pip3,
+                    });
+                }
+            }
+        }
+
+        info!("Discovered {} pip3 packages", packages.len());
+        Ok(packages)
+    }
+
+    fn detect_binary_name(&self, package_name: &str) -> Option<String> {
+        Some(package_name.to_string())
+    }
+}
+
+/// Gem package discoverer (Ruby).
+pub struct GemDiscoverer;
+
+impl PackageDiscoverer for GemDiscoverer {
+    fn is_available(&self) -> bool {
+        Command::new("gem")
+            .arg("--version")
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+    }
+
+    fn source(&self) -> DiscoverySource {
+        DiscoverySource::Gem
+    }
+
+    fn discover_packages(&self) -> Result<Vec<DiscoveredPackage>> {
+        info!("Discovering gem packages...");
+
+        let output = Command::new("gem")
+            .arg("list")
+            .output()
+            .context("Failed to run gem list")?;
+
+        if !output.status.success() {
+            anyhow::bail!("gem list failed");
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let mut packages = Vec::new();
+
+        for line in stdout.lines() {
+            if let Some(package_name) = line.split_whitespace().next() {
+                if !package_name.is_empty() && !line.starts_with("***") {
+                    packages.push(DiscoveredPackage {
+                        package_name: package_name.to_string(),
+                        binary_name: Some(package_name.to_string()),
+                        description: None,
+                        manager: DiscoverySource::Gem,
+                    });
+                }
+            }
+        }
+
+        info!("Discovered {} gem packages", packages.len());
+        Ok(packages)
+    }
+
+    fn detect_binary_name(&self, package_name: &str) -> Option<String> {
+        Some(package_name.to_string())
+    }
+}
+
 /// Main discovery service that aggregates all discoverers.
 pub struct PackageDiscoveryService {
     discoverers: Vec<Box<dyn PackageDiscoverer>>,
@@ -376,6 +897,14 @@ impl PackageDiscoveryService {
             Box::new(HomebrewDiscoverer),
             Box::new(PacmanDiscoverer),
             Box::new(AptDiscoverer),
+            Box::new(YumDiscoverer),
+            Box::new(DnfDiscoverer),
+            Box::new(SnapDiscoverer),
+            Box::new(CargoDiscoverer),
+            Box::new(NpmDiscoverer),
+            Box::new(PipDiscoverer),
+            Box::new(Pip3Discoverer),
+            Box::new(GemDiscoverer),
         ];
 
         Self { discoverers }
@@ -391,13 +920,20 @@ impl PackageDiscoveryService {
     }
 
     /// Discover packages from a specific source.
+    /// Returns empty list for sources that don't have discovery implemented yet.
     pub fn discover_from(&self, source: DiscoverySource) -> Result<Vec<DiscoveredPackage>> {
+        // Check if this source supports discovery
+        if !source.supports_discovery() {
+            return Ok(Vec::new()); // Unsupported sources return empty list
+        }
+
         for discoverer in &self.discoverers {
             if discoverer.source() == source {
                 return discoverer.discover_packages();
             }
         }
-        anyhow::bail!("No discoverer for source {:?}", source)
+        // No discoverer found - return empty
+        Ok(Vec::new())
     }
 
     /// Discover packages from all available sources.
@@ -438,6 +974,31 @@ impl PackageDiscoveryService {
 
             // Use the first available source
             let source = sources[0];
+            let _ = tx.send(DiscoveryStatus::Started(source));
+
+            match service.discover_from(source) {
+                Ok(packages) => {
+                    let _ = tx.send(DiscoveryStatus::Complete { source, packages });
+                }
+                Err(e) => {
+                    let _ = tx.send(DiscoveryStatus::Failed {
+                        source,
+                        error: e.to_string(),
+                    });
+                }
+            }
+        });
+
+        rx
+    }
+
+    /// Start async discovery for a specific source.
+    /// Returns a receiver for status updates. Discovery runs in a background thread.
+    pub fn discover_source_async(source: DiscoverySource) -> mpsc::Receiver<DiscoveryStatus> {
+        let (tx, rx) = mpsc::channel();
+
+        thread::spawn(move || {
+            let service = PackageDiscoveryService::new();
             let _ = tx.send(DiscoveryStatus::Started(source));
 
             match service.discover_from(source) {

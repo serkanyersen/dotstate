@@ -1,4 +1,6 @@
 use ratatui::widgets::{ListState, ScrollbarState};
+use std::collections::HashMap;
+use std::time::Instant;
 
 /// Application screens
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -230,14 +232,15 @@ pub struct PackageManagerState {
     pub cache: crate::utils::package_cache::PackageCache,
     pub active_profile: String,
     // Import popup state
-    pub import_discovered: Vec<crate::utils::DiscoveredPackage>,
-    pub import_selected: std::collections::HashSet<usize>, // Selected indices
+    pub import_available_sources: Vec<crate::utils::DiscoverySource>,
+    pub import_active_tab: usize,
+    pub import_focus: ImportFocus,
+    pub import_source_cache: HashMap<crate::utils::DiscoverySource, ImportSourceCache>,
+    pub import_selected: std::collections::HashSet<usize>, // Selected indices (into current source's packages)
     pub import_filter: crate::utils::TextInput,
     pub import_list_state: ListState,
     pub import_loading: bool,
-    pub import_source: Option<crate::utils::DiscoverySource>,
-    pub import_discovered_at: Option<std::time::Instant>, // Cache timestamp
-    pub import_spinner_tick: usize,                       // For spinner animation
+    pub import_spinner_tick: usize, // For spinner animation
     pub import_discovery_rx: Option<std::sync::mpsc::Receiver<crate::utils::DiscoveryStatus>>, // Async discovery
 }
 
@@ -250,6 +253,23 @@ pub enum PackagePopupType {
     Delete,
     InstallMissing, // Prompt to install missing packages
     Import,         // Import packages from system
+}
+
+/// Focus state for import popup
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ImportFocus {
+    Tabs,
+    #[default]
+    Filter,
+    List,
+}
+
+/// Cache for a single discovery source
+#[derive(Debug)]
+pub struct ImportSourceCache {
+    pub packages: Vec<crate::utils::DiscoveredPackage>,
+    pub discovered_at: Instant,
+    pub selected: std::collections::HashSet<usize>,
 }
 
 /// Package status
@@ -307,16 +327,42 @@ impl Default for PackageManagerState {
             installation_delay_until: None,
             cache: crate::utils::package_cache::PackageCache::default(),
             active_profile: String::new(),
-            import_discovered: Vec::new(),
+            import_available_sources: Vec::new(),
+            import_active_tab: 0,
+            import_focus: ImportFocus::default(),
+            import_source_cache: HashMap::new(),
             import_selected: std::collections::HashSet::new(),
             import_filter: crate::utils::TextInput::new(),
             import_list_state: ListState::default(),
             import_loading: false,
-            import_source: None,
-            import_discovered_at: None,
             import_spinner_tick: 0,
             import_discovery_rx: None,
         }
+    }
+}
+
+impl PackageManagerState {
+    /// Get the currently active source (selected tab)
+    pub fn import_active_source(&self) -> Option<crate::utils::DiscoverySource> {
+        self.import_available_sources
+            .get(self.import_active_tab)
+            .copied()
+    }
+
+    /// Get cached packages for current source
+    pub fn import_current_packages(&self) -> &[crate::utils::DiscoveredPackage] {
+        self.import_active_source()
+            .and_then(|s| self.import_source_cache.get(&s))
+            .map(|c| c.packages.as_slice())
+            .unwrap_or(&[])
+    }
+
+    /// Check if current source cache is valid (exists and not expired)
+    pub fn import_cache_valid(&self, max_age_secs: u64) -> bool {
+        self.import_active_source()
+            .and_then(|s| self.import_source_cache.get(&s))
+            .map(|c| c.discovered_at.elapsed().as_secs() < max_age_secs && !c.packages.is_empty())
+            .unwrap_or(false)
     }
 }
 

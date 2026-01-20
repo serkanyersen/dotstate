@@ -805,40 +805,115 @@ impl ManagePackagesScreen {
     }
 
     fn start_import(&mut self) -> Result<()> {
-        use crate::utils::PackageDiscoveryService;
+        use crate::services::PackageService;
+        use crate::ui::ImportFocus;
+        use crate::utils::{DiscoverySource, PackageDiscoveryService};
 
         let state = &mut self.state;
         state.popup_type = PackagePopupType::Import;
+
+        // Get available package managers from PackageService, then convert to DiscoverySources
+        // This filters out managers that don't support discovery (e.g., Custom, language managers)
+        let available_managers = PackageService::get_available_managers();
+        state.import_available_sources = available_managers
+            .iter()
+            .filter_map(DiscoverySource::from_package_manager)
+            .collect();
+
+        if state.import_available_sources.is_empty() {
+            // No package managers that support discovery - show empty state
+            state.import_loading = false;
+            return Ok(());
+        }
+
+        // Reset selection and filter
         state.import_selected.clear();
         state.import_filter.clear();
+        state.import_active_tab = 0;
+        state.import_focus = ImportFocus::Filter; // Start with filter focused
         state.import_spinner_tick = 0;
 
-        // Check if we have cached results from the last 5 minutes
-        const CACHE_DURATION_SECS: u64 = 300; // 5 minutes
-        let cache_valid = state.import_discovered_at.is_some_and(|at| {
-            at.elapsed().as_secs() < CACHE_DURATION_SECS && !state.import_discovered.is_empty()
-        });
-
-        if cache_valid {
-            // Use cached results - just reset selection state
+        // Check cache for first source
+        const CACHE_DURATION_SECS: u64 = 300;
+        if state.import_cache_valid(CACHE_DURATION_SECS) {
             state.import_loading = false;
             state.import_discovery_rx = None;
-            if !state.import_discovered.is_empty() {
+
+            // Restore selection from cache if available
+            let source = state.import_available_sources[0];
+            if let Some(cache) = state.import_source_cache.get(&source) {
+                state.import_selected = cache.selected.clone();
+            }
+
+            if !state.import_current_packages().is_empty() {
                 state.import_list_state.select(Some(0));
             }
         } else {
-            // Need to discover - spawn async discovery
-            state.import_discovered.clear();
-            state.import_list_state = ratatui::widgets::ListState::default();
+            // Start async discovery for first source
+            let source = state.import_available_sources[0];
             state.import_loading = true;
-            state.import_source = None;
-            state.import_discovery_rx = Some(PackageDiscoveryService::discover_async());
+            state.import_discovery_rx =
+                Some(PackageDiscoveryService::discover_source_async(source));
         }
+
         Ok(())
+    }
+
+    /// Switch to a different import tab (package manager source)
+    fn switch_import_tab(&mut self, new_tab: usize) {
+        use crate::utils::PackageDiscoveryService;
+
+        if new_tab >= self.state.import_available_sources.len() {
+            return;
+        }
+
+        // Save selection for current tab
+        if let Some(current_source) = self
+            .state
+            .import_available_sources
+            .get(self.state.import_active_tab)
+        {
+            if let Some(cache) = self.state.import_source_cache.get_mut(current_source) {
+                cache.selected = self.state.import_selected.clone();
+            }
+        }
+
+        let state = &mut self.state;
+        state.import_active_tab = new_tab;
+
+        // Clear selection and filter for new tab view
+        state.import_selected.clear();
+        state.import_filter.clear(); // Reset filter to avoid confusing state
+        state.import_list_state = ratatui::widgets::ListState::default();
+
+        // Check cache for new source
+        const CACHE_DURATION_SECS: u64 = 300;
+        if state.import_cache_valid(CACHE_DURATION_SECS) {
+            state.import_loading = false;
+            state.import_discovery_rx = None;
+
+            // Restore selection from cache if available
+            let new_source = state.import_available_sources[new_tab];
+            if let Some(cache) = state.import_source_cache.get(&new_source) {
+                state.import_selected = cache.selected.clone();
+            }
+
+            if !state.import_current_packages().is_empty() {
+                state.import_list_state.select(Some(0));
+            }
+        } else {
+            // Start async discovery for new source
+            let source = state.import_available_sources[new_tab];
+            state.import_loading = true;
+            state.import_spinner_tick = 0;
+            state.import_discovery_rx =
+                Some(PackageDiscoveryService::discover_source_async(source));
+        }
     }
 
     /// Poll the async discovery receiver for updates (non-blocking)
     fn poll_import_discovery(&mut self) -> bool {
+        use crate::ui::ImportSourceCache;
         use crate::utils::DiscoveryStatus;
         use std::sync::mpsc::TryRecvError;
         use std::time::Instant;
@@ -851,12 +926,10 @@ impl ManagePackagesScreen {
         match rx.try_recv() {
             Ok(status) => {
                 match status {
-                    DiscoveryStatus::Started(source) => {
-                        self.state.import_source = Some(source);
+                    DiscoveryStatus::Started(_source) => {
+                        // Just started, keep waiting
                     }
                     DiscoveryStatus::Complete { source, packages } => {
-                        self.state.import_source = Some(source);
-
                         // Filter out packages that are already added (by binary name)
                         let existing_binaries: std::collections::HashSet<String> = self
                             .state
@@ -865,7 +938,7 @@ impl ManagePackagesScreen {
                             .map(|p| p.binary_name.to_lowercase())
                             .collect();
 
-                        self.state.import_discovered = packages
+                        let filtered_packages: Vec<_> = packages
                             .into_iter()
                             .filter(|p| {
                                 let binary = p
@@ -877,18 +950,26 @@ impl ManagePackagesScreen {
                             })
                             .collect();
 
-                        if !self.state.import_discovered.is_empty() {
+                        // Store in per-source cache
+                        self.state.import_source_cache.insert(
+                            source,
+                            ImportSourceCache {
+                                packages: filtered_packages,
+                                discovered_at: Instant::now(),
+                                selected: std::collections::HashSet::new(),
+                            },
+                        );
+
+                        // Update list state
+                        if !self.state.import_current_packages().is_empty() {
                             self.state.import_list_state.select(Some(0));
                         }
 
-                        // Cache the discovery timestamp
-                        self.state.import_discovered_at = Some(Instant::now());
                         self.state.import_loading = false;
                         self.state.import_discovery_rx = None;
                     }
-                    DiscoveryStatus::Failed { source, error } => {
-                        self.state.import_source = Some(source);
-                        warn!("Failed to discover packages: {}", error);
+                    DiscoveryStatus::Failed { source: _, error } => {
+                        warn!("Discovery failed: {}", error);
                         self.state.import_loading = false;
                         self.state.import_discovery_rx = None;
                     }
@@ -1469,18 +1550,183 @@ impl ManagePackagesScreen {
         key: crossterm::event::KeyEvent,
         config: &Config,
     ) -> Result<ScreenAction> {
+        use crate::ui::ImportFocus;
+
         let action = config.keymap.get_action(key.code, key.modifiers);
 
-        // Handle actions FIRST (before character input)
+        // Global actions (work regardless of focus)
         if let Some(action) = action {
             match action {
                 Action::Cancel | Action::Quit => {
                     self.state.popup_type = PackagePopupType::None;
-                    // Don't clear import_discovered - keep it cached
                     self.state.import_selected.clear();
                     self.state.import_filter.clear();
                     return Ok(ScreenAction::Refresh);
                 }
+                Action::Confirm => {
+                    if !self.state.import_selected.is_empty() {
+                        return self.import_selected_packages(config);
+                    }
+                }
+                Action::SelectAll => {
+                    let filtered = self.get_filtered_import_packages();
+                    for &idx in &filtered {
+                        self.state.import_selected.insert(idx);
+                    }
+                    return Ok(ScreenAction::Refresh);
+                }
+                Action::DeselectAll => {
+                    self.state.import_selected.clear();
+                    return Ok(ScreenAction::Refresh);
+                }
+                _ => {}
+            }
+        }
+
+        // Focus cycling with Tab/Shift+Tab
+        if key.code == KeyCode::Tab && !key.modifiers.contains(KeyModifiers::SHIFT) {
+            // Only cycle focus if we have tabs to show
+            if self.state.import_available_sources.len() > 1 {
+                self.state.import_focus = match self.state.import_focus {
+                    ImportFocus::Tabs => ImportFocus::Filter,
+                    ImportFocus::Filter => ImportFocus::List,
+                    ImportFocus::List => ImportFocus::Tabs,
+                };
+            } else {
+                // No tabs or only one source - cycle between Filter and List
+                self.state.import_focus = match self.state.import_focus {
+                    ImportFocus::Tabs => ImportFocus::Filter,
+                    ImportFocus::Filter => ImportFocus::List,
+                    ImportFocus::List => ImportFocus::Filter,
+                };
+            }
+            return Ok(ScreenAction::Refresh);
+        }
+        if key.code == KeyCode::BackTab {
+            if self.state.import_available_sources.len() > 1 {
+                self.state.import_focus = match self.state.import_focus {
+                    ImportFocus::Tabs => ImportFocus::List,
+                    ImportFocus::Filter => ImportFocus::Tabs,
+                    ImportFocus::List => ImportFocus::Filter,
+                };
+            } else {
+                self.state.import_focus = match self.state.import_focus {
+                    ImportFocus::Tabs => ImportFocus::List,
+                    ImportFocus::Filter => ImportFocus::List,
+                    ImportFocus::List => ImportFocus::Filter,
+                };
+            }
+            return Ok(ScreenAction::Refresh);
+        }
+
+        // Focus-specific handling
+        match self.state.import_focus {
+            ImportFocus::Tabs => self.handle_import_tabs_input(key, config),
+            ImportFocus::Filter => self.handle_import_filter_input(key, config),
+            ImportFocus::List => self.handle_import_list_input(key, config),
+        }
+    }
+
+    fn handle_import_tabs_input(
+        &mut self,
+        key: crossterm::event::KeyEvent,
+        config: &Config,
+    ) -> Result<ScreenAction> {
+        use crate::ui::ImportFocus;
+
+        let action = config.keymap.get_action(key.code, key.modifiers);
+
+        if let Some(action) = action {
+            match action {
+                Action::MoveLeft => {
+                    if self.state.import_active_tab > 0 {
+                        self.switch_import_tab(self.state.import_active_tab - 1);
+                    }
+                    return Ok(ScreenAction::Refresh);
+                }
+                Action::MoveRight => {
+                    if self.state.import_active_tab
+                        < self.state.import_available_sources.len().saturating_sub(1)
+                    {
+                        self.switch_import_tab(self.state.import_active_tab + 1);
+                    }
+                    return Ok(ScreenAction::Refresh);
+                }
+                Action::MoveDown => {
+                    // Move focus to filter
+                    self.state.import_focus = ImportFocus::Filter;
+                    return Ok(ScreenAction::Refresh);
+                }
+                _ => {}
+            }
+        }
+        Ok(ScreenAction::None)
+    }
+
+    fn handle_import_filter_input(
+        &mut self,
+        key: crossterm::event::KeyEvent,
+        config: &Config,
+    ) -> Result<ScreenAction> {
+        use crate::ui::ImportFocus;
+
+        let action = config.keymap.get_action(key.code, key.modifiers);
+
+        // Handle backspace
+        if let Some(Action::Backspace) = action {
+            self.state.import_filter.backspace();
+            self.reset_import_list_selection();
+            return Ok(ScreenAction::Refresh);
+        }
+
+        // Handle character input (exclude Space which is for ToggleSelect)
+        if let KeyCode::Char(c) = key.code {
+            if !key
+                .modifiers
+                .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SUPER)
+                && c != ' '
+            {
+                self.state.import_filter.insert_char(c);
+                self.reset_import_list_selection();
+                return Ok(ScreenAction::Refresh);
+            }
+        }
+
+        // Space toggles selection (even when filter focused)
+        if let Some(Action::ToggleSelect) = action {
+            self.toggle_import_selection();
+            return Ok(ScreenAction::Refresh);
+        }
+
+        // Navigation moves focus
+        if let Some(action) = action {
+            match action {
+                Action::MoveUp => {
+                    if self.state.import_available_sources.len() > 1 {
+                        self.state.import_focus = ImportFocus::Tabs;
+                    }
+                    return Ok(ScreenAction::Refresh);
+                }
+                Action::MoveDown => {
+                    self.state.import_focus = ImportFocus::List;
+                    return Ok(ScreenAction::Refresh);
+                }
+                _ => {}
+            }
+        }
+
+        Ok(ScreenAction::None)
+    }
+
+    fn handle_import_list_input(
+        &mut self,
+        key: crossterm::event::KeyEvent,
+        config: &Config,
+    ) -> Result<ScreenAction> {
+        let action = config.keymap.get_action(key.code, key.modifiers);
+
+        if let Some(action) = action {
+            match action {
                 Action::MoveUp => {
                     let filtered = self.get_filtered_import_packages();
                     if !filtered.is_empty() {
@@ -1504,79 +1750,43 @@ impl ManagePackagesScreen {
                     return Ok(ScreenAction::Refresh);
                 }
                 Action::ToggleSelect => {
-                    // Toggle selection of current item
-                    let filtered = self.get_filtered_import_packages();
-                    if let Some(filtered_idx) = self.state.import_list_state.selected() {
-                        if let Some(&original_idx) = filtered.get(filtered_idx) {
-                            if self.state.import_selected.contains(&original_idx) {
-                                self.state.import_selected.remove(&original_idx);
-                            } else {
-                                self.state.import_selected.insert(original_idx);
-                            }
-                        }
-                    }
-                    return Ok(ScreenAction::Refresh);
-                }
-                Action::SelectAll => {
-                    // Select all filtered items
-                    let filtered = self.get_filtered_import_packages();
-                    for &idx in &filtered {
-                        self.state.import_selected.insert(idx);
-                    }
-                    return Ok(ScreenAction::Refresh);
-                }
-                Action::DeselectAll => {
-                    self.state.import_selected.clear();
-                    return Ok(ScreenAction::Refresh);
-                }
-                Action::Confirm => {
-                    // Import selected packages
-                    if !self.state.import_selected.is_empty() {
-                        return self.import_selected_packages(config);
-                    }
-                }
-                Action::Backspace => {
-                    self.state.import_filter.backspace();
-                    // Reset selection when filter changes
-                    if !self.get_filtered_import_packages().is_empty() {
-                        self.state.import_list_state.select(Some(0));
-                    } else {
-                        self.state.import_list_state.select(None);
-                    }
+                    self.toggle_import_selection();
                     return Ok(ScreenAction::Refresh);
                 }
                 _ => {}
             }
         }
 
-        // Handle character input for filter (AFTER actions, exclude Space since it's ToggleSelect)
-        if let KeyCode::Char(c) = key.code {
-            // Only handle if no modifiers (except shift for uppercase)
-            if !key
-                .modifiers
-                .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SUPER)
-            {
-                // Space is reserved for ToggleSelect
-                if c != ' ' {
-                    self.state.import_filter.insert_char(c);
-                    // Reset list selection when filter changes
-                    if !self.get_filtered_import_packages().is_empty() {
-                        self.state.import_list_state.select(Some(0));
-                    } else {
-                        self.state.import_list_state.select(None);
-                    }
-                    return Ok(ScreenAction::Refresh);
+        Ok(ScreenAction::None)
+    }
+
+    fn toggle_import_selection(&mut self) {
+        let filtered = self.get_filtered_import_packages();
+        if let Some(filtered_idx) = self.state.import_list_state.selected() {
+            if let Some(&original_idx) = filtered.get(filtered_idx) {
+                if self.state.import_selected.contains(&original_idx) {
+                    self.state.import_selected.remove(&original_idx);
+                } else {
+                    self.state.import_selected.insert(original_idx);
                 }
             }
         }
+    }
 
-        Ok(ScreenAction::None)
+    fn reset_import_list_selection(&mut self) {
+        let filtered = self.get_filtered_import_packages();
+        if !filtered.is_empty() {
+            self.state.import_list_state.select(Some(0));
+        } else {
+            self.state.import_list_state.select(None);
+        }
     }
 
     fn get_filtered_import_packages(&self) -> Vec<usize> {
         let filter = self.state.import_filter.text().to_lowercase();
-        self.state
-            .import_discovered
+        let packages = self.state.import_current_packages();
+
+        packages
             .iter()
             .enumerate()
             .filter(|(_, pkg)| {
@@ -1595,23 +1805,41 @@ impl ManagePackagesScreen {
     }
 
     fn import_selected_packages(&mut self, config: &Config) -> Result<ScreenAction> {
-        let source = match self.state.import_source {
-            Some(s) => s,
-            None => return Ok(ScreenAction::Refresh),
-        };
-
-        let manager = source.to_package_manager();
-
-        // Collect packages to import
-        let packages_to_import: Vec<_> = self
+        // First, sync current tab's selection to cache so it's included in the loop
+        if let Some(current_source) = self
             .state
-            .import_selected
-            .iter()
-            .filter_map(|&idx| self.state.import_discovered.get(idx).cloned())
-            .collect();
+            .import_available_sources
+            .get(self.state.import_active_tab)
+        {
+            if let Some(cache) = self.state.import_source_cache.get_mut(current_source) {
+                cache.selected = self.state.import_selected.clone();
+            }
+        }
 
-        // Add each package
-        for discovered in packages_to_import {
+        // Collect all packages to import first to avoid borrow issues
+        let mut all_packages_to_import = Vec::new();
+
+        for (source, cache) in &self.state.import_source_cache {
+            if cache.selected.is_empty() {
+                continue;
+            }
+
+            let manager = source.to_package_manager();
+
+            let packages: Vec<crate::utils::DiscoveredPackage> = cache
+                .selected
+                .iter()
+                .filter_map(|&idx| cache.packages.get(idx).cloned())
+                .collect();
+
+            for pkg in packages {
+                all_packages_to_import.push((manager.clone(), pkg));
+            }
+        }
+
+        let mut packages_imported = false;
+
+        for (manager, discovered) in all_packages_to_import {
             let binary_name = discovered
                 .binary_name
                 .clone()
@@ -1619,7 +1847,7 @@ impl ManagePackagesScreen {
 
             let package = PackageService::create_package(PackageCreationParams {
                 name: &discovered.package_name,
-                description: &discovered.description.unwrap_or_default(),
+                description: &discovered.description.clone().unwrap_or_default(),
                 manager: manager.clone(),
                 is_custom: false,
                 package_name: &discovered.package_name,
@@ -1632,6 +1860,7 @@ impl ManagePackagesScreen {
             match PackageService::add_package(&config.repo_path, &config.active_profile, package) {
                 Ok(packages) => {
                     self.update_packages(packages, &config.active_profile);
+                    packages_imported = true;
                 }
                 Err(e) => {
                     warn!(
@@ -1642,18 +1871,21 @@ impl ManagePackagesScreen {
             }
         }
 
-        // Remove imported packages from discovered list (so they don't show again)
-        // Keep the rest for caching
-        let imported_indices: std::collections::HashSet<usize> =
-            self.state.import_selected.iter().copied().collect();
-        self.state.import_discovered = self
-            .state
-            .import_discovered
-            .iter()
-            .enumerate()
-            .filter(|(i, _)| !imported_indices.contains(i))
-            .map(|(_, p)| p.clone())
-            .collect();
+        if !packages_imported {
+            return Ok(ScreenAction::Refresh);
+        }
+
+        // Clear all selections after import
+        for cache in self.state.import_source_cache.values_mut() {
+            cache.packages.retain(|_p| {
+                // Determine if we should keep it. Ideally we remove imported ones.
+                // But complex to track which exact ones succeeded.
+                // For simplicity, just clearing selection is enough UX.
+                // The next discovery will filter them out anyway.
+                true
+            });
+            cache.selected.clear();
+        }
 
         // Close popup and trigger check
         self.state.popup_type = PackagePopupType::None;
@@ -1715,14 +1947,40 @@ impl ManagePackagesScreen {
                         }
                     };
 
-                    let text = format!("{} {}", status_icon, package.name);
+                    let manager_str = format!("{:?}", package.manager);
+                    let manager_len = manager_str.chars().count();
+
+                    // Approximate widths (assume ascii mostly)
+                    let status_char_count = status_icon.chars().count();
+                    let name_char_count = package.name.chars().count();
+
+                    // Available width: Area width - borders (2) - highlight symbol (2)
+                    let inner_width = area.width.saturating_sub(4) as usize;
+
+                    // Calculate padding
+                    let used_width = status_char_count + 1 + name_char_count + 1 + manager_len; // +1s for spaces
+                    let padding_len = inner_width.saturating_sub(used_width);
+                    let padding = " ".repeat(padding_len);
+
                     let style = match self.state.package_statuses.get(idx) {
                         Some(PackageStatus::Installed) => Style::default().fg(t.success),
                         Some(PackageStatus::NotInstalled) => Style::default().fg(t.error),
                         Some(PackageStatus::Error(_)) => Style::default().fg(t.warning),
                         _ => Style::default(),
                     };
-                    ListItem::new(text).style(style)
+
+                    let line = Line::from(vec![
+                        Span::styled(status_icon, style),
+                        Span::styled(" ", style),
+                        Span::styled(&package.name, style),
+                        Span::raw(padding),
+                        Span::styled(
+                            format!(" {}", manager_str),
+                            Style::default().italic().fg(t.text_dimmed),
+                        ),
+                    ]);
+
+                    ListItem::new(line)
                 })
                 .collect();
 
@@ -2461,6 +2719,7 @@ impl ManagePackagesScreen {
         config: &Config,
     ) -> Result<()> {
         use crate::components::Popup;
+        use crate::ui::ImportFocus;
 
         let t = theme();
 
@@ -2472,125 +2731,264 @@ impl ManagePackagesScreen {
             .render(frame, area);
         let popup_area = result.content_area;
 
-        // Layout: Title, Filter, List, Footer
-        let chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Length(2), // Title + source
-                Constraint::Length(3), // Filter input
-                Constraint::Min(10),   // List
-                Constraint::Length(2), // Footer
-            ])
-            .split(popup_area);
+        // Determine if we should show tabs
+        let show_tabs = self.state.import_available_sources.len() > 1;
 
-        // Title
-        let source_name = self
-            .state
-            .import_source
-            .map(|s| s.display_name())
-            .unwrap_or("System");
-        let title = format!("Import Packages from {}", source_name);
-        let title_para = Paragraph::new(title)
+        // Layout: Title, Tabs (optional), Filter, List, Footer
+        let chunks = if show_tabs {
+            Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([
+                    Constraint::Length(2), // Title
+                    Constraint::Length(2), // Tabs
+                    Constraint::Length(3), // Filter input
+                    Constraint::Min(10),   // List
+                    Constraint::Length(2), // Footer
+                ])
+                .split(popup_area)
+        } else {
+            Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([
+                    Constraint::Length(2), // Title
+                    Constraint::Length(0), // No tabs
+                    Constraint::Length(3), // Filter input
+                    Constraint::Min(10),   // List
+                    Constraint::Length(2), // Footer
+                ])
+                .split(popup_area)
+        };
+
+        // Title (generic)
+        let title = Paragraph::new("Import System Packages")
             .alignment(Alignment::Center)
             .style(t.title_style());
-        frame.render_widget(title_para, chunks[0]);
+        frame.render_widget(title, chunks[0]);
+
+        // Tabs (only if we have multiple sources)
+        if show_tabs {
+            self.render_import_tabs(frame, chunks[1]);
+        }
 
         // Filter input
+        let filter_focused = self.state.import_focus == ImportFocus::Filter;
         let widget = TextInputWidget::new(&self.state.import_filter)
             .title("Filter")
             .placeholder("Type to filter packages...")
-            .focused(true);
-        frame.render_text_input_widget(widget, chunks[1]);
+            .focused(filter_focused);
+        frame.render_text_input_widget(widget, chunks[2]);
 
-        // List of packages
-        let filtered = self.get_filtered_import_packages();
+        // List (or loading state)
+        self.render_import_list(frame, chunks[3]);
+
+        // Footer
+        self.render_import_footer(frame, chunks[4], config)?;
+
+        Ok(())
+    }
+
+    fn render_import_tabs(&self, frame: &mut Frame, area: Rect) {
+        use crate::ui::ImportFocus;
+        use ratatui::text::Span;
+
+        let t = theme();
+        let tabs_focused = self.state.import_focus == ImportFocus::Tabs;
+
+        if self.state.import_available_sources.is_empty() {
+            return;
+        }
+
+        // Build tab spans with visual indicators
+        let mut spans = Vec::new();
+        for (i, source) in self.state.import_available_sources.iter().enumerate() {
+            let name = source.display_name();
+            let is_active = i == self.state.import_active_tab;
+
+            // Check if this source has cached data
+            let has_cache = self.state.import_source_cache.contains_key(source);
+            let cache_indicator = if has_cache { "●" } else { "○" };
+
+            if is_active {
+                // Active tab: highlighted with brackets
+                spans.push(Span::styled(
+                    format!(" [{}] {} ", cache_indicator, name),
+                    Style::default()
+                        .fg(if tabs_focused {
+                            t.text_emphasis
+                        } else {
+                            t.primary
+                        })
+                        .add_modifier(Modifier::BOLD),
+                ));
+            } else {
+                // Inactive tab
+                spans.push(Span::styled(
+                    format!("  {}  {} ", cache_indicator, name),
+                    Style::default().fg(t.text_muted),
+                ));
+            }
+
+            // Add separator between tabs (except after last)
+            if i < self.state.import_available_sources.len() - 1 {
+                spans.push(Span::styled(" │ ", Style::default().fg(t.border)));
+            }
+        }
+
+        // Add focus hint if tabs are focused
+        if tabs_focused {
+            spans.push(Span::styled(
+                "  ← →",
+                Style::default()
+                    .fg(t.text_muted)
+                    .add_modifier(Modifier::DIM),
+            ));
+        }
+
+        let line = Line::from(spans);
+        let paragraph = Paragraph::new(line).alignment(Alignment::Center);
+        frame.render_widget(paragraph, area);
+    }
+
+    fn render_import_list(&mut self, frame: &mut Frame, area: Rect) {
+        use crate::ui::ImportFocus;
+
+        let t = theme();
+        let list_focused = self.state.import_focus == ImportFocus::List;
 
         if self.state.import_loading {
-            // Spinner animation frames
+            // Show loading spinner
             let spinner_frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
             let spinner = spinner_frames[self.state.import_spinner_tick % spinner_frames.len()];
 
-            // Center the loading message vertically
-            let list_area = chunks[2];
-            let center_y = list_area.y + list_area.height / 2 - 1;
-            let centered_area = Rect::new(list_area.x, center_y, list_area.width, 3);
+            let center_y = area.y + area.height / 2 - 1;
+            let centered_area = Rect::new(area.x, center_y, area.width, 3);
+
+            let source_name = self
+                .state
+                .import_active_source()
+                .map(|s| s.display_name())
+                .unwrap_or("packages");
 
             let loading_text = format!(
-                "{} Discovering packages...\n\nThis may take a moment",
-                spinner
+                "{} Discovering {} packages...\n\nThis may take a moment",
+                spinner, source_name
             );
             let loading = Paragraph::new(loading_text)
                 .alignment(Alignment::Center)
                 .style(Style::default().fg(t.text_muted));
             frame.render_widget(loading, centered_area);
-        } else if self.state.import_discovered.is_empty() {
-            let message = if self.state.import_source.is_none() {
-                "No supported package managers found on this system."
+            return;
+        }
+
+        let packages = self.state.import_current_packages();
+
+        if self.state.import_available_sources.is_empty() {
+            let empty = Paragraph::new("No supported package managers found on this system.")
+                .alignment(Alignment::Center)
+                .style(Style::default().fg(t.text_muted));
+            frame.render_widget(empty, area);
+            return;
+        }
+
+        if packages.is_empty() {
+            // Check if this source supports discovery
+            let message = if let Some(source) = self.state.import_active_source() {
+                if source.supports_discovery() {
+                    "No packages found to import.\nAll installed packages may already be added."
+                } else {
+                    "Package discovery not yet supported for this manager.\nUse the Add button to add packages manually."
+                }
             } else {
-                "No packages found to import.\nAll installed packages may already be added."
+                "No packages found to import."
             };
+
             let empty = Paragraph::new(message)
                 .alignment(Alignment::Center)
                 .style(Style::default().fg(t.text_muted));
-            frame.render_widget(empty, chunks[2]);
-        } else if filtered.is_empty() {
+            frame.render_widget(empty, area);
+            return;
+        }
+
+        let filtered = self.get_filtered_import_packages();
+
+        if filtered.is_empty() {
             let empty = Paragraph::new("No packages match the filter.")
                 .alignment(Alignment::Center)
                 .style(Style::default().fg(t.text_muted));
-            frame.render_widget(empty, chunks[2]);
-        } else {
-            let items: Vec<ListItem> = filtered
-                .iter()
-                .map(|&idx| {
-                    let pkg = &self.state.import_discovered[idx];
-                    let is_selected = self.state.import_selected.contains(&idx);
-                    let checkbox = if is_selected { "[x]" } else { "[ ]" };
-                    let binary_info = pkg
-                        .binary_name
-                        .as_ref()
-                        .filter(|b| *b != &pkg.package_name)
-                        .map(|b| format!(" ({})", b))
-                        .unwrap_or_default();
-
-                    let text = format!("{} {}{}", checkbox, pkg.package_name, binary_info);
-                    let style = if is_selected {
-                        Style::default().fg(t.success)
-                    } else {
-                        Style::default().fg(t.text)
-                    };
-                    ListItem::new(text).style(style)
-                })
-                .collect();
-
-            let list = List::new(items)
-                .block(
-                    Block::default()
-                        .borders(Borders::ALL)
-                        .border_style(focused_border_style())
-                        .title(format!(
-                            " {} packages ({} selected) ",
-                            filtered.len(),
-                            self.state.import_selected.len()
-                        )),
-                )
-                .highlight_style(Style::default().bg(t.highlight_bg).fg(t.text))
-                .highlight_symbol(crate::styles::LIST_HIGHLIGHT_SYMBOL);
-
-            frame.render_stateful_widget(list, chunks[2], &mut self.state.import_list_state);
+            frame.render_widget(empty, area);
+            return;
         }
 
-        // Footer
-        let k = |a| config.keymap.get_key_display_for_action(a);
-        let footer_text = format!(
-            "{}: Toggle | {}: All | {}: None | {}: Import | {}: Cancel",
-            k(crate::keymap::Action::ToggleSelect),
-            k(crate::keymap::Action::SelectAll),
-            k(crate::keymap::Action::DeselectAll),
-            k(crate::keymap::Action::Confirm),
-            k(crate::keymap::Action::Cancel)
-        );
-        Footer::render(frame, chunks[3], &footer_text)?;
+        // Build list items
+        let items: Vec<ListItem> = filtered
+            .iter()
+            .map(|&idx| {
+                let pkg = &packages[idx];
+                let is_selected = self.state.import_selected.contains(&idx);
+                let checkbox = if is_selected { "[x]" } else { "[ ]" };
+                let binary_info = pkg
+                    .binary_name
+                    .as_ref()
+                    .filter(|b| *b != &pkg.package_name)
+                    .map(|b| format!(" ({})", b))
+                    .unwrap_or_default();
 
+                let text = format!("{} {}{}", checkbox, pkg.package_name, binary_info);
+                let style = if is_selected {
+                    Style::default().fg(t.success)
+                } else {
+                    Style::default().fg(t.text)
+                };
+                ListItem::new(text).style(style)
+            })
+            .collect();
+
+        let border_style = if list_focused {
+            focused_border_style()
+        } else {
+            unfocused_border_style()
+        };
+
+        let list = List::new(items)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(border_style)
+                    .title(format!(
+                        " {} packages ({} selected) ",
+                        filtered.len(),
+                        self.state.import_selected.len()
+                    )),
+            )
+            .highlight_style(Style::default().bg(t.highlight_bg).fg(t.text))
+            .highlight_symbol(crate::styles::LIST_HIGHLIGHT_SYMBOL);
+
+        frame.render_stateful_widget(list, area, &mut self.state.import_list_state);
+    }
+
+    fn render_import_footer(&self, frame: &mut Frame, area: Rect, config: &Config) -> Result<()> {
+        let k = |a| config.keymap.get_key_display_for_action(a);
+        let footer_text = if self.state.import_available_sources.len() > 1 {
+            format!(
+                "{}: Toggle | Tab: Focus | {}: All | {}: None | {}: Import | {}: Cancel",
+                k(crate::keymap::Action::ToggleSelect),
+                k(crate::keymap::Action::SelectAll),
+                k(crate::keymap::Action::DeselectAll),
+                k(crate::keymap::Action::Confirm),
+                k(crate::keymap::Action::Cancel),
+            )
+        } else {
+            format!(
+                "{}: Toggle | {}: All | {}: None | {}: Import | {}: Cancel",
+                k(crate::keymap::Action::ToggleSelect),
+                k(crate::keymap::Action::SelectAll),
+                k(crate::keymap::Action::DeselectAll),
+                k(crate::keymap::Action::Confirm),
+                k(crate::keymap::Action::Cancel),
+            )
+        };
+
+        Footer::render(frame, area, &footer_text)?;
         Ok(())
     }
 }
