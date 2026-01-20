@@ -105,6 +105,15 @@ impl PackageCache {
         self.save()
     }
 
+    pub fn remove_status(&mut self, profile_name: &str, package_name: &str) -> Result<()> {
+        let key = Self::get_key(profile_name, package_name);
+        if self.data.entries.remove(&key).is_some() {
+            debug!("Removed cache entry for {}", key);
+            self.save()?;
+        }
+        Ok(())
+    }
+
     fn save(&self) -> Result<()> {
         if let Some(parent) = self.cache_file.parent() {
             std::fs::create_dir_all(parent).context("Failed to create config directory")?;

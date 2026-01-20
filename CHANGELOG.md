@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Package Manager**: Automatically prompt to install newly added packages if they are not already installed on the system
+
+### Changed
+- **Package Manager**: Deleted packages are now removed from the status cache
+- **Package Manager**: Newly added packages always get a fresh status check, ignoring any stale cache entries
+
+### Fixed
+- **Package Manager**: Fixed race condition where successful package installations were incorrectly reported as both success and failure with "Installation thread disconnected" error
+- **Package Manager**: Fixed installation dialogs rendering without background dimming by ensuring main content is rendered first
+- **Package Manager**: Fixed validation errors showing as full-screen dialogs instead of inline in the add/edit popup
+- **Package Manager**: Prevent duplicate packages by validating binary name uniqueness
+
 ---
 ## [0.2.10] - 2025-01-19
 

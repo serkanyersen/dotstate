@@ -241,6 +241,20 @@ impl ManagePackagesScreen {
         state.checking_index = None;
         info!("Finished checking all packages");
 
+        // Check if we just finished checking a newly added package
+        // If it's not installed, prompt the user to install it
+        if let Some(new_idx) = state.newly_added_index.take() {
+            if let Some(status) = state.package_statuses.get(new_idx) {
+                if matches!(status, PackageStatus::NotInstalled) {
+                    info!(
+                        "Newly added package at index {} is not installed, prompting to install",
+                        new_idx
+                    );
+                    state.popup_type = PackagePopupType::InstallMissing;
+                }
+            }
+        }
+
         Ok(())
     }
 
@@ -341,6 +355,8 @@ impl ManagePackagesScreen {
                                             package_name, err_msg
                                         ));
                                     }
+                                    // Break after Complete to avoid hitting Disconnected
+                                    break;
                                 }
                             }
                         }
@@ -449,57 +465,56 @@ impl Screen for ManagePackagesScreen {
             self.state.list_state.select(Some(0));
         }
 
-        // Always render main content first
-        if !matches!(self.state.installation_step, InstallationStep::NotStarted) {
-            // Installation in progress - show progress screen
-            self.render_installation_progress(frame, area)?;
+        // Always render main content first (so dialogs can dim it)
+        let layout = create_standard_layout(area, 5, 2);
+
+        // Header
+        let _header_height = Header::render(
+            frame,
+            layout.0,
+            "DotState - Manage Packages",
+            "Manage CLI tools and dependencies for your profile",
+        )?;
+
+        // Main content area
+        let main_area = layout.1;
+
+        // Split main area into left (list) and right (details) panels
+        let chunks = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+            .split(main_area);
+
+        // Left panel: Package list
+        self.render_package_list(frame, chunks[0], config)?;
+
+        // Right panel: Package details
+        self.render_package_details(frame, chunks[1], config)?;
+
+        // Footer
+        let footer_text = if self.state.is_checking {
+            "Checking packages...".to_string()
+        } else if !matches!(self.state.installation_step, InstallationStep::NotStarted) {
+            "Installing packages...".to_string()
         } else {
-            // Normal rendering
-            let layout = create_standard_layout(area, 5, 2);
+            let k = |a| config.keymap.get_key_display_for_action(a);
+            format!(
+                "{}: Navigate | {}: Add | {}: Edit | {}: Delete | {}: Check All | {}: Check Selected | {}: Install Missing | {}: Back",
+                config.keymap.navigation_display(),
+                k(crate::keymap::Action::Create),
+                k(crate::keymap::Action::Edit),
+                k(crate::keymap::Action::Delete),
+                k(crate::keymap::Action::Refresh),
+                k(crate::keymap::Action::CheckStatus),
+                k(crate::keymap::Action::Install),
+                k(crate::keymap::Action::Cancel)
+            )
+        };
+        Footer::render(frame, layout.2, &footer_text)?;
 
-            // Header
-            let _header_height = Header::render(
-                frame,
-                layout.0,
-                "DotState - Manage Packages",
-                "Manage CLI tools and dependencies for your profile",
-            )?;
-
-            // Main content area
-            let main_area = layout.1;
-
-            // Split main area into left (list) and right (details) panels
-            let chunks = Layout::default()
-                .direction(Direction::Horizontal)
-                .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-                .split(main_area);
-
-            // Left panel: Package list
-            self.render_package_list(frame, chunks[0], config)?;
-
-            // Right panel: Package details
-            self.render_package_details(frame, chunks[1], config)?;
-
-            // Footer
-            let footer_text = if self.state.is_checking {
-                "Checking packages...".to_string()
-            } else if !matches!(self.state.installation_step, InstallationStep::NotStarted) {
-                "Installing packages...".to_string()
-            } else {
-                let k = |a| config.keymap.get_key_display_for_action(a);
-                format!(
-                    "{}: Navigate | {}: Add | {}: Edit | {}: Delete | {}: Check All | {}: Check Selected | {}: Install Missing | {}: Back",
-                    config.keymap.navigation_display(),
-                    k(crate::keymap::Action::Create),
-                    k(crate::keymap::Action::Edit),
-                    k(crate::keymap::Action::Delete),
-                    k(crate::keymap::Action::Refresh),
-                    k(crate::keymap::Action::CheckStatus),
-                    k(crate::keymap::Action::Install),
-                    k(crate::keymap::Action::Cancel)
-                )
-            };
-            Footer::render(frame, layout.2, &footer_text)?;
+        // Render installation dialogs on top of content (with dimming)
+        if !matches!(self.state.installation_step, InstallationStep::NotStarted) {
+            self.render_installation_progress(frame, area)?;
         }
 
         // Render popups on top of the content (not instead of it)
@@ -707,6 +722,7 @@ impl ManagePackagesScreen {
         let state = &mut self.state;
         state.popup_type = PackagePopupType::Add;
         state.add_editing_index = None;
+        state.add_validation_error = None;
         state.add_name_input.clear();
         state.add_description_input.clear();
         state.add_package_name_input.clear();
@@ -734,6 +750,7 @@ impl ManagePackagesScreen {
         if let Some(pkg) = state.packages.get(index) {
             state.popup_type = PackagePopupType::Edit;
             state.add_editing_index = Some(index);
+            state.add_validation_error = None;
             state.add_name_input = crate::utils::TextInput::with_text(&pkg.name);
             state.add_description_input =
                 crate::utils::TextInput::with_text(pkg.description.clone().unwrap_or_default());
@@ -943,17 +960,32 @@ impl ManagePackagesScreen {
                         );
 
                         if !validation.is_valid {
-                            // Show error (maybe via log or state message? - Log for now)
                             warn!("Package validation failed: {:?}", validation.error_message);
-                            // Ideally we show a message popup, but we don't have direct access here?
-                            // We can return ScreenAction::ShowMessage!
-                            if let Some(msg) = validation.error_message {
-                                return Ok(ScreenAction::ShowMessage {
-                                    title: "Validation Error".to_string(),
-                                    content: msg,
-                                });
+                            // Set validation error to display inline in the popup
+                            self.state.add_validation_error = validation.error_message;
+                            return Ok(ScreenAction::Refresh);
+                        }
+
+                        // Check for duplicate binary name
+                        let binary_name_lower = binary_name.trim().to_lowercase();
+                        let duplicate = self.state.packages.iter().enumerate().any(|(idx, pkg)| {
+                            // Skip the package being edited
+                            if edit_idx == Some(idx) {
+                                return false;
                             }
-                            return Ok(ScreenAction::None);
+                            pkg.binary_name.to_lowercase() == binary_name_lower
+                        });
+
+                        if duplicate {
+                            warn!(
+                                "Package validation failed: duplicate binary name '{}'",
+                                binary_name
+                            );
+                            self.state.add_validation_error = Some(format!(
+                                "A package with binary '{}' already exists",
+                                binary_name.trim()
+                            ));
+                            return Ok(ScreenAction::Refresh);
                         }
 
                         let manager = manager.unwrap(); // Validated
@@ -972,15 +1004,33 @@ impl ManagePackagesScreen {
                         // Save
                         let repo_path = &config.repo_path;
                         let active_profile = &config.active_profile;
+                        let is_new_package = edit_idx.is_none();
                         let packages = if let Some(idx) = edit_idx {
                             PackageService::update_package(repo_path, active_profile, idx, package)?
                         } else {
                             PackageService::add_package(repo_path, active_profile, package)?
                         };
 
+                        // Track newly added package to prompt install after check
+                        let new_package_index = if is_new_package {
+                            Some(packages.len() - 1)
+                        } else {
+                            None
+                        };
+
                         self.update_packages(packages, active_profile);
+
+                        // Force newly added package to Unknown status so it gets checked
+                        // (update_packages may have loaded a stale status from cache)
+                        if let Some(idx) = new_package_index {
+                            if idx < self.state.package_statuses.len() {
+                                self.state.package_statuses[idx] = PackageStatus::Unknown;
+                            }
+                            self.state.newly_added_index = Some(idx);
+                        }
+
                         self.reset_state();
-                        // Trigger check for the new/updated package (which will be Unknown status)
+                        // Trigger check for the new/updated package
                         self.state.is_checking = true;
                         return Ok(ScreenAction::Refresh);
                     }
@@ -1161,6 +1211,9 @@ impl ManagePackagesScreen {
                 .modifiers
                 .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SUPER)
             {
+                // Clear validation error when user starts typing
+                state.add_validation_error = None;
+
                 match state.add_focused_field {
                     AddPackageField::Name => {
                         state.add_name_input.insert_char(c);
@@ -1223,11 +1276,26 @@ impl ManagePackagesScreen {
                 Action::Confirm => {
                     if state.delete_confirm_input.text().trim() == "DELETE" {
                         if let Some(idx) = state.delete_index {
+                            // Get package name before deletion to remove from cache
+                            let package_name = state.packages.get(idx).map(|p| p.name.clone());
+
                             let packages = PackageService::delete_package(
                                 &config.repo_path,
                                 &config.active_profile,
                                 idx,
                             )?;
+
+                            // Remove from cache
+                            if let Some(name) = package_name {
+                                if let Err(e) = self
+                                    .state
+                                    .cache
+                                    .remove_status(&config.active_profile, &name)
+                                {
+                                    warn!("Failed to remove package from cache: {}", e);
+                                }
+                            }
+
                             self.update_packages(packages, &config.active_profile);
                             self.reset_state();
                             return Ok(ScreenAction::Refresh);
@@ -1609,6 +1677,10 @@ impl ManagePackagesScreen {
             constraints.push(Constraint::Length(3)); // Existence check
         }
 
+        // Error message (if any)
+        if self.state.add_validation_error.is_some() {
+            constraints.push(Constraint::Length(2)); // Error message
+        }
         constraints.push(Constraint::Min(0)); // Spacer
         constraints.push(Constraint::Length(2)); // Footer
 
@@ -1656,6 +1728,7 @@ impl ManagePackagesScreen {
                 .placeholder("Binary name to check (e.g., 'eza')")
                 .focused(self.state.add_focused_field == AddPackageField::BinaryName);
             frame.render_text_input_widget(widget, chunks[current_chunk]);
+            current_chunk += 1;
         } else {
             // Custom packages: Binary Name, Install Command, Existence Check
             let widget = TextInputWidget::new(&self.state.add_binary_name_input)
@@ -1686,6 +1759,15 @@ impl ManagePackagesScreen {
                 .placeholder("Custom manager check command (optional fallback)")
                 .focused(self.state.add_focused_field == AddPackageField::ManagerCheck);
             frame.render_text_input_widget(widget, chunks[current_chunk]);
+            current_chunk += 1;
+        }
+
+        // Validation error message (if any)
+        if let Some(error) = &self.state.add_validation_error {
+            let error_para = Paragraph::new(error.as_str())
+                .style(Style::default().fg(t.error))
+                .alignment(Alignment::Center);
+            frame.render_widget(error_para, chunks[current_chunk]);
         }
 
         // Footer with instructions (always the last chunk)
@@ -1861,10 +1943,8 @@ impl ManagePackagesScreen {
     }
 
     fn render_installation_progress(&mut self, frame: &mut Frame, area: Rect) -> Result<()> {
-        // Render background
-        let t = theme();
-        let background = Block::default().style(t.background_style());
-        frame.render_widget(background, area);
+        // Dialogs are rendered on top of main content (which is already rendered)
+        // Dialog and Popup components handle their own background dimming
 
         match &self.state.installation_step {
             InstallationStep::NotStarted => {

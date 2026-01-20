@@ -220,6 +220,8 @@ pub struct PackageManagerState {
     pub add_is_custom: bool,                                // Whether in custom mode
     pub add_focused_field: AddPackageField,
     pub add_editing_index: Option<usize>, // None for add, Some(index) for edit
+    pub add_validation_error: Option<String>, // Validation error to display in popup
+    pub newly_added_index: Option<usize>, // Track newly added package to prompt install after check
     pub available_managers: Vec<crate::utils::profile_manifest::PackageManager>, // OS-filtered list
     pub manager_list_state: ListState,    // For manager selection
     // Delete popup state
@@ -236,7 +238,6 @@ pub enum PackagePopupType {
     Add,
     Edit,
     Delete,
-    #[allow(dead_code)] // Reserved for future use
     InstallMissing, // Prompt to install missing packages
 }
 
@@ -283,6 +284,8 @@ impl Default for PackageManagerState {
             add_is_custom: false,
             add_focused_field: AddPackageField::Name,
             add_editing_index: None,
+            add_validation_error: None,
+            newly_added_index: None,
             available_managers: Vec::new(),
             manager_list_state: ListState::default(),
             delete_confirm_input: crate::utils::TextInput::new(),
