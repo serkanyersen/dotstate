@@ -65,6 +65,7 @@ impl ManagePackagesScreen {
     pub fn reset_state(&mut self) {
         self.state.installation_step = InstallationStep::NotStarted;
         self.state.installation_output.clear();
+        self.state.installation_output_scroll = 0;
         self.state.popup_type = PackagePopupType::None;
     }
 
@@ -106,6 +107,7 @@ impl ManagePackagesScreen {
                 status_rx: None,
             };
             state.installation_output.clear();
+            state.installation_output_scroll = 0;
             state.installation_delay_until =
                 Some(std::time::Instant::now() + Duration::from_millis(100));
         }
@@ -548,6 +550,7 @@ impl Screen for ManagePackagesScreen {
             if let Event::Key(_) = event {
                 self.state.installation_step = InstallationStep::NotStarted;
                 self.state.installation_output.clear();
+                self.state.installation_output_scroll = 0;
                 return Ok(ScreenAction::Refresh);
             }
             return Ok(ScreenAction::None);
@@ -2567,11 +2570,12 @@ impl ManagePackagesScreen {
                 frame.render_widget(title, chunks[0]);
 
                 // Progress info
+                // current_num is already 1-based (total - remaining = current position)
                 let current_num = total_packages - packages_to_install.len();
                 let progress_text = format!(
                     "Installing: {} ({}/{})\n\nPackages installed: {} | Failed: {}",
                     package_name,
-                    current_num + 1,
+                    current_num,
                     total_packages,
                     installed.len(),
                     failed.len()
@@ -2581,11 +2585,21 @@ impl ManagePackagesScreen {
                     .style(Style::default().fg(t.warning));
                 frame.render_widget(progress_para, chunks[1]);
 
-                // Output area (scrollable)
+                // Output area (scrollable, auto-scrolls to bottom)
                 let output_text: String = if self.state.installation_output.is_empty() {
                     "Installing...".to_string()
                 } else {
                     self.state.installation_output.join("\n")
+                };
+
+                // Calculate scroll to show latest output
+                // chunks[2] height minus borders (2 lines for top/bottom border)
+                let visible_height = chunks[2].height.saturating_sub(2) as usize;
+                let total_lines = self.state.installation_output.len();
+                let scroll_offset = if total_lines > visible_height {
+                    (total_lines - visible_height) as u16
+                } else {
+                    0
                 };
 
                 let output_para = Paragraph::new(output_text)
@@ -2596,6 +2610,7 @@ impl ManagePackagesScreen {
                             .title(" Output "),
                     )
                     .wrap(Wrap { trim: true })
+                    .scroll((scroll_offset, 0))
                     .style(t.text_style());
                 frame.render_widget(output_para, chunks[2]);
 

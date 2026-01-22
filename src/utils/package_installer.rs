@@ -72,10 +72,41 @@ impl PackageInstaller {
             ));
         }
 
+        // For custom packages, check if the command contains sudo
+        if matches!(
+            package.manager,
+            crate::utils::profile_manifest::PackageManager::Custom
+        ) {
+            if let Some(cmd_str) = &package.install_command {
+                if cmd_str.contains("sudo") {
+                    // Check if sudo password is required
+                    let sudo_needs_password = std::process::Command::new("sudo")
+                        .arg("-n")
+                        .arg("true")
+                        .output()
+                        .map(|o| !o.status.success())
+                        .unwrap_or(true);
+
+                    if sudo_needs_password {
+                        return Err(anyhow::anyhow!(
+                            "This command requires sudo password. Please run it manually in a terminal:\n\n  {}",
+                            cmd_str
+                        ));
+                    }
+                }
+            }
+        }
+
         // Build command (direct Command for managed, sh -c for custom)
         let mut cmd = PackageManagerImpl::get_install_command_builder(package);
 
-        let mut child = cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).spawn()?;
+        // Use null stdin to prevent interactive commands from hanging
+        // (they'll fail immediately instead of waiting for input)
+        let mut child = cmd
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()?;
 
         // Channel for output lines
         let (tx, rx) = mpsc::channel::<String>();
@@ -141,21 +172,29 @@ impl PackageInstaller {
     /// This allows packages installed manually (without manager) to be detected.
     /// Manager is only required for manager-native fallback and installation.
     pub fn check_exists(package: &Package) -> Result<(bool, Option<String>, Option<String>)> {
+        // Track what checks we attempted for better error messages
+        let mut check_attempts: Vec<String> = Vec::new();
+
         // First, try binary check (no manager required)
         // This works even if package was installed manually
         debug!(
             "Checking if binary '{}' exists in PATH for package {}",
             package.binary_name, package.name
         );
+        let binary_check_cmd = format!("which {}", package.binary_name);
         if PackageManagerImpl::check_binary_in_path(&package.binary_name) {
             debug!("Package {} found via binary check", package.name);
             return Ok((
                 true,
-                Some(format!("which {}", package.binary_name)),
+                Some(binary_check_cmd),
                 Some("Binary found in PATH".to_string()),
             ));
         }
         debug!("Binary '{}' not found in PATH", package.binary_name);
+        check_attempts.push(format!(
+            "Binary check: `{}` - not found in PATH",
+            binary_check_cmd
+        ));
 
         // Binary check failed, try manager-native check if available
         // This requires the manager to be installed
@@ -172,6 +211,7 @@ impl PackageInstaller {
             let combined_output = format!("STDOUT:\n{}\nSTDERR:\n{}", stdout, stderr);
 
             debug!("Custom manager check for {}: {}", package.name, found);
+            // Return the output even if check failed - user wants to see what happened
             return Ok((found, Some(manager_check.clone()), Some(combined_output)));
         }
 
@@ -202,6 +242,10 @@ impl PackageInstaller {
                     return Ok((found, Some(cmd_str), Some(combined_output)));
                 }
             } else {
+                check_attempts.push(format!(
+                    "Manager check: {:?} not installed, skipped",
+                    package.manager
+                ));
                 debug!(
                     "Manager {:?} not installed, skipping manager check for {}",
                     package.manager, package.name
@@ -209,12 +253,13 @@ impl PackageInstaller {
             }
         }
 
-        // All checks failed
+        // All checks failed - show what we tried
         debug!("All checks failed for package {}", package.name);
-        Ok((
-            false,
-            None,
-            Some("No suitable check method found".to_string()),
-        ))
+        let output = if check_attempts.is_empty() {
+            "No suitable check method found".to_string()
+        } else {
+            format!("Checks attempted:\n{}", check_attempts.join("\n"))
+        };
+        Ok((false, None, Some(output)))
     }
 }

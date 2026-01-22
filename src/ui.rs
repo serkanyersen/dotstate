@@ -208,6 +208,7 @@ pub struct PackageManagerState {
     // Installation state
     pub installation_step: InstallationStep,
     pub installation_output: Vec<String>, // Live output from installation
+    pub installation_output_scroll: u16,  // Scroll position for installation output
     pub installation_delay_until: Option<std::time::Instant>, // Delay between installation steps
     // Add/Edit popup state
     pub add_name_input: crate::utils::TextInput,
@@ -324,6 +325,7 @@ impl Default for PackageManagerState {
             checking_delay_until: None,
             installation_step: InstallationStep::NotStarted,
             installation_output: Vec::new(),
+            installation_output_scroll: 0,
             installation_delay_until: None,
             cache: crate::utils::package_cache::PackageCache::default(),
             active_profile: String::new(),
