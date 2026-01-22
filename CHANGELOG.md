@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+---
+## [0.2.16] - 2025-01-21
+
 ### Fixed
 - **Keymap**: Fixed vim keybindings `h` and `l` being captured as cursor movement instead of typing characters in text input fields (Fixes #39)
 
