@@ -171,6 +171,18 @@ dotstate upgrade
 dotstate help
 ```
 
+## Shell Completions
+
+Generate completions for your shell:
+
+```bash
+# Bash/Zsh
+source <(dotstate completions bash)
+
+# Fish
+dotstate generate fish | source
+```
+
 ## How It Works
 
 1. **Storage**: Your dotfiles are stored in a Git repository (default: `~/.config/dotstate/storage`)

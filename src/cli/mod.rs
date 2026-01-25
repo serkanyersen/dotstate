@@ -11,6 +11,7 @@
 //! - `upgrade` - Update checker
 
 mod common;
+mod completions;
 mod doctor;
 mod files;
 mod info;
@@ -26,7 +27,8 @@ pub use common::*;
 pub use packages::PackagesCommand;
 
 use anyhow::Result;
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
+use clap_complete::Shell;
 use std::path::PathBuf;
 
 /// A friendly TUI tool for managing dotfiles with GitHub sync
@@ -109,6 +111,12 @@ pub enum Commands {
         #[command(subcommand)]
         command: PackagesCommand,
     },
+    /// Generate command-line completions
+    #[clap(alias = "completion")]
+    Completions {
+        /// The shell to generate completions for
+        shell: Option<Shell>,
+    },
 }
 
 impl Cli {
@@ -128,6 +136,7 @@ impl Cli {
             Some(Commands::Repository) => info::cmd_repository(),
             Some(Commands::Upgrade { check }) => upgrade::execute(check),
             Some(Commands::Packages { command }) => packages::execute(command),
+            Some(Commands::Completions { shell }) => completions::generate(shell),
             None => {
                 // No command provided, launch TUI
                 Ok(())
