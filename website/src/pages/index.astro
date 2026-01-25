@@ -393,9 +393,15 @@ const sections = [
                             <p>DotState creates and manages a repository on your GitHub account.</p>
                             <p><strong>Token options:</strong></p>
                             <ul>
-                                <li>Environment variable: <code>export DOTSTATE_GITHUB_TOKEN=ghp_your_token</code></li>
+                                <li>Environment variable: <code>export DOTSTATE_GITHUB_TOKEN=your_token</code></li>
                                 <li>Config file (set during first-time setup)</li>
                             </ul>
+                            <p><strong>Supported token types:</strong></p>
+                            <ul>
+                                <li><strong>Fine-grained tokens</strong> (recommended): <code>github_pat_...</code></li>
+                                <li><strong>Classic tokens</strong>: <code>ghp_...</code></li>
+                            </ul>
+                            <p>See <a href="#security">Security section</a> for detailed permission requirements.</p>
                         </ExampleCard>
 
                         <ExampleCard title="[~] Local Mode (User-provided)">
@@ -454,9 +460,29 @@ const sections = [
                             Tokens can be provided via environment variables. Local mode requires no tokens.
                         </SecurityCard>
 
+                        <h3>GitHub Token Permissions</h3>
+                        <p>DotState supports both <strong>Fine-grained tokens</strong> (recommended) and <strong>Classic tokens</strong>.</p>
+
+                        <h4>[>] Fine-grained Tokens (Recommended)</h4>
+                        <p>Create at <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener noreferrer">github.com/settings/personal-access-tokens</a></p>
+                        <p><strong>Required permissions:</strong></p>
+                        <ul>
+                            <li><strong>Administration</strong>: Read & write — to create your <code>dotstate-storage</code> repository</li>
+                            <li><strong>Contents</strong>: Read & write — to sync your dotfiles to/from the repository</li>
+                            <li><strong>Metadata</strong>: Read-only — to check if <code>dotstate-storage</code> already exists</li>
+                        </ul>
+                        <Tip>
+                            <strong>Tip:</strong> For initial setup, grant access to "All repositories". After setup, you can regenerate a token restricted to only your <code>dotstate-storage</code> repository.
+                        </Tip>
+
+                        <h4>[>] Classic Tokens</h4>
+                        <p>Create at <a href="https://github.com/settings/tokens" target="_blank" rel="noopener noreferrer">github.com/settings/tokens</a></p>
+                        <p>Required scope: <code>repo</code> (full control of private repositories)</p>
+
                         <h3>Security Best Practices</h3>
                         <ul class="best-practices">
-                            <li>Use GitHub tokens with minimal required permissions (only <code>repo</code> scope)</li>
+                            <li>Prefer fine-grained tokens for minimal permissions</li>
+                            <li>Restrict token scope to your dotstate repository after initial setup</li>
                             <li>Rotate tokens regularly</li>
                             <li>Never commit tokens to version control</li>
                             <li>Review files before syncing</li>

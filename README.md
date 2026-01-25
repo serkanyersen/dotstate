@@ -183,12 +183,46 @@ DotState supports two repository setup modes:
 
 Let DotState create and manage a GitHub repository for you. Requires a GitHub Personal Access Token.
 
-**GitHub Token Configuration:**
+**GitHub Token Options:**
+
+DotState supports both **Classic tokens** and **Fine-grained tokens** (recommended).
+
+<details>
+<summary><strong>Option 1: Fine-grained Token (Recommended)</strong></summary>
+
+Fine-grained tokens offer better security through granular permissions. Create one at [github.com/settings/personal-access-tokens](https://github.com/settings/personal-access-tokens/new).
+
+**Required permissions:**
+
+| Permission | Access Level | Purpose |
+|------------|--------------|---------|
+| **Administration** | Read & write | Create your `dotstate-storage` repository |
+| **Contents** | Read & write | Sync your dotfiles to/from the repository |
+| **Metadata** | Read-only | Check if `dotstate-storage` already exists |
+
+**Repository access:**
+- For initial setup, select **"All repositories"** so DotState can create and find your storage repo
+- After setup, you can regenerate a token restricted to only your `dotstate-storage` repository
+
+</details>
+
+<details>
+<summary><strong>Option 2: Classic Token</strong></summary>
+
+Create a classic token at [github.com/settings/tokens](https://github.com/settings/tokens).
+
+**Required scope:** `repo` (Full control of private repositories)
+
+</details>
+
+**Token Configuration:**
 
 1. **Environment Variable** (Recommended for automation):
 
    ```bash
    export DOTSTATE_GITHUB_TOKEN=ghp_your_token_here
+   # or for fine-grained tokens:
+   export DOTSTATE_GITHUB_TOKEN=github_pat_your_token_here
    ```
 
    The environment variable takes precedence over the config file token.

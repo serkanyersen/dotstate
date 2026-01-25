@@ -613,18 +613,33 @@ impl StorageSetupScreen {
                         Line::from("Personal Access Token for authentication."),
                         Line::from(""),
                         Line::from(Span::styled(
-                            "Classic token:",
+                            "Classic token (ghp_):",
                             Style::default().fg(t.primary),
                         )),
                         Line::from("  github.com/settings/tokens"),
                         Line::from("  Select 'repo' scope"),
                         Line::from(""),
                         Line::from(Span::styled(
-                            "Fine-grained token:",
+                            "Fine-grained token (github_pat_):",
                             Style::default().fg(t.primary),
                         )),
                         Line::from("  github.com/settings/personal-access-tokens"),
-                        Line::from("  Set 'Contents' to 'Read and write'"),
+                        Line::from(""),
+                        Line::from(Span::styled(
+                            "Required permissions:",
+                            Style::default().fg(t.text_emphasis),
+                        )),
+                        Line::from("  Administration: Read & write"),
+                        Line::from("    (to create dotstate-storage repo)"),
+                        Line::from("  Contents: Read & write"),
+                        Line::from("    (to sync your dotfiles)"),
+                        Line::from("  Metadata: Read-only"),
+                        Line::from("    (to check if repo already exists)"),
+                        Line::from(""),
+                        Line::from(Span::styled("Tip:", Style::default().fg(t.success))),
+                        Line::from("  For initial setup, grant access to"),
+                        Line::from("  'All repositories'. After setup, you"),
+                        Line::from("  can restrict to only your storage repo."),
                     ])
                 }
             }
