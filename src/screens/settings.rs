@@ -21,7 +21,7 @@ use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{
-    Block, Borders, List, ListItem, ListState, Padding, Paragraph, StatefulWidget, Wrap
+    Block, Borders, List, ListItem, ListState, Padding, Paragraph, StatefulWidget, Wrap,
 };
 use ratatui::Frame;
 

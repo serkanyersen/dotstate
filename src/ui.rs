@@ -8,6 +8,7 @@ pub enum Screen {
     MainMenu,
     DotfileSelection,
     GitHubAuth,
+    StorageSetup, // New unified storage setup screen
     SyncWithRemote,
     ManageProfiles,
     ProfileSelection, // For selecting which profile to activate after setup

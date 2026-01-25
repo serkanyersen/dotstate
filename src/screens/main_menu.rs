@@ -1040,7 +1040,7 @@ impl MainMenuScreen {
 
         // Check if item requires setup
         if item.requires_setup() && !is_setup {
-            return Ok(ScreenAction::Navigate(ScreenId::GitHubAuth));
+            return Ok(ScreenAction::Navigate(ScreenId::StorageSetup));
         }
 
         // Navigate based on selected item
@@ -1049,7 +1049,7 @@ impl MainMenuScreen {
             MenuItem::SyncWithRemote => Ok(ScreenAction::Navigate(ScreenId::SyncWithRemote)),
             MenuItem::ManageProfiles => Ok(ScreenAction::Navigate(ScreenId::ManageProfiles)),
             MenuItem::ManagePackages => Ok(ScreenAction::Navigate(ScreenId::ManagePackages)),
-            MenuItem::SetupRepository => Ok(ScreenAction::Navigate(ScreenId::GitHubAuth)),
+            MenuItem::SetupRepository => Ok(ScreenAction::Navigate(ScreenId::StorageSetup)),
             MenuItem::Settings => Ok(ScreenAction::Navigate(ScreenId::Settings)),
         }
     }

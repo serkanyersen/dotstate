@@ -3,7 +3,7 @@ use crate::git::GitManager;
 use crate::github::GitHubClient;
 use crate::screens::{
     GitHubAuthScreen, MainMenuScreen, ManagePackagesScreen, ManageProfilesScreen,
-    Screen as ScreenTrait, SyncWithRemoteScreen,
+    Screen as ScreenTrait, StorageSetupScreen, SyncWithRemoteScreen,
 };
 use crate::tui::Tui;
 use crate::ui::{GitHubAuthStep, GitHubSetupStep, Screen, UiState};
@@ -73,6 +73,7 @@ pub struct App {
     /// Screen controllers (new architecture)
     main_menu_screen: MainMenuScreen,
     github_auth_screen: GitHubAuthScreen,
+    storage_setup_screen: StorageSetupScreen,
     dotfile_selection_screen: crate::screens::DotfileSelectionScreen,
     sync_with_remote_screen: SyncWithRemoteScreen,
     profile_selection_screen: crate::screens::ProfileSelectionScreen,
@@ -132,6 +133,7 @@ impl App {
             last_screen: None,
             main_menu_screen,
             github_auth_screen: GitHubAuthScreen::new(),
+            storage_setup_screen: StorageSetupScreen::new(),
             dotfile_selection_screen: crate::screens::DotfileSelectionScreen::new(),
             sync_with_remote_screen: SyncWithRemoteScreen::new(),
             profile_selection_screen: crate::screens::ProfileSelectionScreen::new(),
@@ -273,7 +275,10 @@ impl App {
             }
 
             // Process GitHub setup state machine if active (before polling events)
-            if self.github_auth_screen.needs_tick() {
+            // Check new storage setup screen first, fall back to old screen for legacy
+            if self.storage_setup_screen.needs_tick() {
+                self.process_storage_setup_step()?;
+            } else if self.github_auth_screen.needs_tick() {
                 self.process_github_setup_step()?;
             }
 
@@ -476,6 +481,20 @@ impl App {
                     // Sync state back after render
                     self.ui_state.github_auth = self.github_auth_screen.get_auth_state().clone();
                 }
+                Screen::StorageSetup => {
+                    // Router pattern - delegate to screen's render method
+                    use crate::screens::{RenderContext, Screen as ScreenTrait};
+                    let syntax_theme = crate::utils::get_current_syntax_theme(&self.theme_set);
+                    let ctx = RenderContext::new(
+                        &config_clone,
+                        &self.syntax_set,
+                        &self.theme_set,
+                        syntax_theme,
+                    );
+                    if let Err(e) = self.storage_setup_screen.render(frame, area, &ctx) {
+                        error!("Failed to render StorageSetup screen: {}", e);
+                    }
+                }
                 Screen::DotfileSelection => {
                     // Router pattern - delegate to screen's render method
                     use crate::screens::{RenderContext, Screen as ScreenTrait};
@@ -629,6 +648,12 @@ impl App {
                 self.manage_packages_screen.is_input_focused()
             }
 
+            // Storage Setup - form has text input
+            Screen::StorageSetup => {
+                use crate::screens::Screen as ScreenTrait;
+                self.storage_setup_screen.is_input_focused()
+            }
+
             // Other screens don't have text input
             _ => false,
         };
@@ -673,6 +698,9 @@ impl App {
     }
 
     fn handle_event(&mut self, event: Event) -> Result<()> {
+        // Sync input mode at the start so global handlers know current focus state
+        self.sync_input_mode();
+
         // Global keymap-based handlers (help overlay, theme cycling)
         if let Event::Key(key) = &event {
             if key.kind == KeyEventKind::Press {
@@ -775,6 +803,14 @@ impl App {
                 // Sync state from screen back to ui_state (for legacy code that reads it)
                 self.ui_state.github_auth = self.github_auth_screen.get_auth_state().clone();
 
+                self.process_screen_action(action)?;
+                Ok(())
+            }
+            Screen::StorageSetup => {
+                // Router pattern - delegate to screen's handle_event method
+                use crate::screens::ScreenContext;
+                let ctx = ScreenContext::new(&self.config, &self.config_path);
+                let action = self.storage_setup_screen.handle_event(event, &ctx)?;
                 self.process_screen_action(action)?;
                 Ok(())
             }
@@ -938,6 +974,10 @@ impl App {
                     }
                 }
             }
+            Screen::StorageSetup => {
+                // Reset the screen state when entering
+                self.storage_setup_screen.reset();
+            }
             _ => {}
         }
         Ok(())
@@ -952,6 +992,8 @@ impl App {
             }
             ScreenAction::Navigate(target) => {
                 self.ui_state.current_screen = target;
+                // Call on_enter for the target screen
+                self.call_on_enter(target)?;
             }
             ScreenAction::NavigateWithMessage {
                 screen,
@@ -1019,14 +1061,14 @@ impl App {
                 self.config.github = None;
 
                 if let Err(e) = self.config.save(&self.config_path) {
-                    self.github_auth_screen.get_auth_state_mut().error_message =
+                    self.storage_setup_screen.get_state_mut().error_message =
                         Some(format!("Failed to save config: {}", e));
                     return Ok(());
                 }
 
                 // Verify git repository can be opened
                 if let Err(e) = crate::git::GitManager::open_or_init(&repo_path) {
-                    self.github_auth_screen.get_auth_state_mut().error_message =
+                    self.storage_setup_screen.get_state_mut().error_message =
                         Some(format!("Failed to open repository: {}", e));
                     return Ok(());
                 }
@@ -1035,7 +1077,7 @@ impl App {
                     // No profiles, create default and go to main menu
                     self.config.active_profile = "default".to_string();
                     let _ = self.config.save(&self.config_path);
-                    self.github_auth_screen.reset();
+                    self.storage_setup_screen.reset();
                     self.main_menu_screen.update_config(self.config.clone());
                     self.ui_state.current_screen = Screen::MainMenu;
                 } else {
@@ -1046,7 +1088,7 @@ impl App {
                     // Update the screen controller state as well
                     self.profile_selection_screen.set_profiles(profiles);
 
-                    self.github_auth_screen.reset();
+                    self.storage_setup_screen.reset();
                     self.ui_state.current_screen = Screen::ProfileSelection;
                 }
             }
@@ -1056,11 +1098,12 @@ impl App {
                 is_private,
             } => {
                 // Initialize the GitHub setup state machine
-                use crate::ui::{GitHubAuthStep, GitHubSetupData, GitHubSetupStep};
+                use crate::screens::storage_setup::StorageSetupStep;
+                use crate::ui::GitHubSetupData;
                 use std::time::Duration;
 
-                let state = self.github_auth_screen.get_auth_state_mut();
-                state.step = GitHubAuthStep::SetupStep(GitHubSetupStep::Connecting);
+                let state = self.storage_setup_screen.get_state_mut();
+                state.step = StorageSetupStep::Processing(GitHubSetupStep::Connecting);
                 state.status_message = Some("🔌 Connecting to GitHub...".to_string());
                 state.setup_data = Some(GitHubSetupData {
                     token,
@@ -1073,23 +1116,77 @@ impl App {
                 });
             }
             ScreenAction::UpdateGitHubToken { token } => {
-                // Update just the GitHub token
-                if let Some(ref mut github) = self.config.github {
-                    github.token = Some(token.clone());
-                    if let Err(e) = self.config.save(&self.config_path) {
-                        self.github_auth_screen.get_auth_state_mut().error_message =
-                            Some(format!("Failed to save token: {}", e));
+                // Update the GitHub token with validation and remote URL update
+                let github_config = match &self.config.github {
+                    Some(gh) => gh.clone(),
+                    None => {
+                        self.storage_setup_screen.get_state_mut().error_message =
+                            Some("No GitHub configuration to update".to_string());
                         return Ok(());
                     }
-                    // Show success and reset
-                    self.github_auth_screen.get_auth_state_mut().status_message =
-                        Some("✅ Token updated successfully!".to_string());
-                    self.github_auth_screen
-                        .get_auth_state_mut()
-                        .is_editing_token = false;
-                } else {
-                    self.github_auth_screen.get_auth_state_mut().error_message =
-                        Some("No GitHub configuration to update".to_string());
+                };
+
+                // Show validating status
+                self.storage_setup_screen.get_state_mut().status_message =
+                    Some("Validating token access to repository...".to_string());
+
+                // Validate the token by checking repo access (not user info)
+                // This works with scoped tokens that only have repo access
+                let owner = github_config.owner.clone();
+                let repo = github_config.repo.clone();
+                let validation_result = self.runtime.block_on(async {
+                    let client = crate::github::GitHubClient::new(token.clone());
+                    client.repo_exists(&owner, &repo).await
+                });
+
+                match validation_result {
+                    Ok(exists) => {
+                        if !exists {
+                            self.storage_setup_screen.get_state_mut().error_message =
+                                Some(format!("Token cannot access repository {}/{}", owner, repo));
+                            return Ok(());
+                        }
+
+                        // Token can access repo - update config
+                        if let Some(ref mut github) = self.config.github {
+                            github.token = Some(token.clone());
+                        }
+
+                        // Update the git remote URL with new token
+                        if self.config.repo_path.exists() {
+                            match crate::git::GitManager::open_or_init(&self.config.repo_path) {
+                                Ok(mut git_manager) => {
+                                    if let Err(e) =
+                                        git_manager.update_remote_token("origin", &token)
+                                    {
+                                        // Non-fatal: log warning but continue
+                                        warn!("Failed to update remote URL with new token: {}", e);
+                                    }
+                                }
+                                Err(e) => {
+                                    warn!("Failed to open git repository to update token: {}", e);
+                                }
+                            }
+                        }
+
+                        // Save config
+                        if let Err(e) = self.config.save(&self.config_path) {
+                            self.storage_setup_screen.get_state_mut().error_message =
+                                Some(format!("Failed to save token: {}", e));
+                            return Ok(());
+                        }
+
+                        // Show success and reset
+                        self.storage_setup_screen.get_state_mut().status_message =
+                            Some(format!("✅ Token updated for {}/{}", owner, repo));
+                        self.storage_setup_screen.get_state_mut().is_editing_token = false;
+                        self.storage_setup_screen.get_state_mut().token_input =
+                            crate::utils::TextInput::with_text("••••••••••••••••••••");
+                    }
+                    Err(e) => {
+                        self.storage_setup_screen.get_state_mut().error_message =
+                            Some(format!("Token validation failed: {}", e));
+                    }
                 }
             }
             ScreenAction::ShowProfileSelection { profiles } => {
@@ -1418,6 +1515,25 @@ impl App {
                     }
                 }
             }
+        }
+        Ok(())
+    }
+
+    /// Call on_enter for the target screen when navigating
+    fn call_on_enter(&mut self, target: Screen) -> Result<()> {
+        use crate::screens::{Screen as ScreenTrait, ScreenContext};
+        let ctx = ScreenContext::new(&self.config, &self.config_path);
+
+        match target {
+            Screen::MainMenu => self.main_menu_screen.on_enter(&ctx)?,
+            Screen::DotfileSelection => self.dotfile_selection_screen.on_enter(&ctx)?,
+            Screen::GitHubAuth => self.github_auth_screen.on_enter(&ctx)?,
+            Screen::StorageSetup => self.storage_setup_screen.on_enter(&ctx)?,
+            Screen::SyncWithRemote => self.sync_with_remote_screen.on_enter(&ctx)?,
+            Screen::ManageProfiles => self.manage_profiles_screen.on_enter(&ctx)?,
+            Screen::ProfileSelection => self.profile_selection_screen.on_enter(&ctx)?,
+            Screen::ManagePackages => self.manage_packages_screen.on_enter(&ctx)?,
+            Screen::Settings => self.settings_screen.on_enter(&ctx)?,
         }
         Ok(())
     }
@@ -1876,6 +1992,420 @@ impl App {
             // But actually, each step that needs to continue already saves it
             // So we only need to save if the step didn't save it yet
             // For now, let's not save here - each step handles its own saving
+        }
+
+        Ok(())
+    }
+
+    /// Process the storage setup state machine (for new StorageSetupScreen)
+    fn process_storage_setup_step(&mut self) -> Result<()> {
+        use crate::screens::storage_setup::StorageSetupStep;
+
+        // Clone the screen's state to work with (avoids borrow checker issues)
+        let state = self.storage_setup_screen.get_state();
+        let step = state.step;
+        let setup_data_opt = state.setup_data.clone();
+
+        let mut setup_data = match setup_data_opt {
+            Some(data) => data,
+            None => {
+                // No setup data, reset to input
+                self.storage_setup_screen.get_state_mut().step = StorageSetupStep::Input;
+                return Ok(());
+            }
+        };
+
+        // Check if we need to wait for a delay
+        if let Some(delay_until) = setup_data.delay_until {
+            if std::time::Instant::now() < delay_until {
+                return Ok(());
+            }
+            setup_data.delay_until = None;
+        }
+
+        // Extract the current step
+        let current_step = match step {
+            StorageSetupStep::Processing(s) => s,
+            StorageSetupStep::Input => return Ok(()),
+        };
+
+        match current_step {
+            GitHubSetupStep::Connecting => {
+                let state = self.storage_setup_screen.get_state_mut();
+                state.step = StorageSetupStep::Processing(GitHubSetupStep::ValidatingToken);
+                state.status_message = Some("🔑 Validating your token...".to_string());
+                setup_data.delay_until =
+                    Some(std::time::Instant::now() + Duration::from_millis(800));
+                state.setup_data = Some(setup_data);
+            }
+            GitHubSetupStep::ValidatingToken => {
+                let token = setup_data.token.clone();
+                let repo_name = setup_data.repo_name.clone();
+
+                let result = self.runtime.block_on(async {
+                    let client = GitHubClient::new(token.clone());
+                    let user = client.get_user().await?;
+                    let repo_exists = client.repo_exists(&user.login, &repo_name).await?;
+                    Ok::<(String, bool), anyhow::Error>((user.login, repo_exists))
+                });
+
+                match result {
+                    Ok((username, exists)) => {
+                        setup_data.username = Some(username);
+                        setup_data.repo_exists = Some(exists);
+                        setup_data.delay_until =
+                            Some(std::time::Instant::now() + Duration::from_millis(600));
+
+                        let state = self.storage_setup_screen.get_state_mut();
+                        state.step = StorageSetupStep::Processing(GitHubSetupStep::CheckingRepo);
+                        state.status_message =
+                            Some("🔍 Checking if repository exists...".to_string());
+                        state.setup_data = Some(setup_data);
+                    }
+                    Err(e) => {
+                        let state = self.storage_setup_screen.get_state_mut();
+                        state.error_message = Some(format!("❌ Authentication failed: {}", e));
+                        state.status_message = None;
+                        state.step = StorageSetupStep::Input;
+                        state.setup_data = None;
+                        return Ok(());
+                    }
+                }
+            }
+            GitHubSetupStep::CheckingRepo => {
+                if setup_data.username.is_none() || setup_data.repo_exists.is_none() {
+                    error!("Invalid state: username or repo_exists not set in CheckingRepo step");
+                    let state = self.storage_setup_screen.get_state_mut();
+                    state.error_message = Some(
+                        "❌ Internal error: Setup state is invalid. Please try again.".to_string(),
+                    );
+                    state.status_message = None;
+                    state.step = StorageSetupStep::Input;
+                    state.setup_data = None;
+                    return Ok(());
+                }
+
+                if setup_data.repo_exists == Some(true) {
+                    let username = setup_data.username.as_ref().unwrap();
+                    let state = self.storage_setup_screen.get_state_mut();
+                    state.step = StorageSetupStep::Processing(GitHubSetupStep::CloningRepo);
+                    state.status_message = Some(format!(
+                        "📥 Cloning repository {}/{}...",
+                        username, setup_data.repo_name
+                    ));
+                    setup_data.delay_until =
+                        Some(std::time::Instant::now() + Duration::from_millis(500));
+                    state.setup_data = Some(setup_data);
+                } else {
+                    let username = setup_data.username.as_ref().unwrap();
+                    let state = self.storage_setup_screen.get_state_mut();
+                    state.step = StorageSetupStep::Processing(GitHubSetupStep::CreatingRepo);
+                    state.status_message = Some(format!(
+                        "📦 Creating repository {}/{}...",
+                        username, setup_data.repo_name
+                    ));
+                    setup_data.delay_until =
+                        Some(std::time::Instant::now() + Duration::from_millis(600));
+                    state.setup_data = Some(setup_data);
+                }
+            }
+            GitHubSetupStep::CloningRepo => {
+                let username = setup_data.username.as_ref().unwrap();
+                let repo_path = self.config.repo_path.clone();
+                let token = setup_data.token.clone();
+                let remote_url = format!(
+                    "https://github.com/{}/{}.git",
+                    username, setup_data.repo_name
+                );
+
+                match GitManager::clone_or_open(&remote_url, &repo_path, Some(&token)) {
+                    Ok((_, was_existing)) => {
+                        let state = self.storage_setup_screen.get_state_mut();
+                        state.status_message = Some(if was_existing {
+                            "✅ Using existing repository!".to_string()
+                        } else {
+                            "✅ Repository cloned successfully!".to_string()
+                        });
+
+                        // Update config
+                        self.config.github = Some(GitHubConfig {
+                            owner: username.clone(),
+                            repo: setup_data.repo_name.clone(),
+                            token: Some(token.clone()),
+                        });
+                        self.config.repo_name = setup_data.repo_name.clone();
+                        self.config
+                            .save(&self.config_path)
+                            .context("Failed to save configuration")?;
+
+                        // Move to discovering profiles
+                        state.step =
+                            StorageSetupStep::Processing(GitHubSetupStep::DiscoveringProfiles);
+                        state.status_message = Some("🔎 Discovering profiles...".to_string());
+                        setup_data.delay_until =
+                            Some(std::time::Instant::now() + Duration::from_millis(600));
+                        state.setup_data = Some(setup_data);
+                    }
+                    Err(e) => {
+                        let state = self.storage_setup_screen.get_state_mut();
+                        state.error_message = Some(format!("❌ Failed to clone repository: {}", e));
+                        state.status_message = None;
+                        state.step = StorageSetupStep::Input;
+                        state.setup_data = None;
+                        return Ok(());
+                    }
+                }
+            }
+            GitHubSetupStep::CreatingRepo => {
+                if setup_data.username.is_none() {
+                    error!("Invalid state: username not set in CreatingRepo step");
+                    let state = self.storage_setup_screen.get_state_mut();
+                    state.error_message = Some(
+                        "❌ Internal error: Username not available. Please try again.".to_string(),
+                    );
+                    state.status_message = None;
+                    state.step = StorageSetupStep::Input;
+                    state.setup_data = None;
+                    return Ok(());
+                }
+
+                let token = setup_data.token.clone();
+                let repo_name = setup_data.repo_name.clone();
+                let is_private = setup_data.is_private;
+
+                let create_result = self.runtime.block_on(async {
+                    let client = GitHubClient::new(token.clone());
+                    client
+                        .create_repo(&repo_name, "My dotfiles managed by dotstate", is_private)
+                        .await
+                });
+
+                match create_result {
+                    Ok(_) => {
+                        setup_data.delay_until =
+                            Some(std::time::Instant::now() + Duration::from_millis(500));
+                        setup_data.is_new_repo = true;
+
+                        let state = self.storage_setup_screen.get_state_mut();
+                        state.step =
+                            StorageSetupStep::Processing(GitHubSetupStep::InitializingRepo);
+                        state.status_message =
+                            Some("⚙️  Initializing local repository...".to_string());
+                        state.setup_data = Some(setup_data);
+                    }
+                    Err(e) => {
+                        let state = self.storage_setup_screen.get_state_mut();
+                        state.error_message =
+                            Some(format!("❌ Failed to create repository: {}", e));
+                        state.status_message = None;
+                        state.step = StorageSetupStep::Input;
+                        state.setup_data = None;
+                        return Ok(());
+                    }
+                }
+            }
+            GitHubSetupStep::InitializingRepo => {
+                let username = match setup_data.username.as_ref() {
+                    Some(u) => u.clone(),
+                    None => {
+                        error!("Invalid state: username not set in InitializingRepo step");
+                        let state = self.storage_setup_screen.get_state_mut();
+                        state.error_message = Some(
+                            "❌ Internal error: Username not available. Please try again."
+                                .to_string(),
+                        );
+                        state.status_message = None;
+                        state.step = StorageSetupStep::Input;
+                        state.setup_data = None;
+                        return Ok(());
+                    }
+                };
+
+                let token = setup_data.token.clone();
+                let repo_name = setup_data.repo_name.clone();
+                let repo_path = self.config.repo_path.clone();
+
+                std::fs::create_dir_all(&repo_path)
+                    .context("Failed to create repository directory")?;
+
+                let mut git_mgr = GitManager::open_or_init(&repo_path)?;
+
+                // Add remote
+                let remote_url = format!(
+                    "https://{}@github.com/{}/{}.git",
+                    token, username, repo_name
+                );
+                git_mgr.add_remote("origin", &remote_url)?;
+
+                // Create initial commit
+                std::fs::write(
+                    repo_path.join("README.md"),
+                    format!("# {}\n\nDotfiles managed by dotstate", repo_name),
+                )?;
+
+                // Create profile manifest with default profile
+                let default_profile_name = if self.config.active_profile.is_empty() {
+                    "Personal".to_string()
+                } else {
+                    self.config.active_profile.clone()
+                };
+
+                let manifest = crate::utils::ProfileManifest {
+                    common: crate::utils::profile_manifest::CommonSection::default(),
+                    profiles: vec![crate::utils::profile_manifest::ProfileInfo {
+                        name: default_profile_name.clone(),
+                        description: None,
+                        synced_files: Vec::new(),
+                        packages: Vec::new(),
+                    }],
+                };
+                manifest.save(&repo_path)?;
+
+                git_mgr.commit_all("Initial commit")?;
+
+                let current_branch = git_mgr
+                    .get_current_branch()
+                    .unwrap_or_else(|| self.config.default_branch.clone());
+
+                // Before pushing, fetch and merge any remote commits
+                if let Err(e) = git_mgr.pull("origin", &current_branch, Some(&token)) {
+                    info!(
+                        "Could not pull from remote (this is normal for new repos): {}",
+                        e
+                    );
+                } else {
+                    info!("Successfully pulled from remote before pushing");
+                }
+
+                git_mgr.push("origin", &current_branch, Some(&token))?;
+                git_mgr.set_upstream_tracking("origin", &current_branch)?;
+
+                // Update config
+                self.config.github = Some(GitHubConfig {
+                    owner: username.clone(),
+                    repo: repo_name.clone(),
+                    token: Some(token.clone()),
+                });
+                self.config.repo_name = repo_name.clone();
+                self.config.active_profile = default_profile_name.clone();
+                self.config
+                    .save(&self.config_path)
+                    .context("Failed to save configuration")?;
+
+                // Load manifest and populate profile selection state
+                let manifest = crate::utils::ProfileManifest::load_or_backfill(&repo_path)?;
+                self.ui_state.profile_selection.profiles =
+                    manifest.profiles.iter().map(|p| p.name.clone()).collect();
+                if !self.ui_state.profile_selection.profiles.is_empty() {
+                    self.ui_state.profile_selection.list_state.select(Some(0));
+                }
+
+                // Move to complete step with delay
+                setup_data.delay_until =
+                    Some(std::time::Instant::now() + Duration::from_millis(2000));
+                setup_data.is_new_repo = true;
+
+                let state = self.storage_setup_screen.get_state_mut();
+                state.step = StorageSetupStep::Processing(GitHubSetupStep::Complete);
+                self.config = Config::load_or_create(&self.config_path)?;
+                state.status_message = Some(format!(
+                    "✅ Setup complete!\n\nRepository: {}/{}\nLocal path: {:?}\n\nPreparing profile selection...",
+                    username, repo_name, repo_path
+                ));
+                state.setup_data = Some(setup_data);
+            }
+            GitHubSetupStep::DiscoveringProfiles => {
+                let repo_path = self.config.repo_path.clone();
+
+                // Load manifest
+                let mut manifest = crate::utils::ProfileManifest::load_or_backfill(&repo_path)?;
+
+                // Backfill synced_files if empty
+                for profile_info in &mut manifest.profiles {
+                    if profile_info.synced_files.is_empty() {
+                        let profile_dir = repo_path.join(&profile_info.name);
+                        if profile_dir.exists() && profile_dir.is_dir() {
+                            profile_info.synced_files =
+                                list_files_in_profile_dir(&profile_dir, &repo_path)
+                                    .unwrap_or_default();
+                        }
+                    }
+                }
+                manifest.save(&repo_path)?;
+
+                if !manifest.profiles.is_empty() && self.config.active_profile.is_empty() {
+                    self.config.active_profile = manifest.profiles[0].name.clone();
+                    self.config.save(&self.config_path)?;
+                }
+
+                // Set up profile selection state
+                let profiles: Vec<String> =
+                    manifest.profiles.iter().map(|p| p.name.clone()).collect();
+
+                self.ui_state.profile_selection.profiles = profiles.clone();
+                if !self.ui_state.profile_selection.profiles.is_empty() {
+                    self.ui_state.profile_selection.list_state.select(Some(0));
+                }
+                self.profile_selection_screen.set_profiles(profiles);
+
+                // Move to complete step
+                let profile_count = self.ui_state.profile_selection.profiles.len();
+                setup_data.delay_until =
+                    Some(std::time::Instant::now() + Duration::from_millis(2000));
+
+                let state = self.storage_setup_screen.get_state_mut();
+                state.step = StorageSetupStep::Processing(GitHubSetupStep::Complete);
+                if profile_count > 0 {
+                    state.status_message = Some(format!(
+                        "✅ Setup complete!\n\nFound {} profile(s) in the repository.\n\nPreparing profile selection...",
+                        profile_count
+                    ));
+                } else {
+                    let username = setup_data
+                        .username
+                        .as_ref()
+                        .or_else(|| self.config.github.as_ref().map(|g| &g.owner))
+                        .unwrap_or(&setup_data.repo_name);
+                    state.status_message = Some(format!(
+                        "✅ Setup complete!\n\nRepository: {}/{}\nLocal path: {:?}\n\nNo profiles found. You can create one from the main menu.\n\nPreparing main menu...",
+                        username, setup_data.repo_name, repo_path
+                    ));
+                }
+                state.setup_data = Some(setup_data);
+            }
+            GitHubSetupStep::Complete => {
+                // Delay complete, transition to next screen
+                let profile_count = self.ui_state.profile_selection.profiles.len();
+                let is_new_repo = setup_data.is_new_repo;
+
+                // Determine target screen
+                let should_scan_dotfiles = is_new_repo && profile_count == 1;
+                let target_screen = if profile_count > 0 {
+                    if should_scan_dotfiles {
+                        Screen::DotfileSelection
+                    } else {
+                        Screen::ProfileSelection
+                    }
+                } else {
+                    Screen::MainMenu
+                };
+
+                // Reset screen state
+                let state = self.storage_setup_screen.get_state_mut();
+                state.step = StorageSetupStep::Input;
+                state.status_message = None;
+                state.setup_data = None;
+
+                if should_scan_dotfiles {
+                    let dotfile_state = self.dotfile_selection_screen.get_state_mut();
+                    dotfile_state.backup_enabled = self.config.backup_enabled;
+                    dotfile_state.status_message = None;
+                    Self::scan_dotfiles_into(&self.config, dotfile_state)?;
+                }
+
+                self.ui_state.current_screen = target_screen;
+                return Ok(());
+            }
         }
 
         Ok(())

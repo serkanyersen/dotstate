@@ -1565,14 +1565,26 @@ impl Screen for GitHubAuthScreen {
             self.state.step,
             GitHubAuthStep::Processing | GitHubAuthStep::SetupStep(_)
         ) {
-            return self.render_progress_screen(frame, header_chunk, content_chunk, footer_chunk, ctx);
+            return self.render_progress_screen(
+                frame,
+                header_chunk,
+                content_chunk,
+                footer_chunk,
+                ctx,
+            );
         }
 
         // Check setup mode and render appropriate screen
         match self.state.setup_mode {
-            SetupMode::Choosing => self.render_mode_selection(frame, header_chunk, content_chunk, footer_chunk, ctx),
-            SetupMode::Local => self.render_local_setup(frame, header_chunk, content_chunk, footer_chunk, ctx),
-            SetupMode::GitHub => self.render_github_form(frame, header_chunk, content_chunk, footer_chunk, ctx),
+            SetupMode::Choosing => {
+                self.render_mode_selection(frame, header_chunk, content_chunk, footer_chunk, ctx)
+            }
+            SetupMode::Local => {
+                self.render_local_setup(frame, header_chunk, content_chunk, footer_chunk, ctx)
+            }
+            SetupMode::GitHub => {
+                self.render_github_form(frame, header_chunk, content_chunk, footer_chunk, ctx)
+            }
         }
     }
 

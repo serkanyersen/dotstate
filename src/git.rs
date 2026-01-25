@@ -965,6 +965,58 @@ impl GitManager {
         Ok(())
     }
 
+    /// Update the token embedded in a remote URL
+    ///
+    /// This is useful when the user updates their GitHub token - the remote URL
+    /// needs to be updated to use the new token for authentication.
+    ///
+    /// # Arguments
+    /// * `remote_name` - Name of the remote (usually "origin")
+    /// * `new_token` - The new token to embed in the URL
+    pub fn update_remote_token(&mut self, remote_name: &str, new_token: &str) -> Result<()> {
+        let remote = self
+            .repo
+            .find_remote(remote_name)
+            .with_context(|| format!("Remote '{}' not found", remote_name))?;
+
+        let current_url = remote
+            .url()
+            .ok_or_else(|| anyhow::anyhow!("Remote '{}' has no URL", remote_name))?;
+
+        // Build new URL with updated token
+        let new_url = if current_url.starts_with("https://") {
+            // Check if there's already a token in the URL
+            if let Some(at_pos) = current_url.find('@') {
+                // Replace existing token: https://old_token@github.com/... -> https://new_token@github.com/...
+                let host_and_path = &current_url[at_pos + 1..];
+                format!("https://{}@{}", new_token, host_and_path)
+            } else {
+                // No token in URL, insert after https://
+                current_url.replacen("https://", &format!("https://{}@", new_token), 1)
+            }
+        } else {
+            // Not HTTPS, can't embed token
+            return Err(anyhow::anyhow!(
+                "Cannot update token for non-HTTPS remote URL: {}",
+                current_url
+            ));
+        };
+
+        // Delete and recreate remote with new URL
+        self.repo
+            .remote_delete(remote_name)
+            .with_context(|| format!("Failed to delete remote '{}'", remote_name))?;
+
+        self.repo
+            .remote(remote_name, &new_url)
+            .with_context(|| format!("Failed to recreate remote '{}' with new URL", remote_name))?;
+
+        // Reconfigure tracking
+        self.configure_remote_tracking(remote_name)?;
+
+        Ok(())
+    }
+
     /// Configure remote tracking for the current branch
     fn configure_remote_tracking(&self, remote_name: &str) -> Result<()> {
         // Get current branch (should be main)

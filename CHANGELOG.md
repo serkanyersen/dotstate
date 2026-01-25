@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Storage Setup**: New unified storage setup screen with two-pane layout matching settings screen pattern, improving first-time user experience
+- **Storage Setup**: Full async GitHub setup flow with visual progress tracking (connecting, validating token, creating/cloning repo, discovering profiles)
+- **Storage Setup**: Edit Token functionality in reconfiguration mode (press Enter on token field to update)
+- **Git**: Added `update_remote_token` method to update embedded token in remote URLs
+
+### Fixed
+
+- **Storage Setup**: Enter no longer triggers setup process in reconfiguration mode (prevents accidental re-setup)
+- **Storage Setup**: Disabled fields are now properly blocked from input in reconfiguration mode
+- **Storage Setup**: Token update now validates by checking repo access (works with scoped tokens)
+- **Storage Setup**: Token update now updates the git remote URL (token is embedded in origin URL)
+- **Storage Setup**: Fixed keybindings like 'q' (quit) and 't' (theme) being triggered instead of typing characters in text input fields
+
 ---
 
 ## [0.2.17] - 2025-01-23
