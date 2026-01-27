@@ -158,6 +158,12 @@ dotstate activate
 # Deactivate symlinks (restore original files)
 dotstate deactivate
 
+# Package management
+dotstate packages list                    # List packages with status
+dotstate packages add -n ripgrep -m brew -b rg  # Add a package
+dotstate packages check                   # Check what's installed
+dotstate packages install                 # Install missing packages
+
 # Check for updates and upgrade
 dotstate upgrade
 

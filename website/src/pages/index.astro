@@ -334,6 +334,41 @@ const sections = [
                             command="dotstate logs"
                             description="Show logs location and how to view them."
                         />
+
+                        <h3>Package Management</h3>
+                        <p>Manage packages per profile from the command line:</p>
+
+                        <CommandCard
+                            command="dotstate packages list"
+                            description="List packages for a profile with installation status."
+                            options="<code>-p, --profile</code> Target profile<br><code>-v, --verbose</code> Show detailed info"
+                        />
+
+                        <CommandCard
+                            command="dotstate packages add"
+                            description="Add a package to a profile. Interactive or via flags."
+                            options="<code>-n, --name</code> Package name<br><code>-m, --manager</code> Package manager<br><code>-b, --binary</code> Binary name"
+                            example="dotstate packages add -n ripgrep -m brew -b rg"
+                        />
+
+                        <CommandCard
+                            command="dotstate packages remove"
+                            description="Remove a package from a profile."
+                            options="<code>-p, --profile</code> Target profile<br><code>-y, --yes</code> Skip confirmation"
+                            example="dotstate packages remove ripgrep"
+                        />
+
+                        <CommandCard
+                            command="dotstate packages check"
+                            description="Check installation status of all packages."
+                            options="<code>-p, --profile</code> Target profile"
+                        />
+
+                        <CommandCard
+                            command="dotstate packages install"
+                            description="Install all missing packages for a profile."
+                            options="<code>-p, --profile</code> Target profile<br><code>-v, --verbose</code> Show install output"
+                        />
                     </div>
                 </article>
 
