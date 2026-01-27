@@ -1040,10 +1040,7 @@ impl Cli {
             PackagesCommand::Remove { profile, yes, name } => {
                 Self::cmd_packages_remove(profile, yes, name)
             }
-            PackagesCommand::Check { profile } => {
-                println!("packages check (profile: {:?})", profile);
-                Ok(())
-            }
+            PackagesCommand::Check { profile } => Self::cmd_packages_check(profile),
             PackagesCommand::Install { profile, verbose } => {
                 println!(
                     "packages install (profile: {:?}, verbose: {})",
@@ -1393,6 +1390,89 @@ impl Cli {
             "Package '{}' removed from profile '{}'",
             package_name, profile_name
         ));
+
+        Ok(())
+    }
+
+    fn cmd_packages_check(profile: Option<String>) -> Result<()> {
+        use crate::cli::common::{print_error, print_warning, CliContext};
+        use crate::services::{PackageCheckStatus, PackageService};
+
+        let ctx = CliContext::load()?;
+        let profile_name = ctx.resolve_profile(profile.as_deref());
+
+        // Validate profile exists
+        if !ctx.profile_exists(&profile_name) {
+            print_error(&format!("Profile '{}' not found", profile_name));
+            std::process::exit(1);
+        }
+
+        // Check can only work for active profile
+        if !ctx.is_active_profile(&profile_name) {
+            print_warning(&format!(
+                "Cannot check installation status for non-active profile '{}'",
+                profile_name
+            ));
+            println!("   Packages may be for a different system. Use 'list' to view packages.");
+            return Ok(());
+        }
+
+        let packages = PackageService::get_packages(&ctx.config.repo_path, &profile_name)?;
+
+        if packages.is_empty() {
+            println!("No packages configured for profile '{}'", profile_name);
+            return Ok(());
+        }
+
+        println!("Checking packages for profile '{}'...\n", profile_name);
+
+        let mut installed = 0;
+        let mut not_installed = 0;
+        let mut errors = 0;
+
+        for package in &packages {
+            let manager_str = format!("{:?}", package.manager).to_lowercase();
+            let result = PackageService::check_package(package);
+
+            let status_str = match result.status {
+                PackageCheckStatus::Installed => {
+                    installed += 1;
+                    "\u{2713} installed"
+                }
+                PackageCheckStatus::NotInstalled => {
+                    not_installed += 1;
+                    "\u{2717} not installed"
+                }
+                PackageCheckStatus::Error(ref e) => {
+                    errors += 1;
+                    // Print inline for errors
+                    println!("  {:<12} {:<8} ? {}", package.name, manager_str, e);
+                    continue;
+                }
+                PackageCheckStatus::Unknown => {
+                    errors += 1;
+                    "? unknown"
+                }
+            };
+
+            println!("  {:<12} {:<8} {}", package.name, manager_str, status_str);
+        }
+
+        println!();
+        if not_installed > 0 {
+            println!(
+                "{} of {} packages installed ({} missing)",
+                installed,
+                packages.len(),
+                not_installed
+            );
+        } else {
+            println!("{} of {} packages installed", installed, packages.len());
+        }
+
+        if errors > 0 {
+            println!("({} check errors)", errors);
+        }
 
         Ok(())
     }
