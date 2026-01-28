@@ -108,6 +108,8 @@ pub struct DotfileSelectionState {
     pub confirm_move: Option<usize>, // Index of dotfile to move (in dotfiles vec)
     // Move to common validation
     pub move_validation: Option<crate::utils::MoveToCommonValidation>, // Validation result when conflicts detected
+    // Unsync common file confirmation
+    pub confirm_unsync_common: Option<usize>, // Index of common file to unsync
 }
 
 impl Default for DotfileSelectionState {
@@ -139,6 +141,7 @@ impl Default for DotfileSelectionState {
             custom_file_confirm_relative: None,
             confirm_move: None,
             move_validation: None,
+            confirm_unsync_common: None,
         }
     }
 }
@@ -433,6 +436,14 @@ impl DotfileSelectionScreen {
                         if idx < display_items.len() {
                             if let DisplayItem::File(file_idx) = &display_items[idx] {
                                 let is_synced = self.state.selected_for_sync.contains(file_idx);
+                                let dotfile = &self.state.dotfiles[*file_idx];
+
+                                // If unsyncing a common file, show confirmation dialog
+                                if is_synced && dotfile.is_common {
+                                    self.state.confirm_unsync_common = Some(*file_idx);
+                                    return Ok(ScreenAction::Refresh);
+                                }
+
                                 return Ok(ScreenAction::ToggleFileSync {
                                     file_index: *file_idx,
                                     is_synced,
@@ -1141,6 +1152,58 @@ impl DotfileSelectionScreen {
         }
     }
 
+    fn handle_unsync_common_confirm(
+        &mut self,
+        key_code: KeyCode,
+        config: &Config,
+    ) -> Result<ScreenAction> {
+        let action = config
+            .keymap
+            .get_action(key_code, crossterm::event::KeyModifiers::NONE);
+
+        // Handle common actions
+        if let Some(action) = action {
+            match action {
+                crate::keymap::Action::Confirm => {
+                    if let Some(idx) = self.state.confirm_unsync_common {
+                        self.state.confirm_unsync_common = None;
+                        return Ok(ScreenAction::ToggleFileSync {
+                            file_index: idx,
+                            is_synced: true,
+                        });
+                    }
+                    self.state.confirm_unsync_common = None;
+                    return Ok(ScreenAction::Refresh);
+                }
+                crate::keymap::Action::Quit | crate::keymap::Action::Cancel => {
+                    self.state.confirm_unsync_common = None;
+                    return Ok(ScreenAction::Refresh);
+                }
+                _ => {}
+            }
+        }
+
+        // Handle explicit chars 'y' and 'n'
+        match key_code {
+            KeyCode::Char('y') => {
+                if let Some(idx) = self.state.confirm_unsync_common {
+                    self.state.confirm_unsync_common = None;
+                    return Ok(ScreenAction::ToggleFileSync {
+                        file_index: idx,
+                        is_synced: true,
+                    });
+                }
+                self.state.confirm_unsync_common = None;
+                Ok(ScreenAction::Refresh)
+            }
+            KeyCode::Char('n') => {
+                self.state.confirm_unsync_common = None;
+                Ok(ScreenAction::Refresh)
+            }
+            _ => Ok(ScreenAction::None),
+        }
+    }
+
     fn render_move_confirm(&self, frame: &mut Frame, area: Rect, config: &Config) -> Result<()> {
         let dotfile_name = if let Some(idx) = self.state.confirm_move {
             if idx < self.state.dotfiles.len() {
@@ -1346,6 +1409,44 @@ impl DotfileSelectionScreen {
         let dialog = Dialog::new("Cannot Move to Common", &msg)
             // .height(35)
             .variant(DialogVariant::Error)
+            .footer(&footer_text);
+        frame.render_widget(dialog, area);
+
+        Ok(())
+    }
+
+    fn render_unsync_common_confirm(
+        &self,
+        frame: &mut Frame,
+        area: Rect,
+        config: &Config,
+    ) -> Result<()> {
+        let dotfile_name = if let Some(idx) = self.state.confirm_unsync_common {
+            if idx < self.state.dotfiles.len() {
+                self.state.dotfiles[idx].relative_path.display().to_string()
+            } else {
+                "Unknown".to_string()
+            }
+        } else {
+            "Unknown".to_string()
+        };
+
+        let msg = format!(
+            "Remove '{}' from sync?\n\n\
+            This file is in 'common' and is shared across ALL profiles.\n\
+            Removing it will affect every profile that uses it.",
+            dotfile_name
+        );
+
+        let k = |a| config.keymap.get_key_display_for_action(a);
+        let footer_text = format!(
+            "{}/y: Confirm | {}/n: Cancel",
+            k(crate::keymap::Action::Confirm),
+            k(crate::keymap::Action::Cancel)
+        );
+
+        let dialog = Dialog::new("Remove Common File", &msg)
+            .variant(DialogVariant::Warning)
             .footer(&footer_text);
         frame.render_widget(dialog, area);
 
@@ -1830,6 +1931,9 @@ impl Screen for DotfileSelectionScreen {
         } else if self.state.confirm_move.is_some() {
             // Move confirmation modals render on top of the main content
             self.render_move_confirm(frame, area, ctx.config)?;
+        } else if self.state.confirm_unsync_common.is_some() {
+            // Unsync common file confirmation
+            self.render_unsync_common_confirm(frame, area, ctx.config)?;
         }
 
         Ok(())
@@ -1850,6 +1954,15 @@ impl Screen for DotfileSelectionScreen {
             if let Event::Key(key) = event {
                 if key.kind == KeyEventKind::Press {
                     return self.handle_move_confirm(key.code, ctx.config);
+                }
+            }
+            return Ok(ScreenAction::None);
+        }
+
+        if self.state.confirm_unsync_common.is_some() {
+            if let Event::Key(key) = event {
+                if key.kind == KeyEventKind::Press {
+                    return self.handle_unsync_common_confirm(key.code, ctx.config);
                 }
             }
             return Ok(ScreenAction::None);

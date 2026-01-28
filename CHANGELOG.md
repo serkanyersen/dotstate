@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Dotfile Selection**: Added confirmation dialog when removing common files from sync, warning that the action will affect all profiles
+
 ---
 
 ## [0.2.19] - 2025-01-27
