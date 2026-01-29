@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Code Quality**: Added comprehensive clippy lint configuration to Cargo.toml with pedantic lints enabled, forbidding unsafe code
 
+### Changed
+
+- **Main Menu**: Selection now persists when navigating back from sub-screens
+
 ### Fixed
 
 - **Dotfile Selection**: Added confirmation dialog when removing common files from sync, warning that the action will affect all profiles

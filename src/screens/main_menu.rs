@@ -1214,8 +1214,19 @@ impl Screen for MainMenuScreen {
     }
 
     fn on_enter(&mut self, ctx: &ScreenContext) -> Result<()> {
+        // Preserve current selection when re-entering the screen
+        let current_selection = self.selected_item;
+        let was_update_selected = self.is_update_selected;
+
         // Re-initialize when entering the screen
         self.init_with_config(ctx.config, false);
+
+        // Restore the previous selection
+        self.selected_item = current_selection;
+        self.is_update_selected = was_update_selected;
+        let index = current_selection.to_index();
+        self.menu_state.select(Some(index));
+
         Ok(())
     }
 }
