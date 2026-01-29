@@ -1,6 +1,6 @@
 [package]
 name = "dotstate"
-version = "0.2.19"
+version = "0.2.20"
 edition = "2021"
 authors = ["Serkan Yersen"]
 description = "A modern, secure, and user-friendly dotfile manager built with Rust"
