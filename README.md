@@ -176,11 +176,14 @@ dotstate help
 Generate completions for your shell:
 
 ```bash
-# Bash/Zsh
+# Bash
 source <(dotstate completions bash)
 
 # Fish
 dotstate generate fish | source
+
+# Zsh
+source <(dotstate completions zsh)
 ```
 
 ## How It Works
