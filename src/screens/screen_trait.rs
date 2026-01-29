@@ -66,6 +66,7 @@ pub struct ScreenContext<'a> {
 
 impl<'a> ScreenContext<'a> {
     /// Create a new screen context.
+    #[must_use]
     pub fn new(config: &'a Config, config_path: &'a std::path::Path) -> Self {
         Self {
             config,

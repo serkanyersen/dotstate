@@ -221,8 +221,7 @@ impl SyncService {
         let repo_file_path = repo_path.join(profile_name).join(relative_path);
 
         // Restore file from repo if symlink exists
-        if target_path.symlink_metadata().is_ok() {
-            let metadata = target_path.symlink_metadata().unwrap();
+        if let Ok(metadata) = target_path.symlink_metadata() {
             if metadata.is_symlink() {
                 // Remove symlink
                 std::fs::remove_file(&target_path).context("Failed to remove symlink")?;
@@ -307,7 +306,9 @@ impl SyncService {
             .map(|p| p.synced_files.clone())
             .unwrap_or_default();
 
-        if !current_files.contains(&relative_path.to_string()) {
+        if current_files.contains(&relative_path.to_string()) {
+            debug!("File already in manifest, skipping update");
+        } else {
             debug!(
                 "Adding {} to manifest for profile {}",
                 relative_path, profile_name
@@ -317,8 +318,6 @@ impl SyncService {
             manifest.update_synced_files(profile_name, new_files)?;
             manifest.save(repo_path)?;
             info!("Updated manifest with new file: {}", relative_path);
-        } else {
-            debug!("File already in manifest, skipping update");
         }
         Ok(())
     }
@@ -498,6 +497,7 @@ impl SyncService {
     /// # Returns
     ///
     /// True if this is a custom file.
+    #[must_use]
     pub fn is_custom_file(relative_path: &str) -> bool {
         use crate::dotfile_candidates::get_default_dotfile_paths;
         let default_paths = get_default_dotfile_paths();
@@ -672,8 +672,7 @@ impl SyncService {
         let repo_file_path = common_path.join(relative_path);
 
         // Restore file from common folder if symlink exists
-        if target_path.symlink_metadata().is_ok() {
-            let metadata = target_path.symlink_metadata().unwrap();
+        if let Ok(metadata) = target_path.symlink_metadata() {
             if metadata.is_symlink() {
                 // Remove symlink
                 std::fs::remove_file(&target_path).context("Failed to remove symlink")?;
@@ -807,13 +806,11 @@ impl SyncService {
             .profiles
             .iter()
             .find(|p| p.name == *profile_name)
-            .ok_or_else(|| anyhow::anyhow!("Profile '{}' not found", profile_name))?;
+            .ok_or_else(|| anyhow::anyhow!("Profile '{profile_name}' not found"))?;
 
         if !profile.synced_files.contains(&relative_path.to_string()) {
             return Err(anyhow::anyhow!(
-                "File '{}' is not synced in profile '{}'",
-                relative_path,
-                profile_name
+                "File '{relative_path}' is not synced in profile '{profile_name}'"
             ));
         }
 
@@ -883,7 +880,7 @@ impl SyncService {
 
         // Check if file is in common
         if !manifest.is_common_file(relative_path) {
-            return Err(anyhow::anyhow!("File '{}' is not in common", relative_path));
+            return Err(anyhow::anyhow!("File '{relative_path}' is not in common"));
         }
 
         // Move the actual file from common folder to profile folder

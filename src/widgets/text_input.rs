@@ -1,4 +1,4 @@
-//! Text input widget for rendering TextInput instances.
+//! Text input widget for rendering `TextInput` instances.
 //!
 //! This widget provides a centralized way to render text input fields with:
 //! - Consistent styling across the application
@@ -16,7 +16,7 @@ use crate::utils::{
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Paragraph};
 
-/// A widget for rendering TextInput with consistent styling.
+/// A widget for rendering `TextInput` with consistent styling.
 ///
 /// # Example
 /// ```
@@ -52,6 +52,7 @@ pub struct TextInputWidget<'a> {
 
 impl<'a> TextInputWidget<'a> {
     /// Create a new text input widget.
+    #[must_use]
     pub fn new(input: &'a TextInput) -> Self {
         Self {
             input,
@@ -66,42 +67,49 @@ impl<'a> TextInputWidget<'a> {
     }
 
     /// Set the title for the input field.
+    #[must_use]
     pub fn title(mut self, title: &'a str) -> Self {
         self.title = Some(title);
         self
     }
 
     /// Set the placeholder text.
+    #[must_use]
     pub fn placeholder(mut self, placeholder: &'a str) -> Self {
         self.placeholder = Some(placeholder);
         self
     }
 
     /// Set whether the input is focused.
+    #[must_use]
     pub fn focused(mut self, focused: bool) -> Self {
         self.focused = focused;
         self
     }
 
     /// Set whether the input is disabled.
+    #[must_use]
     pub fn disabled(mut self, disabled: bool) -> Self {
         self.disabled = disabled;
         self
     }
 
     /// Set the title alignment.
+    #[must_use]
     pub fn title_alignment(mut self, alignment: Alignment) -> Self {
         self.title_alignment = alignment;
         self
     }
 
     /// Set whether to mask the text (for passwords).
+    #[must_use]
     pub fn masked(mut self, masked: bool) -> Self {
         self.masked = masked;
         self
     }
 
     /// Set a custom block for the input.
+    #[must_use]
     pub fn block(mut self, block: Block<'a>) -> Self {
         self.block = Some(block);
         self
@@ -158,7 +166,7 @@ impl<'a> TextInputWidget<'a> {
 
             if let Some(title) = self.title {
                 block = block
-                    .title(format!(" {} ", title))
+                    .title(format!(" {title} "))
                     .title_alignment(self.title_alignment);
             }
 
@@ -167,7 +175,7 @@ impl<'a> TextInputWidget<'a> {
     }
 }
 
-impl<'a> Widget for TextInputWidget<'a> {
+impl Widget for TextInputWidget<'_> {
     fn render(self, area: Rect, buf: &mut Buffer) {
         let block = self.create_block();
         let inner = block.inner(area);
@@ -194,12 +202,12 @@ impl<'a> Widget for TextInputWidget<'a> {
     }
 }
 
-/// Extension trait for Frame to render TextInputWidget with cursor support.
+/// Extension trait for Frame to render `TextInputWidget` with cursor support.
 ///
 /// Since the Widget trait doesn't have access to Frame, we need this extension
 /// to properly set the cursor position.
 pub trait TextInputWidgetExt {
-    /// Render a TextInputWidget and set cursor position if focused.
+    /// Render a `TextInputWidget` and set cursor position if focused.
     fn render_text_input_widget(&mut self, widget: TextInputWidget, area: Rect);
 }
 

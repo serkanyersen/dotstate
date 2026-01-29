@@ -45,7 +45,7 @@ pub struct Package {
     /// derived from the binary name (checking if binary exists in PATH)
     #[serde(default)]
     pub existence_check: Option<String>,
-    /// Optional manager-native check command (fallback when binary_name check fails)
+    /// Optional manager-native check command (fallback when `binary_name` check fails)
     /// e.g., "brew list eza" or "dpkg -s git"
     #[serde(default)]
     pub manager_check: Option<String>,
@@ -89,6 +89,7 @@ pub struct ProfileInfo {
 
 impl ProfileManifest {
     /// Get the path to the manifest file in the repo
+    #[must_use]
     pub fn manifest_path(repo_path: &Path) -> PathBuf {
         repo_path.join(".dotstate-profiles.toml")
     }
@@ -99,7 +100,7 @@ impl ProfileManifest {
 
         if manifest_path.exists() {
             let content = std::fs::read_to_string(&manifest_path)
-                .with_context(|| format!("Failed to read profile manifest: {:?}", manifest_path))?;
+                .with_context(|| format!("Failed to read profile manifest: {manifest_path:?}"))?;
             let mut manifest: ProfileManifest =
                 toml::from_str(&content).with_context(|| "Failed to parse profile manifest")?;
 
@@ -205,8 +206,7 @@ impl ProfileManifest {
             Ok(())
         } else {
             Err(anyhow::anyhow!(
-                "Profile '{}' not found in manifest",
-                profile_name
+                "Profile '{profile_name}' not found in manifest"
             ))
         }
     }
@@ -238,7 +238,7 @@ impl ProfileManifest {
             toml::to_string_pretty(self).with_context(|| "Failed to serialize profile manifest")?;
 
         std::fs::write(&manifest_path, content)
-            .with_context(|| format!("Failed to write profile manifest: {:?}", manifest_path))?;
+            .with_context(|| format!("Failed to write profile manifest: {manifest_path:?}"))?;
 
         Ok(())
     }
@@ -270,8 +270,7 @@ impl ProfileManifest {
             Ok(())
         } else {
             Err(anyhow::anyhow!(
-                "Profile '{}' not found in manifest",
-                profile_name
+                "Profile '{profile_name}' not found in manifest"
             ))
         }
     }
@@ -292,25 +291,27 @@ impl ProfileManifest {
             Ok(())
         } else {
             Err(anyhow::anyhow!(
-                "Profile '{}' not found in manifest",
-                old_name
+                "Profile '{old_name}' not found in manifest"
             ))
         }
     }
 
     /// Get all profile names
     #[allow(dead_code)] // Kept for potential future use in CLI or programmatic access
+    #[must_use]
     pub fn profile_names(&self) -> Vec<String> {
         self.profiles.iter().map(|p| p.name.clone()).collect()
     }
 
     /// Check if a profile exists in the manifest
     #[allow(dead_code)] // Kept for potential future use in CLI or programmatic access
+    #[must_use]
     pub fn has_profile(&self, name: &str) -> bool {
         self.profiles.iter().any(|p| p.name == name)
     }
 
     /// Check if a name is reserved and cannot be used as a profile name
+    #[must_use]
     pub fn is_reserved_name(name: &str) -> bool {
         RESERVED_PROFILE_NAMES.contains(&name.to_lowercase().as_str())
     }
@@ -332,11 +333,13 @@ impl ProfileManifest {
     }
 
     /// Get all common files
+    #[must_use]
     pub fn get_common_files(&self) -> &[String] {
         &self.common.synced_files
     }
 
     /// Check if a file is in the common section
+    #[must_use]
     pub fn is_common_file(&self, relative_path: &str) -> bool {
         self.common
             .synced_files
@@ -350,8 +353,7 @@ impl ProfileManifest {
             profile.synced_files.retain(|f| f != relative_path);
         } else {
             return Err(anyhow::anyhow!(
-                "Profile '{}' not found in manifest",
-                profile_name
+                "Profile '{profile_name}' not found in manifest"
             ));
         }
 
@@ -365,8 +367,7 @@ impl ProfileManifest {
         // Remove from common
         if !self.remove_common_file(relative_path) {
             return Err(anyhow::anyhow!(
-                "File '{}' not found in common section",
-                relative_path
+                "File '{relative_path}' not found in common section"
             ));
         }
 
@@ -379,8 +380,7 @@ impl ProfileManifest {
             Ok(())
         } else {
             Err(anyhow::anyhow!(
-                "Profile '{}' not found in manifest",
-                profile_name
+                "Profile '{profile_name}' not found in manifest"
             ))
         }
     }

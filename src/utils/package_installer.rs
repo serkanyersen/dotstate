@@ -89,8 +89,7 @@ impl PackageInstaller {
 
                     if sudo_needs_password {
                         return Err(anyhow::anyhow!(
-                            "This command requires sudo password. Please run it manually in a terminal:\n\n  {}",
-                            cmd_str
+                            "This command requires sudo password. Please run it manually in a terminal:\n\n  {cmd_str}"
                         ));
                     }
                 }
@@ -135,7 +134,7 @@ impl PackageInstaller {
             let reader = BufReader::new(stderr);
             #[allow(clippy::unnecessary_lazy_evaluations, clippy::lines_filter_map_ok)]
             for line in reader.lines().flatten() {
-                let _ = tx_stderr.send(format!("[stderr] {}", line));
+                let _ = tx_stderr.send(format!("[stderr] {line}"));
             }
         });
 
@@ -157,6 +156,7 @@ impl PackageInstaller {
 
     /// Read available output lines (non-blocking)
     #[allow(dead_code)] // Reserved for future use
+    #[must_use]
     pub fn read_output(handle: &InstallationHandle) -> Vec<String> {
         let mut lines = Vec::new();
         // Try to read all available lines without blocking
@@ -166,7 +166,7 @@ impl PackageInstaller {
         lines
     }
     /// Check if package exists (binary check first, then manager-native fallback)
-    /// Returns (exists: bool, check_command: Option<String>, output: Option<String>)
+    /// Returns (exists: bool, `check_command`: Option<String>, output: Option<String>)
     ///
     /// Important: Binary check is tried FIRST regardless of manager presence.
     /// This allows packages installed manually (without manager) to be detected.
@@ -192,8 +192,7 @@ impl PackageInstaller {
         }
         debug!("Binary '{}' not found in PATH", package.binary_name);
         check_attempts.push(format!(
-            "Binary check: `{}` - not found in PATH",
-            binary_check_cmd
+            "Binary check: `{binary_check_cmd}` - not found in PATH"
         ));
 
         // Binary check failed, try manager-native check if available
@@ -208,7 +207,7 @@ impl PackageInstaller {
             let found = output.status.success();
             let stdout = String::from_utf8_lossy(&output.stdout).to_string();
             let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-            let combined_output = format!("STDOUT:\n{}\nSTDERR:\n{}", stdout, stderr);
+            let combined_output = format!("STDOUT:\n{stdout}\nSTDERR:\n{stderr}");
 
             debug!("Custom manager check for {}: {}", package.name, found);
             // Return the output even if check failed - user wants to see what happened
@@ -227,13 +226,13 @@ impl PackageInstaller {
                     PackageManagerImpl::build_manager_check_command(&package.manager, package_name)
                 {
                     // Capture command string representation for cache
-                    let cmd_str = format!("{:?}", manager_cmd);
+                    let cmd_str = format!("{manager_cmd:?}");
 
                     let output = manager_cmd.output()?;
                     let found = output.status.success();
                     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
                     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-                    let combined_output = format!("STDOUT:\n{}\nSTDERR:\n{}", stdout, stderr);
+                    let combined_output = format!("STDOUT:\n{stdout}\nSTDERR:\n{stderr}");
 
                     debug!(
                         "Auto-generated manager check for {}: {}",

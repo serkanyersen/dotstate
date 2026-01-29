@@ -41,6 +41,7 @@ pub enum DiscoverySource {
 
 impl DiscoverySource {
     /// Get display name for the source.
+    #[must_use]
     pub fn display_name(&self) -> &'static str {
         match self {
             DiscoverySource::Homebrew => "Homebrew",
@@ -57,7 +58,8 @@ impl DiscoverySource {
         }
     }
 
-    /// Convert to the profile manifest PackageManager type.
+    /// Convert to the profile manifest `PackageManager` type.
+    #[must_use]
     pub fn to_package_manager(&self) -> crate::utils::profile_manifest::PackageManager {
         use crate::utils::profile_manifest::PackageManager;
         match self {
@@ -75,8 +77,9 @@ impl DiscoverySource {
         }
     }
 
-    /// Try to convert from a PackageManager.
+    /// Try to convert from a `PackageManager`.
     /// Returns None for Custom (which doesn't have packages to discover).
+    #[must_use]
     pub fn from_package_manager(
         manager: &crate::utils::profile_manifest::PackageManager,
     ) -> Option<Self> {
@@ -99,6 +102,7 @@ impl DiscoverySource {
 
     /// Check if this source supports package discovery.
     /// Some managers can list installed packages, others cannot.
+    #[must_use]
     pub fn supports_discovery(&self) -> bool {
         match self {
             DiscoverySource::Homebrew
@@ -892,6 +896,7 @@ impl Default for PackageDiscoveryService {
 }
 
 impl PackageDiscoveryService {
+    #[must_use]
     pub fn new() -> Self {
         let discoverers: Vec<Box<dyn PackageDiscoverer>> = vec![
             Box::new(HomebrewDiscoverer),
@@ -911,6 +916,7 @@ impl PackageDiscoveryService {
     }
 
     /// Get available package managers on this system.
+    #[must_use]
     pub fn available_sources(&self) -> Vec<DiscoverySource> {
         self.discoverers
             .iter()
@@ -960,6 +966,7 @@ impl PackageDiscoveryService {
 
     /// Start async discovery - returns a receiver for status updates.
     /// The discovery runs in a background thread and sends status updates.
+    #[must_use]
     pub fn discover_async() -> mpsc::Receiver<DiscoveryStatus> {
         let (tx, rx) = mpsc::channel();
 
@@ -994,6 +1001,7 @@ impl PackageDiscoveryService {
 
     /// Start async discovery for a specific source.
     /// Returns a receiver for status updates. Discovery runs in a background thread.
+    #[must_use]
     pub fn discover_source_async(source: DiscoverySource) -> mpsc::Receiver<DiscoveryStatus> {
         let (tx, rx) = mpsc::channel();
 

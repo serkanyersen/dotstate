@@ -69,6 +69,7 @@ impl PackageService {
     /// # Returns
     ///
     /// List of available package managers.
+    #[must_use]
     pub fn get_available_managers() -> Vec<PackageManager> {
         PackageManagerImpl::get_available_managers()
     }
@@ -82,6 +83,7 @@ impl PackageService {
     /// # Returns
     ///
     /// True if the manager is installed.
+    #[must_use]
     pub fn is_manager_installed(manager: &PackageManager) -> bool {
         PackageManagerImpl::is_manager_installed(manager)
     }
@@ -115,7 +117,16 @@ impl PackageService {
             }
             Ok((false, _, _)) => {
                 // Package not found - check if manager is installed
-                if !PackageManagerImpl::is_manager_installed(&package.manager) {
+                if PackageManagerImpl::is_manager_installed(&package.manager) {
+                    debug!(
+                        "Package {} not found (manager {:?} is available)",
+                        package.name, package.manager
+                    );
+                    PackageCheckResult {
+                        status: PackageCheckStatus::NotInstalled,
+                        used_fallback: false,
+                    }
+                } else {
                     warn!(
                         "Package {} not found and manager {:?} is not installed",
                         package.name, package.manager
@@ -127,21 +138,12 @@ impl PackageService {
                         )),
                         used_fallback: false,
                     }
-                } else {
-                    debug!(
-                        "Package {} not found (manager {:?} is available)",
-                        package.name, package.manager
-                    );
-                    PackageCheckResult {
-                        status: PackageCheckStatus::NotInstalled,
-                        used_fallback: false,
-                    }
                 }
             }
             Err(e) => {
                 warn!("Error checking package {}: {}", package.name, e);
                 PackageCheckResult {
-                    status: PackageCheckStatus::Error(format!("Error checking package: {}", e)),
+                    status: PackageCheckStatus::Error(format!("Error checking package: {e}")),
                     used_fallback: false,
                 }
             }
@@ -236,6 +238,7 @@ impl PackageService {
     /// # Returns
     ///
     /// The created package.
+    #[must_use]
     pub fn create_package(params: PackageCreationParams) -> Package {
         Package {
             name: params.name.trim().to_string(),
@@ -302,7 +305,7 @@ impl PackageService {
             manifest.save(repo_path)?;
             Ok(packages)
         } else {
-            Err(anyhow::anyhow!("Profile '{}' not found", profile_name))
+            Err(anyhow::anyhow!("Profile '{profile_name}' not found"))
         }
     }
 
@@ -349,7 +352,7 @@ impl PackageService {
                 ))
             }
         } else {
-            Err(anyhow::anyhow!("Profile '{}' not found", profile_name))
+            Err(anyhow::anyhow!("Profile '{profile_name}' not found"))
         }
     }
 
@@ -394,7 +397,7 @@ impl PackageService {
                 ))
             }
         } else {
-            Err(anyhow::anyhow!("Profile '{}' not found", profile_name))
+            Err(anyhow::anyhow!("Profile '{profile_name}' not found"))
         }
     }
 
@@ -428,6 +431,7 @@ impl PackageService {
     /// # Returns
     ///
     /// A Command ready to execute.
+    #[must_use]
     pub fn get_install_command(package: &Package) -> Command {
         PackageManagerImpl::get_install_command_builder(package)
     }

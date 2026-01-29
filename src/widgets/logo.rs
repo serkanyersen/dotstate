@@ -80,6 +80,7 @@ impl DotstateLogo {
     ///
     /// let logo = DotstateLogo::new(Size::Small);
     /// ```
+    #[must_use]
     pub const fn new(size: Size) -> Self {
         Self { size }
     }
@@ -94,6 +95,7 @@ impl DotstateLogo {
     /// let logo = DotstateLogo::small();
     /// ```
     #[allow(dead_code)] // Keeping this utility method for future use
+    #[must_use]
     pub const fn small() -> Self {
         Self::new(Size::Small)
     }
@@ -107,6 +109,7 @@ impl DotstateLogo {
     ///
     /// let logo = DotstateLogo::regular();
     /// ```
+    #[must_use]
     pub const fn regular() -> Self {
         Self::new(Size::Regular)
     }
@@ -120,6 +123,7 @@ impl DotstateLogo {
     ///
     /// let logo = DotstateLogo::classic();
     /// ```
+    #[must_use]
     pub const fn classic() -> Self {
         Self::new(Size::Classic)
     }
@@ -133,16 +137,19 @@ impl DotstateLogo {
     ///
     /// let logo = DotstateLogo::narrow();
     /// ```
+    #[must_use]
     pub const fn narrow() -> Self {
         Self::new(Size::Narrow)
     }
 
     /// Returns the width of the logo in terminal cells
+    #[must_use]
     pub const fn width(&self) -> u16 {
         self.size.width()
     }
 
     /// Returns the height of the logo in lines
+    #[must_use]
     pub const fn height(&self) -> u16 {
         self.size.height()
     }
@@ -168,6 +175,7 @@ impl Size {
     }
 
     /// Returns the width of the logo in terminal cells
+    #[must_use]
     pub const fn width(self) -> u16 {
         match self {
             Self::Small => 16,   // "▄ ▄▖▄▖▄▖▄▖▄▖▄▖▄▖"
@@ -178,6 +186,7 @@ impl Size {
     }
 
     /// Returns the height of the logo in lines
+    #[must_use]
     pub const fn height(self) -> u16 {
         match self {
             Self::Small => 3,
@@ -258,13 +267,12 @@ mod tests {
             assert_eq!(
                 lines.len() as u16,
                 size.height(),
-                "{:?} height mismatch",
-                size
+                "{size:?} height mismatch"
             );
 
             // Check width (max line width in chars - all logo chars are 1 cell wide)
             let max_width = lines.iter().map(|l| l.chars().count()).max().unwrap_or(0) as u16;
-            assert_eq!(max_width, size.width(), "{:?} width mismatch", size);
+            assert_eq!(max_width, size.width(), "{size:?} width mismatch");
         }
     }
 }

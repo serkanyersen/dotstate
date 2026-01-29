@@ -60,6 +60,7 @@ impl GitService {
     /// # Returns
     ///
     /// A `ChangesCheckResult` containing information about pending changes.
+    #[must_use]
     pub fn check_changes_to_push(config: &Config) -> ChangesCheckResult {
         let mut result = ChangesCheckResult::default();
 
@@ -80,26 +81,23 @@ impl GitService {
         };
 
         // Get changed files (this includes both uncommitted and unpushed)
-        match git_mgr.get_changed_files() {
-            Ok(files) => {
-                result.has_changes = !files.is_empty();
-                result.changed_files = files;
-            }
-            Err(_) => {
-                // Fallback to old method if get_changed_files fails
-                // Check for uncommitted changes
-                let has_uncommitted = git_mgr.has_uncommitted_changes().unwrap_or(false);
+        if let Ok(files) = git_mgr.get_changed_files() {
+            result.has_changes = !files.is_empty();
+            result.changed_files = files;
+        } else {
+            // Fallback to old method if get_changed_files fails
+            // Check for uncommitted changes
+            let has_uncommitted = git_mgr.has_uncommitted_changes().unwrap_or(false);
 
-                // Check for unpushed commits
-                let branch = git_mgr
-                    .get_current_branch()
-                    .unwrap_or_else(|| "main".to_string());
-                let has_unpushed = git_mgr
-                    .has_unpushed_commits("origin", &branch)
-                    .unwrap_or(false);
+            // Check for unpushed commits
+            let branch = git_mgr
+                .get_current_branch()
+                .unwrap_or_else(|| "main".to_string());
+            let has_unpushed = git_mgr
+                .has_unpushed_commits("origin", &branch)
+                .unwrap_or(false);
 
-                result.has_changes = has_uncommitted || has_unpushed;
-            }
+            result.has_changes = has_uncommitted || has_unpushed;
         }
 
         result
@@ -132,7 +130,7 @@ impl GitService {
         let git_mgr = match GitManager::open_or_init(repo_path) {
             Ok(mgr) => mgr,
             Err(e) => {
-                status.error = Some(format!("Failed to open repository: {}", e));
+                status.error = Some(format!("Failed to open repository: {e}"));
                 return status;
             }
         };
@@ -144,7 +142,7 @@ impl GitService {
                 status.uncommitted_files = files;
             }
             Err(e) => {
-                status.error = Some(format!("Failed to check changes: {}", e));
+                status.error = Some(format!("Failed to check changes: {e}"));
                 return status;
             }
         }
@@ -203,6 +201,7 @@ impl GitService {
     /// # Returns
     ///
     /// A vector of changed file descriptions.
+    #[must_use]
     pub fn load_changed_files(repo_path: &Path) -> Vec<String> {
         if !repo_path.exists() {
             return vec![];
@@ -226,6 +225,7 @@ impl GitService {
     /// # Returns
     ///
     /// The diff content if available.
+    #[must_use]
     pub fn get_diff_for_file(repo_path: &Path, file_info: &str) -> Option<String> {
         // Format is "X filename"
         let parts: Vec<&str> = file_info.splitn(2, ' ').collect();
@@ -268,9 +268,8 @@ impl GitService {
             return SyncResult {
                 success: false,
                 message: format!(
-                    "Error: Repository not found at {:?}\n\n\
-                    Please sync some files first.",
-                    repo_path
+                    "Error: Repository not found at {repo_path:?}\n\n\
+                    Please sync some files first."
                 ),
                 pulled_count: None,
             };
@@ -282,7 +281,7 @@ impl GitService {
             Err(e) => {
                 return SyncResult {
                     success: false,
-                    message: format!("Error: Failed to open repository: {}", e),
+                    message: format!("Error: Failed to open repository: {e}"),
                     pulled_count: None,
                 }
             }
@@ -357,16 +356,12 @@ impl GitService {
         // Success! Build the success message
         let mut success_msg = format!(
             "✓ Successfully synced with remote!\n\n\
-            Branch: {}\n\
-            Repository: {:?}",
-            branch, repo_path
+            Branch: {branch}\n\
+            Repository: {repo_path:?}"
         );
 
         if pulled_count > 0 {
-            success_msg.push_str(&format!(
-                "\n\nPulled {} change(s) from remote.",
-                pulled_count
-            ));
+            success_msg.push_str(&format!("\n\nPulled {pulled_count} change(s) from remote."));
 
             // Step 4: Ensure symlinks for any new files pulled from remote
             // This is efficient - only creates symlinks for missing files
@@ -379,7 +374,7 @@ impl GitService {
                 Ok((created, _skipped, errors)) => {
                     if created > 0 {
                         success_msg
-                            .push_str(&format!("\nCreated {} symlink(s) for new files.", created));
+                            .push_str(&format!("\nCreated {created} symlink(s) for new files."));
                     }
                     if !errors.is_empty() {
                         success_msg.push_str(&format!(
@@ -392,8 +387,7 @@ impl GitService {
                 Err(e) => {
                     warn!("Failed to ensure symlinks after pull: {}", e);
                     success_msg.push_str(&format!(
-                        "\n\nWarning: Failed to create symlinks for new files: {}",
-                        e
+                        "\n\nWarning: Failed to create symlinks for new files: {e}"
                     ));
                 }
             }
@@ -402,7 +396,7 @@ impl GitService {
             match ProfileService::ensure_common_symlinks(repo_path, config.backup_enabled) {
                 Ok((created, _skipped, errors)) => {
                     if created > 0 {
-                        success_msg.push_str(&format!("\nCreated {} common symlink(s).", created));
+                        success_msg.push_str(&format!("\nCreated {created} common symlink(s)."));
                     }
                     if !errors.is_empty() {
                         success_msg.push_str(&format!(
@@ -415,8 +409,7 @@ impl GitService {
                 Err(e) => {
                     warn!("Failed to ensure common symlinks after pull: {}", e);
                     success_msg.push_str(&format!(
-                        "\n\nWarning: Failed to create common symlinks: {}",
-                        e
+                        "\n\nWarning: Failed to create common symlinks: {e}"
                     ));
                 }
             }
@@ -433,9 +426,9 @@ impl GitService {
 
     /// Format an error with its full chain for display.
     fn format_error_chain(context: &str, error: &anyhow::Error) -> String {
-        let mut msg = format!("Error: {}: {}", context, error);
+        let mut msg = format!("Error: {context}: {error}");
         for cause in error.chain().skip(1) {
-            msg.push_str(&format!("\n  Caused by: {}", cause));
+            msg.push_str(&format!("\n  Caused by: {cause}"));
         }
         msg
     }
@@ -450,7 +443,7 @@ impl GitService {
     ///
     /// # Returns
     ///
-    /// A tuple of (GitManager, was_existing).
+    /// A tuple of (`GitManager`, `was_existing`).
     pub fn clone_or_open(
         remote_url: &str,
         local_path: &Path,
@@ -467,7 +460,7 @@ impl GitService {
     ///
     /// # Returns
     ///
-    /// A GitManager instance.
+    /// A `GitManager` instance.
     pub fn open_or_init(path: &Path) -> Result<GitManager> {
         GitManager::open_or_init(path)
     }

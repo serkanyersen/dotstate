@@ -30,7 +30,7 @@ impl Footer {
 
             // Split on ": " to separate label from keys
             if let Some((label, keys)) = part.split_once(": ") {
-                spans.push(Span::styled(format!("{}: ", label), t.title_style()));
+                spans.push(Span::styled(format!("{label}: "), t.title_style()));
                 spans.push(Span::styled(keys, t.emphasis_style()));
             } else {
                 spans.push(Span::styled(*part, t.text_style()));

@@ -20,6 +20,7 @@ pub struct MessageComponent {
 }
 
 impl MessageComponent {
+    #[must_use]
     pub fn new(title: String, message: String, screen_type: Screen) -> Self {
         Self {
             title,
@@ -29,6 +30,7 @@ impl MessageComponent {
         }
     }
 
+    #[must_use]
     pub fn with_config(mut self, config: Config) -> Self {
         self.config = Some(config);
         self
@@ -84,10 +86,9 @@ impl Component for MessageComponent {
                     .and_then(|c| c.keymap.get_action(key.code, key.modifiers));
 
                 match action {
-                    Some(Action::Confirm)
-                    | Some(Action::ToggleSelect)
-                    | Some(Action::Quit)
-                    | Some(Action::Cancel) => Ok(ComponentAction::Navigate(Screen::MainMenu)),
+                    Some(
+                        Action::Confirm | Action::ToggleSelect | Action::Quit | Action::Cancel,
+                    ) => Ok(ComponentAction::Navigate(Screen::MainMenu)),
                     _ => {
                         // If no action mapped or keymap not available, accept any key press
                         // (Footer says "Press any key or click to continue")

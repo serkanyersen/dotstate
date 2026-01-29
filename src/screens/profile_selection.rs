@@ -35,6 +35,7 @@ pub struct ProfileSelectionScreen {
 
 impl ProfileSelectionScreen {
     /// Create a new profile selection screen.
+    #[must_use]
     pub fn new() -> Self {
         Self {
             state: ProfileSelectionState::default(),
@@ -42,6 +43,7 @@ impl ProfileSelectionScreen {
     }
 
     /// Get the current state.
+    #[must_use]
     pub fn get_state(&self) -> &ProfileSelectionState {
         &self.state
     }
@@ -158,7 +160,7 @@ impl ProfileSelectionScreen {
             .state
             .profiles
             .iter()
-            .map(|name| ListItem::new(format!("  {}", name)))
+            .map(|name| ListItem::new(format!("  {name}")))
             .collect();
 
         // Add "Create New Profile" option
@@ -229,7 +231,7 @@ impl ProfileSelectionScreen {
                         error!("Failed to create profile '{}': {}", name, e);
                         Ok(ActionResult::ShowDialog {
                             title: "Profile Creation Failed".to_string(),
-                            content: format!("Failed to create profile '{}': {}", name, e),
+                            content: format!("Failed to create profile '{name}': {e}"),
                             variant: DialogVariant::Error,
                         })
                     }
@@ -244,7 +246,7 @@ impl ProfileSelectionScreen {
     /// Activate a profile and navigate to the main menu.
     ///
     /// This method sets the active profile in config, saves the config,
-    /// calls ProfileService to activate the profile (create symlinks),
+    /// calls `ProfileService` to activate the profile (create symlinks),
     /// marks the profile as activated, and navigates to the main menu.
     ///
     /// # Arguments
@@ -268,7 +270,7 @@ impl ProfileSelectionScreen {
             error!("Failed to save config with active profile: {}", e);
             return Ok(ActionResult::ShowDialog {
                 title: "Configuration Error".to_string(),
-                content: format!("Failed to save configuration: {}", e),
+                content: format!("Failed to save configuration: {e}"),
                 variant: DialogVariant::Error,
             });
         }
@@ -291,7 +293,7 @@ impl ProfileSelectionScreen {
                     error!("Failed to save config after activation: {}", e);
                     return Ok(ActionResult::ShowDialog {
                         title: "Configuration Error".to_string(),
-                        content: format!("Failed to save configuration after activation: {}", e),
+                        content: format!("Failed to save configuration after activation: {e}"),
                         variant: DialogVariant::Error,
                     });
                 }
@@ -306,7 +308,7 @@ impl ProfileSelectionScreen {
                 error!("Failed to activate profile '{}': {}", profile_name, e);
                 Ok(ActionResult::ShowDialog {
                     title: "Activation Failed".to_string(),
-                    content: format!("Failed to activate profile '{}': {}", profile_name, e),
+                    content: format!("Failed to activate profile '{profile_name}': {e}"),
                     variant: DialogVariant::Error,
                 })
             }

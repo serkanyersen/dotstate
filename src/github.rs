@@ -36,6 +36,7 @@ struct CreateRepoRequest {
 
 impl GitHubClient {
     /// Create a new GitHub client with a token
+    #[must_use]
     pub fn new(token: String) -> Self {
         Self {
             http_client: Client::new(),
@@ -101,7 +102,7 @@ impl GitHubClient {
         // Log response headers
         let headers = response.headers();
         info!("Response headers:");
-        for (name, value) in headers.iter() {
+        for (name, value) in headers {
             if let Ok(value_str) = value.to_str() {
                 info!("  {}: {}", name, value_str);
             }
@@ -135,7 +136,7 @@ impl GitHubClient {
                 );
             }
 
-            anyhow::bail!("GitHub API error ({}): {}", status, error_text);
+            anyhow::bail!("GitHub API error ({status}): {error_text}");
         }
 
         let user: GitHubUser = response
@@ -148,7 +149,7 @@ impl GitHubClient {
 
     /// Check if a repository exists
     pub async fn repo_exists(&self, owner: &str, repo: &str) -> Result<bool> {
-        let url = format!("https://api.github.com/repos/{}/{}", owner, repo);
+        let url = format!("https://api.github.com/repos/{owner}/{repo}");
         info!("Checking if repository exists: {}", url);
 
         let response = self
@@ -175,7 +176,7 @@ impl GitHubClient {
                 .text()
                 .await
                 .unwrap_or_else(|_| "Unknown error".to_string());
-            anyhow::bail!("Failed to check repository ({}): {}", status, error_text);
+            anyhow::bail!("Failed to check repository ({status}): {error_text}");
         }
 
         Ok(true)
@@ -249,7 +250,7 @@ impl GitHubClient {
                 );
             }
 
-            anyhow::bail!("Failed to create repository ({}): {}", status, error_text);
+            anyhow::bail!("Failed to create repository ({status}): {error_text}");
         }
 
         let repo: GitHubRepo = response
@@ -285,7 +286,7 @@ pub async fn authenticate_with_pat() -> Result<String> {
     let client = Client::new();
     let response = client
         .get("https://api.github.com/user")
-        .header("Authorization", format!("Bearer {}", token))
+        .header("Authorization", format!("Bearer {token}"))
         .header("User-Agent", "dotstate")
         .send()
         .await

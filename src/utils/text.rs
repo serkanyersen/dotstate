@@ -8,6 +8,7 @@
 /// # Returns
 /// X coordinate for the cursor
 #[allow(dead_code)]
+#[must_use]
 pub fn calculate_cursor_x(text: &str, cursor_pos: usize, area_width: u16) -> u16 {
     let clamped_pos = cursor_pos.min(text.chars().count());
     clamped_pos.min(area_width as usize) as u16
@@ -22,6 +23,7 @@ pub fn calculate_cursor_x(text: &str, cursor_pos: usize, area_width: u16) -> u16
 /// # Returns
 /// Clamped cursor position
 #[allow(dead_code)]
+#[must_use]
 pub fn clamp_cursor_position(text: &str, pos: usize) -> usize {
     pos.min(text.chars().count())
 }
@@ -35,11 +37,12 @@ pub fn clamp_cursor_position(text: &str, pos: usize) -> usize {
 /// # Returns
 /// Truncated string with ellipsis if needed
 #[allow(dead_code)]
+#[must_use]
 pub fn truncate_with_ellipsis(text: &str, max_width: usize) -> String {
     if text.chars().count() <= max_width {
         text.to_string()
     } else {
         let truncated: String = text.chars().take(max_width.saturating_sub(3)).collect();
-        format!("{}...", truncated)
+        format!("{truncated}...")
     }
 }

@@ -45,6 +45,7 @@ pub struct MoveToCommonValidation {
 
 impl MoveToCommonValidation {
     /// Create a validation result with no conflicts
+    #[must_use]
     pub fn safe() -> Self {
         Self {
             can_proceed: true,
@@ -221,13 +222,13 @@ fn files_have_same_content(path1: &Path, path2: &Path) -> Result<bool> {
     // This is a simplified check - in practice, we might want more thorough comparison
     let entries1: HashSet<String> = fs::read_dir(path1)
         .context("Failed to read source directory")?
-        .filter_map(|e| e.ok())
+        .filter_map(std::result::Result::ok)
         .map(|e| e.file_name().to_string_lossy().to_string())
         .collect();
 
     let entries2: HashSet<String> = fs::read_dir(path2)
         .context("Failed to read target directory")?
-        .filter_map(|e| e.ok())
+        .filter_map(std::result::Result::ok)
         .map(|e| e.file_name().to_string_lossy().to_string())
         .collect();
 

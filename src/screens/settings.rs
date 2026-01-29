@@ -36,6 +36,7 @@ pub enum SettingItem {
 }
 
 impl SettingItem {
+    #[must_use]
     pub fn all() -> Vec<SettingItem> {
         vec![
             SettingItem::Theme,
@@ -46,6 +47,7 @@ impl SettingItem {
         ]
     }
 
+    #[must_use]
     pub fn name(&self) -> &'static str {
         match self {
             SettingItem::Theme => "Theme",
@@ -56,6 +58,7 @@ impl SettingItem {
         }
     }
 
+    #[must_use]
     pub fn from_index(index: usize) -> Option<SettingItem> {
         Self::all().get(index).copied()
     }
@@ -101,6 +104,7 @@ impl Default for SettingsScreen {
 }
 
 impl SettingsScreen {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             state: SettingsState::default(),
@@ -396,7 +400,7 @@ impl SettingsScreen {
                         Style::default().fg(t.secondary),
                     ),
                     Span::styled(item.name(), t.text_style()),
-                    Span::styled(format!(" ({})", current_value), t.muted_style()),
+                    Span::styled(format!(" ({current_value})"), t.muted_style()),
                 ]);
                 ListItem::new(line)
             })
@@ -455,7 +459,7 @@ impl SettingsScreen {
                     t.text_style()
                 };
                 Line::from(vec![
-                    Span::styled(format!("  {} ", marker), style),
+                    Span::styled(format!("  {marker} "), style),
                     Span::styled(name.clone(), style),
                 ])
             })

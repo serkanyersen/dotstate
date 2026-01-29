@@ -5,7 +5,7 @@
 //!
 //! Note: These are integration tests that test the validation logic indirectly
 //! through the public API. For unit tests of validation functions, see
-//! src/utils/sync_validation.rs
+//! `src/utils/sync_validation.rs`
 
 /// Generate path combinations to test edge cases
 fn generate_path_combinations() -> Vec<(String, Vec<String>)> {

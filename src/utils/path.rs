@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 
 /// Get the home directory, with fallback to "/"
+#[must_use]
 pub fn get_home_dir() -> PathBuf {
     dirs::home_dir().unwrap_or_else(|| PathBuf::from("/"))
 }
@@ -9,6 +10,7 @@ pub fn get_home_dir() -> PathBuf {
 ///
 /// This is a simple check for the immediate directory.
 /// For more robust detection (including nested repos), use `sync_validation::contains_git_repo`.
+#[must_use]
 pub fn is_git_repo(path: &Path) -> bool {
     if path.is_dir() {
         path.join(".git").exists()
@@ -18,7 +20,8 @@ pub fn is_git_repo(path: &Path) -> bool {
 }
 
 /// Check if a path is safe to add as a custom file/folder
-/// Returns (is_safe, reason_if_not_safe)
+/// Returns (`is_safe`, `reason_if_not_safe`)
+#[must_use]
 pub fn is_safe_to_add(path: &Path, repo_path: &Path) -> (bool, Option<String>) {
     let home_dir = get_home_dir();
 
@@ -55,11 +58,13 @@ pub fn is_safe_to_add(path: &Path, repo_path: &Path) -> (bool, Option<String>) {
 }
 
 /// Get the config directory path (always ~/.config/dotstate, regardless of OS)
+#[must_use]
 pub fn get_config_dir() -> PathBuf {
     get_home_dir().join(".config").join("dotstate")
 }
 
 /// Get the config file path (always ~/.config/dotstate/config.toml, regardless of OS)
+#[must_use]
 pub fn get_config_path() -> PathBuf {
     get_config_dir().join("config.toml")
 }
@@ -70,7 +75,8 @@ pub fn get_config_path() -> PathBuf {
 /// * `path_str` - Path string that may contain ~ or be relative
 ///
 /// # Returns
-/// Expanded PathBuf
+/// Expanded `PathBuf`
+#[must_use]
 pub fn expand_path(path_str: &str) -> PathBuf {
     let home_dir = get_home_dir();
 
@@ -94,6 +100,7 @@ pub fn expand_path(path_str: &str) -> PathBuf {
 /// # Returns
 /// Formatted string
 #[allow(dead_code)]
+#[must_use]
 pub fn format_path_for_display(path: &Path) -> String {
     let home_dir = get_home_dir();
 
@@ -116,21 +123,21 @@ pub fn format_path_for_display(path: &Path) -> String {
 /// # Returns
 /// True if the path represents a dotfile
 #[allow(dead_code)]
+#[must_use]
 pub fn is_dotfile(path: &Path) -> bool {
     path.file_name()
         .and_then(|n| n.to_str())
-        .map(|s| s.starts_with('.'))
-        .unwrap_or(false)
+        .is_some_and(|s| s.starts_with('.'))
 }
 
 /// Get the repository path from the config file
 ///
 /// # Returns
-/// PathBuf to the repository directory
+/// `PathBuf` to the repository directory
 pub fn get_repository_path() -> anyhow::Result<PathBuf> {
     use crate::config::Config;
     let config_path = get_config_path();
     let config = Config::load_or_create(&config_path)
-        .map_err(|e| anyhow::anyhow!("Failed to load config: {}", e))?;
+        .map_err(|e| anyhow::anyhow!("Failed to load config: {e}"))?;
     Ok(config.repo_path)
 }

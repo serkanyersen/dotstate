@@ -33,6 +33,7 @@ pub struct Popup<'a> {
 
 impl<'a> Popup<'a> {
     /// Create a new popup with default size (70% width, 50% height)
+    #[must_use]
     pub fn new() -> Self {
         Self {
             width_percent: 70,
@@ -45,18 +46,21 @@ impl<'a> Popup<'a> {
     }
 
     /// Set the width percentage (0-100)
+    #[must_use]
     pub fn width(mut self, percent: u16) -> Self {
         self.width_percent = percent;
         self
     }
 
     /// Set the height percentage (0-100)
+    #[must_use]
     pub fn height(mut self, percent: u16) -> Self {
         self.height_percent = percent;
         self
     }
 
     /// Set whether to dim the background behind the popup
+    #[must_use]
     pub fn dim_background(mut self, dim: bool) -> Self {
         self.dim_background = dim;
         self
@@ -69,12 +73,14 @@ impl<'a> Popup<'a> {
     }
 
     /// Set whether to show borders (default: true)
+    #[must_use]
     pub fn border(mut self, show: bool) -> Self {
         self.show_border = show;
         self
     }
 
     /// Set footer text to display at the bottom inside the popup
+    #[must_use]
     pub fn footer(mut self, footer: &'a str) -> Self {
         self.footer = Some(footer);
         self
@@ -96,13 +102,14 @@ impl<'a> Popup<'a> {
     /// * `area` - The parent area (usually the full terminal area)
     ///
     /// # Returns
-    /// PopupRenderResult with content_area (excluding title and footer)
+    /// `PopupRenderResult` with `content_area` (excluding title and footer)
     pub fn render(&self, frame: &mut Frame, area: Rect) -> PopupRenderResult {
         let t = theme();
 
         // Calculate popup area
-        let popup_width = (area.width as f32 * (self.width_percent as f32 / 100.0)) as u16;
-        let popup_height = (area.height as f32 * (self.height_percent as f32 / 100.0)) as u16;
+        let popup_width = (f32::from(area.width) * (f32::from(self.width_percent) / 100.0)) as u16;
+        let popup_height =
+            (f32::from(area.height) * (f32::from(self.height_percent) / 100.0)) as u16;
         let popup_x = area.x + (area.width.saturating_sub(popup_width)) / 2;
         let popup_y = area.y + (area.height.saturating_sub(popup_height)) / 2;
         let popup_area = Rect::new(popup_x, popup_y, popup_width, popup_height);
@@ -177,7 +184,7 @@ impl<'a> Popup<'a> {
     }
 }
 
-impl<'a> Default for Popup<'a> {
+impl Default for Popup<'_> {
     fn default() -> Self {
         Self::new()
     }

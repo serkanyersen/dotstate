@@ -22,8 +22,8 @@ impl HelpOverlay {
         let theme = theme();
 
         // Calculate centered popup area (90% width, 90% height for better visibility)
-        let popup_width = (area.width as f32 * 0.90).min(100.0) as u16;
-        let popup_height = (area.height as f32 * 0.90).min(50.0) as u16;
+        let popup_width = (f32::from(area.width) * 0.90).min(100.0) as u16;
+        let popup_height = (f32::from(area.height) * 0.90).min(50.0) as u16;
         let popup_x = (area.width.saturating_sub(popup_width)) / 2;
         let popup_y = (area.height.saturating_sub(popup_height)) / 2;
         let popup_area = Rect::new(popup_x, popup_y, popup_width, popup_height);
@@ -35,7 +35,7 @@ impl HelpOverlay {
         let title = format!(" Keyboard Shortcuts - {} Preset ", keymap.preset.name());
         let block = Block::default()
             .borders(Borders::ALL)
-            .title(format!(" {} ", title))
+            .title(format!(" {title} "))
             .title_alignment(Alignment::Center)
             .border_style(Style::default().fg(theme.primary));
 
@@ -158,7 +158,7 @@ impl HelpOverlay {
                     lines.push(Line::from("")); // Blank line between categories
                 }
                 lines.push(Line::from(vec![Span::styled(
-                    format!("  {} ", category),
+                    format!("  {category} "),
                     Style::default()
                         .fg(theme.secondary)
                         .add_modifier(Modifier::BOLD),
@@ -171,7 +171,7 @@ impl HelpOverlay {
             let description = binding.get_description();
             lines.push(Line::from(vec![
                 Span::styled(
-                    format!("    {:12}", key_display),
+                    format!("    {key_display:12}"),
                     Style::default().fg(theme.text_emphasis),
                 ),
                 Span::raw(description),
@@ -185,8 +185,7 @@ impl HelpOverlay {
 
         // Footer with config location
         let footer_text = format!(
-            "Edit keybindings in: {}\nPress 1/2/3 to switch preset, any other key to close",
-            config_path
+            "Edit keybindings in: {config_path}\nPress 1/2/3 to switch preset, any other key to close"
         );
         let footer = Paragraph::new(footer_text)
             .style(Style::default().fg(theme.text_dimmed))

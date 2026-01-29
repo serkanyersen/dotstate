@@ -1,4 +1,4 @@
-//! DotState - A modern, secure, and user-friendly dotfile manager
+//! `DotState` - A modern, secure, and user-friendly dotfile manager
 //!
 //! This library provides the core functionality for managing dotfiles,
 //! syncing with git repositories, and managing profiles.

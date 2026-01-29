@@ -12,9 +12,9 @@ pub fn cmd_help(command: Option<String>) -> Result<()> {
         let mut cli = Cli::command();
         if let Some(subcommand) = cli.find_subcommand_mut(&cmd_name) {
             let help = subcommand.render_help();
-            println!("{}", help);
+            println!("{help}");
         } else {
-            eprintln!("❌ Unknown command: {}", cmd_name);
+            eprintln!("❌ Unknown command: {cmd_name}");
             eprintln!("\nAvailable commands:");
             print_all_commands();
             std::process::exit(1);
@@ -61,19 +61,23 @@ pub fn print_all_commands() {
         let name = subcmd.get_name();
         let about = subcmd
             .get_about()
-            .map(|s| s.to_string())
-            .or_else(|| subcmd.get_long_about().map(|s| s.to_string()))
+            .map(std::string::ToString::to_string)
+            .or_else(|| {
+                subcmd
+                    .get_long_about()
+                    .map(std::string::ToString::to_string)
+            })
             .unwrap_or_else(|| "No description available".to_string());
 
         // Format the command name with proper spacing
         let name_width = 15;
         let padded_name = if name.len() <= name_width {
-            format!("{:<width$}", name, width = name_width)
+            format!("{name:<name_width$}")
         } else {
             name.to_string()
         };
 
-        println!("  {}{}", padded_name, about);
+        println!("  {padded_name}{about}");
 
         // Print arguments/flags if any
         for arg in subcmd.get_arguments() {
@@ -81,16 +85,14 @@ pub fn print_all_commands() {
                 if let Some(long) = arg.get_long() {
                     let help = arg
                         .get_help()
-                        .map(|s| s.to_string())
-                        .unwrap_or_else(String::new);
-                    println!("    -{}, --{:<12} {}", short, long, help);
+                        .map_or_else(String::new, std::string::ToString::to_string);
+                    println!("    -{short}, --{long:<12} {help}");
                 }
             } else if let Some(long) = arg.get_long() {
                 let help = arg
                     .get_help()
-                    .map(|s| s.to_string())
-                    .unwrap_or_else(String::new);
-                println!("    --{:<15} {}", long, help);
+                    .map_or_else(String::new, std::string::ToString::to_string);
+                println!("    --{long:<15} {help}");
             }
         }
     }

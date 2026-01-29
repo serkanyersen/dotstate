@@ -1,7 +1,7 @@
-//! CLI module for DotState command-line interface.
+//! CLI module for `DotState` command-line interface.
 //!
 //! This module provides a modular structure for CLI commands:
-//! - `common` - Shared utilities (CliContext, prompts, output helpers)
+//! - `common` - Shared utilities (`CliContext`, prompts, output helpers)
 //! - `sync` - Sync with remote repository
 //! - `files` - File management (list, add, remove)
 //! - `profiles` - Profile activation/deactivation
@@ -38,7 +38,7 @@ pub struct Cli {
     #[command(subcommand)]
     pub command: Option<Commands>,
 
-    /// Disable colors in the TUI (also respects NO_COLOR env var)
+    /// Disable colors in the TUI (also respects `NO_COLOR` env var)
     #[arg(long, global = true)]
     pub no_colors: bool,
 }
@@ -100,7 +100,7 @@ pub enum Commands {
         /// Command to show help for
         command: Option<String>,
     },
-    /// Check for updates and optionally upgrade DotState
+    /// Check for updates and optionally upgrade `DotState`
     Upgrade {
         /// Check for updates without prompting to install
         #[arg(long)]

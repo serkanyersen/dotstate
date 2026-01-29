@@ -7,9 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Code Quality**: Added comprehensive clippy lint configuration to Cargo.toml with pedantic lints enabled, forbidding unsafe code
+
 ### Fixed
 
 - **Dotfile Selection**: Added confirmation dialog when removing common files from sync, warning that the action will affect all profiles
+- **Styles**: Theme system now recovers gracefully from RwLock poison instead of panicking
+- **Sync Service**: Fixed potential race condition in symlink metadata checks using idiomatic `if let` pattern
+- **Storage Setup**: Refactored username validation to use pattern matching instead of guard + unwrap
 
 ---
 

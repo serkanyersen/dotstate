@@ -41,7 +41,7 @@ impl MessageBox {
         let message_block = Block::default()
             .borders(Borders::ALL)
             .border_type(t.border_type(false))
-            .title(format!(" {} ", final_title))
+            .title(format!(" {final_title} "))
             .title_alignment(Alignment::Center)
             .border_style(Style::default().fg(final_color))
             .padding(ratatui::widgets::Padding::new(2, 2, 2, 2));

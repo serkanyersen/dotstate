@@ -56,6 +56,7 @@ impl<'a> Dialog<'a> {
     ///
     /// Width is automatically calculated based on content length,
     /// clamped between 50-80 columns by default.
+    #[must_use]
     pub fn new(title: &'a str, content: &'a str) -> Self {
         Self {
             title,
@@ -72,42 +73,49 @@ impl<'a> Dialog<'a> {
 
     /// Set the width as a percentage (0-100)
     /// This overrides auto-width calculation
+    #[must_use]
     pub fn width(mut self, percent: u16) -> Self {
         self.width_percent = Some(percent);
         self
     }
 
     /// Set minimum width in columns (default: 60)
+    #[must_use]
     pub fn min_width(mut self, columns: u16) -> Self {
         self.min_width = columns;
         self
     }
 
     /// Set maximum width in columns (default: 80)
+    #[must_use]
     pub fn max_width(mut self, columns: u16) -> Self {
         self.max_width = columns;
         self
     }
 
     /// Set the height percentage (0-100)
+    #[must_use]
     pub fn height(mut self, percent: u16) -> Self {
         self.height_percent = percent;
         self
     }
 
     /// Set the visual variant (affects border color and title prefix)
+    #[must_use]
     pub fn variant(mut self, variant: DialogVariant) -> Self {
         self.variant = variant;
         self
     }
 
     /// Set whether to dim the background behind the dialog
+    #[must_use]
     pub fn dim_background(mut self, dim: bool) -> Self {
         self.dim_background = dim;
         self
     }
 
     /// Set footer text to display below the dialog
+    #[must_use]
     pub fn footer(mut self, footer: &'a str) -> Self {
         self.footer = Some(footer);
         self
@@ -119,20 +127,20 @@ impl<'a> Dialog<'a> {
 
         // Build title with variant prefix first (needed for width calculation)
         let prefix = self.variant.prefix();
-        let title_text = if !prefix.is_empty() {
-            format!("{}: {}", prefix, self.title)
-        } else {
+        let title_text = if prefix.is_empty() {
             self.title.to_string()
+        } else {
+            format!("{}: {}", prefix, self.title)
         };
 
         // Calculate width (auto or percentage-based)
         let modal_width = if let Some(percent) = self.width_percent {
             // Use percentage-based width
-            (area.width as f32 * (percent as f32 / 100.0)) as u16
+            (f32::from(area.width) * (f32::from(percent) / 100.0)) as u16
         } else {
             // Auto-calculate based on content
             let title_len = title_text.len() as u16;
-            let footer_len = self.footer.map(|f| f.len() as u16).unwrap_or(0);
+            let footer_len = self.footer.map_or(0, |f| f.len() as u16);
 
             // Take the longest text, add padding (4 for horizontal padding * 2 sides = 8),
             // borders (2), and some breathing room (10)
@@ -159,7 +167,8 @@ impl<'a> Dialog<'a> {
         };
 
         // Calculate modal height
-        let modal_height = (area.height as f32 * (self.height_percent as f32 / 100.0)) as u16;
+        let modal_height =
+            (f32::from(area.height) * (f32::from(self.height_percent) / 100.0)) as u16;
         let modal_height = modal_height
             .max(min_total_height)
             .min(area.height.saturating_sub(2));
@@ -267,7 +276,7 @@ impl<'a> Dialog<'a> {
     }
 }
 
-impl<'a> Widget for Dialog<'a> {
+impl Widget for Dialog<'_> {
     fn render(self, area: Rect, buf: &mut Buffer) {
         self.render_impl(area, buf);
     }

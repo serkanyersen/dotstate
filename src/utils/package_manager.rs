@@ -8,6 +8,7 @@ pub struct PackageManagerImpl;
 impl PackageManagerImpl {
     /// Check if binary exists in PATH (no shell, no injection risk)
     /// Implements PATH-walk in Rust for maximum security
+    #[must_use]
     pub fn check_binary_in_path(binary_name: &str) -> bool {
         use std::env;
 
@@ -57,6 +58,7 @@ impl PackageManagerImpl {
 
     /// Check if package manager is installed
     /// Uses PATH-walk (no shell) for consistency and security
+    #[must_use]
     pub fn is_manager_installed(manager: &PackageManager) -> bool {
         let binary_name = match manager {
             PackageManager::Brew => "brew",
@@ -77,7 +79,8 @@ impl PackageManagerImpl {
     }
 
     /// Build install command as Command struct (no shell injection risk)
-    /// For managed packages, we use direct Command::new() instead of sh -c
+    /// For managed packages, we use direct `Command::new()` instead of sh -c
+    #[must_use]
     pub fn build_install_command(manager: &PackageManager, package_name: &str) -> Command {
         match manager {
             PackageManager::Brew => {
@@ -153,6 +156,7 @@ impl PackageManagerImpl {
     }
 
     /// Check if sudo password is required (for sudo-based installs)
+    #[must_use]
     pub fn check_sudo_required(manager: &PackageManager) -> bool {
         match manager {
             PackageManager::Apt
@@ -173,7 +177,8 @@ impl PackageManagerImpl {
     }
 
     /// Build manager-native existence check command (fallback)
-    /// Used when binary_name check fails or binary_name is missing
+    /// Used when `binary_name` check fails or `binary_name` is missing
+    #[must_use]
     pub fn build_manager_check_command(
         manager: &PackageManager,
         package_name: &str,
@@ -236,29 +241,28 @@ impl PackageManagerImpl {
     }
 
     /// Get install command builder for a package (handles both managed and custom)
+    #[must_use]
     pub fn get_install_command_builder(package: &Package) -> Command {
-        match &package.manager {
-            PackageManager::Custom => {
-                let command_str = package
-                    .install_command
-                    .as_ref()
-                    .expect("Custom packages must have install_command");
-                let mut cmd = Command::new("sh");
-                cmd.arg("-c").arg(command_str);
-                cmd
-            }
-            _ => {
-                let package_name = package
-                    .package_name
-                    .as_ref()
-                    .expect("Managed packages must have package_name");
-                Self::build_install_command(&package.manager, package_name)
-            }
+        if package.manager == PackageManager::Custom {
+            let command_str = package
+                .install_command
+                .as_ref()
+                .expect("Custom packages must have install_command");
+            let mut cmd = Command::new("sh");
+            cmd.arg("-c").arg(command_str);
+            cmd
+        } else {
+            let package_name = package
+                .package_name
+                .as_ref()
+                .expect("Managed packages must have package_name");
+            Self::build_install_command(&package.manager, package_name)
         }
     }
 
     /// Get available package managers for current OS
     /// Filters out managers that are unlikely to be installed on this system
+    #[must_use]
     pub fn get_available_managers() -> Vec<PackageManager> {
         let mut available = Vec::new();
 
@@ -318,6 +322,7 @@ impl PackageManagerImpl {
     }
 
     /// Suggest binary name from package name
+    #[must_use]
     pub fn suggest_binary_name(package_name: &str) -> String {
         // Most package managers use the same name
         // Some exceptions: brew install git -> binary is "git"
@@ -327,6 +332,7 @@ impl PackageManagerImpl {
     /// Get installation instructions for missing package manager
     /// Note: We do NOT automatically install package managers.
     /// We only provide instructions for the user to install manually.
+    #[must_use]
     pub fn installation_instructions(manager: &PackageManager) -> String {
         match manager {
             PackageManager::Brew => "Install Homebrew: /bin/bash -c \"$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\"".to_string(),

@@ -33,8 +33,7 @@ pub fn cmd_list(verbose: bool) -> Result<()> {
         .profiles
         .iter()
         .find(|p| p.name == config.active_profile)
-        .map(|p| &p.synced_files)
-        .unwrap_or(&empty_vec);
+        .map_or(&empty_vec, |p| &p.synced_files);
 
     if common_files.is_empty() && synced_files.is_empty() {
         println!("No files are currently synced.");
@@ -59,7 +58,7 @@ pub fn cmd_list(verbose: bool) -> Result<()> {
                 let symlink_exists = symlink_path.exists();
                 let repo_file_exists = repo_file_path.exists();
 
-                println!("  {}", file);
+                println!("  {file}");
                 println!("    Symlink:   {}", symlink_path.display());
                 if symlink_exists {
                     if let Ok(metadata) = symlink_path.symlink_metadata() {
@@ -81,7 +80,7 @@ pub fn cmd_list(verbose: bool) -> Result<()> {
                     println!("      Status:  ✗ Not found");
                 }
             } else {
-                println!("  {}", file);
+                println!("  {file}");
                 println!("    Symlink:   {}", symlink_path.display());
                 println!("    Storage:   {}", repo_file_path.display());
             }
@@ -100,7 +99,7 @@ pub fn cmd_list(verbose: bool) -> Result<()> {
                 let symlink_exists = symlink_path.exists();
                 let repo_file_exists = repo_file_path.exists();
 
-                println!("  {}", file);
+                println!("  {file}");
                 println!("    Symlink:   {}", symlink_path.display());
                 if symlink_exists {
                     if let Ok(metadata) = symlink_path.symlink_metadata() {
@@ -122,7 +121,7 @@ pub fn cmd_list(verbose: bool) -> Result<()> {
                     println!("      Status:  ✗ Not found");
                 }
             } else {
-                println!("  {}", file);
+                println!("  {file}");
                 println!("    Symlink:   {}", symlink_path.display());
                 println!("    Storage:   {}", repo_file_path.display());
             }
@@ -147,22 +146,20 @@ pub fn cmd_add(path: PathBuf, common: bool) -> Result<()> {
     };
 
     if !resolved_path.exists() {
-        eprintln!("❌ File not found: {:?}", resolved_path);
+        eprintln!("❌ File not found: {resolved_path:?}");
         std::process::exit(1);
     }
 
     // Get relative path from home
     let relative_path = resolved_path
         .strip_prefix(&home)
-        .map(|p| p.to_path_buf())
-        .unwrap_or_else(|_| resolved_path.clone());
+        .map_or_else(|_| resolved_path.clone(), std::path::Path::to_path_buf);
     let relative_str = relative_path.to_string_lossy().to_string();
 
     // Show confirmation prompt
     let destination = if common { "common files" } else { "profile" };
     println!(
-        "⚠️  Warning: This will move the following path to {} and replace it with a symlink:",
-        destination
+        "⚠️  Warning: This will move the following path to {destination} and replace it with a symlink:"
     );
     println!("   {}", resolved_path.display());
     if common {
@@ -218,17 +215,14 @@ pub fn cmd_add(path: PathBuf, common: bool) -> Result<()> {
                 }
             }
             let dest_type = if common { "common files" } else { "repository" };
-            println!(
-                "✅ Added {} to {} and created symlink",
-                relative_str, dest_type
-            );
+            println!("✅ Added {relative_str} to {dest_type} and created symlink");
         }
         AddFileResult::AlreadySynced => {
             let dest_type = if common { "common" } else { "synced" };
-            println!("ℹ️  File is already {}: {}", dest_type, relative_str);
+            println!("ℹ️  File is already {dest_type}: {relative_str}");
         }
         AddFileResult::ValidationFailed(msg) => {
-            eprintln!("❌ {}", msg);
+            eprintln!("❌ {msg}");
             std::process::exit(1);
         }
     }
@@ -243,10 +237,7 @@ pub fn cmd_remove(path: String, common: bool) -> Result<()> {
 
     // Show confirmation prompt
     let source = if common { "common files" } else { "profile" };
-    println!(
-        "⚠️  Warning: This will remove {} from {} and restore the original file.",
-        path, source
-    );
+    println!("⚠️  Warning: This will remove {path} from {source} and restore the original file.");
     print!("   Continue? [y/N]: ");
     io::stdout().flush().context("Failed to flush stdout")?;
 
@@ -283,14 +274,11 @@ pub fn cmd_remove(path: String, common: bool) -> Result<()> {
                 config.save(&config_path)?;
             }
             let source_type = if common { "common files" } else { "sync" };
-            println!(
-                "✅ Removed {} from {} and restored original file",
-                path, source_type
-            );
+            println!("✅ Removed {path} from {source_type} and restored original file");
         }
         RemoveFileResult::NotSynced => {
             let source_type = if common { "common" } else { "synced" };
-            println!("ℹ️  File is not {}: {}", source_type, path);
+            println!("ℹ️  File is not {source_type}: {path}");
         }
     }
 

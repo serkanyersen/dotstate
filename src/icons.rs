@@ -1,6 +1,6 @@
 //! Icon provider system for the application.
 //!
-//! Supports multiple icon sets: NerdFonts, Unicode emojis, and ASCII fallback.
+//! Supports multiple icon sets: `NerdFonts`, Unicode emojis, and ASCII fallback.
 //! Auto-detects terminal capabilities and allows user override via environment variable.
 
 use std::env;
@@ -8,7 +8,7 @@ use std::env;
 /// Available icon sets
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IconSet {
-    /// NerdFonts icons (requires NerdFont-patched font)
+    /// `NerdFonts` icons (requires NerdFont-patched font)
     NerdFonts,
     /// Unicode icons (works in most modern terminals)
     Unicode,
@@ -20,6 +20,7 @@ pub enum IconSet {
 
 impl IconSet {
     /// Detect the best icon set for the current terminal
+    #[must_use]
     pub fn detect() -> Self {
         // Check for explicit user override
         if let Ok(icons) = env::var("DOTSTATE_ICONS") {
@@ -40,7 +41,7 @@ impl IconSet {
         }
     }
 
-    /// Heuristic to detect if terminal likely supports NerdFonts
+    /// Heuristic to detect if terminal likely supports `NerdFonts`
     fn likely_supports_nerd_fonts() -> bool {
         // Check TERM_PROGRAM for known terminals with good font support
         if let Ok(term_program) = env::var("TERM_PROGRAM") {
@@ -54,6 +55,7 @@ impl IconSet {
     }
 
     /// Get the name of this icon set
+    #[must_use]
     pub fn name(&self) -> &'static str {
         match self {
             IconSet::NerdFonts => "NerdFonts",
@@ -71,6 +73,7 @@ pub struct Icons {
 
 impl Icons {
     /// Create a new icon provider with auto-detection
+    #[must_use]
     pub fn new() -> Self {
         Self {
             icon_set: IconSet::detect(),
@@ -78,12 +81,14 @@ impl Icons {
     }
 
     /// Create an icon provider with a specific icon set
+    #[must_use]
     pub fn with_icon_set(icon_set: IconSet) -> Self {
         Self { icon_set }
     }
 
     /// Create an icon provider from config
-    /// Priority: DOTSTATE_ICONS env var > config value > auto-detect
+    /// Priority: `DOTSTATE_ICONS` env var > config value > auto-detect
+    #[must_use]
     pub fn from_config(config: &crate::config::Config) -> Self {
         // Environment variable takes precedence
         if env::var("DOTSTATE_ICONS").is_ok() {
@@ -95,10 +100,12 @@ impl Icons {
     }
 
     /// Get the current icon set
+    #[must_use]
     pub fn icon_set(&self) -> IconSet {
         self.icon_set
     }
 
+    #[must_use]
     pub fn folder(&self) -> &'static str {
         match self.icon_set {
             IconSet::NerdFonts => "\u{ea83}", //
@@ -108,6 +115,7 @@ impl Icons {
         }
     }
 
+    #[must_use]
     pub fn file(&self) -> &'static str {
         match self.icon_set {
             IconSet::NerdFonts => "\u{f15b}", //
@@ -117,6 +125,7 @@ impl Icons {
         }
     }
 
+    #[must_use]
     pub fn sync(&self) -> &'static str {
         match self.icon_set {
             IconSet::NerdFonts => "\u{f14ce}", //
@@ -126,6 +135,7 @@ impl Icons {
         }
     }
 
+    #[must_use]
     pub fn loading(&self) -> &'static str {
         match self.icon_set {
             IconSet::NerdFonts => "\u{f021}", //
@@ -135,6 +145,7 @@ impl Icons {
         }
     }
 
+    #[must_use]
     pub fn profile(&self) -> &'static str {
         match self.icon_set {
             IconSet::NerdFonts => "\u{f007}", //
@@ -144,6 +155,7 @@ impl Icons {
         }
     }
 
+    #[must_use]
     pub fn package(&self) -> &'static str {
         match self.icon_set {
             IconSet::NerdFonts => "\u{eb29}", //
@@ -153,6 +165,7 @@ impl Icons {
         }
     }
 
+    #[must_use]
     pub fn git(&self) -> &'static str {
         match self.icon_set {
             IconSet::NerdFonts => "\u{f1d2}", //
@@ -162,6 +175,7 @@ impl Icons {
         }
     }
 
+    #[must_use]
     pub fn update(&self) -> &'static str {
         match self.icon_set {
             IconSet::NerdFonts => "\u{f06b0}", //
@@ -171,6 +185,7 @@ impl Icons {
         }
     }
 
+    #[must_use]
     pub fn menu(&self) -> &'static str {
         match self.icon_set {
             IconSet::NerdFonts => "\u{f0c9}", //
@@ -182,6 +197,7 @@ impl Icons {
 
     // === Status Icons ===
 
+    #[must_use]
     pub fn success(&self) -> &'static str {
         match self.icon_set {
             IconSet::NerdFonts => "\u{f00c}", //
@@ -191,6 +207,7 @@ impl Icons {
         }
     }
 
+    #[must_use]
     pub fn warning(&self) -> &'static str {
         match self.icon_set {
             IconSet::NerdFonts => "\u{f071}", //
@@ -200,6 +217,7 @@ impl Icons {
         }
     }
 
+    #[must_use]
     pub fn error(&self) -> &'static str {
         match self.icon_set {
             IconSet::NerdFonts => "\u{ebfb}", //
@@ -209,6 +227,7 @@ impl Icons {
         }
     }
 
+    #[must_use]
     pub fn info(&self) -> &'static str {
         match self.icon_set {
             IconSet::NerdFonts => "\u{f05a}", //
@@ -218,6 +237,7 @@ impl Icons {
         }
     }
 
+    #[must_use]
     pub fn lightbulb(&self) -> &'static str {
         match self.icon_set {
             IconSet::NerdFonts => "\u{f0eb}", //
@@ -226,6 +246,7 @@ impl Icons {
             IconSet::Ascii => "[IDEA]",
         }
     }
+    #[must_use]
     pub fn active_profile(&self) -> &'static str {
         match self.icon_set {
             IconSet::NerdFonts => "\u{f005}", // Star or something distinct
@@ -235,6 +256,7 @@ impl Icons {
         }
     }
 
+    #[must_use]
     pub fn inactive_profile(&self) -> &'static str {
         match self.icon_set {
             IconSet::NerdFonts => "\u{f111}", // Circle
@@ -244,6 +266,7 @@ impl Icons {
         }
     }
 
+    #[must_use]
     pub fn check(&self) -> &'static str {
         match self.icon_set {
             IconSet::NerdFonts => "\u{f42e}",
@@ -253,6 +276,7 @@ impl Icons {
         }
     }
 
+    #[must_use]
     pub fn uncheck(&self) -> &'static str {
         match self.icon_set {
             IconSet::NerdFonts => " ",
@@ -262,6 +286,7 @@ impl Icons {
         }
     }
 
+    #[must_use]
     pub fn create(&self) -> &'static str {
         match self.icon_set {
             IconSet::NerdFonts => "\u{f067}", // Plus
@@ -271,6 +296,7 @@ impl Icons {
         }
     }
 
+    #[must_use]
     pub fn github(&self) -> &'static str {
         match self.icon_set {
             IconSet::NerdFonts => "\u{f09b}", // GitHub logo
@@ -280,6 +306,7 @@ impl Icons {
         }
     }
 
+    #[must_use]
     pub fn wrench(&self) -> &'static str {
         match self.icon_set {
             IconSet::NerdFonts => "\u{f0ad}", // Wrench
@@ -289,6 +316,7 @@ impl Icons {
         }
     }
 
+    #[must_use]
     pub fn plug(&self) -> &'static str {
         match self.icon_set {
             IconSet::NerdFonts => "\u{f1e6}", // Plug
@@ -298,6 +326,7 @@ impl Icons {
         }
     }
 
+    #[must_use]
     pub fn circle_filled(&self) -> &'static str {
         match self.icon_set {
             IconSet::NerdFonts => "\u{f111}", // Circle
@@ -307,6 +336,7 @@ impl Icons {
         }
     }
 
+    #[must_use]
     pub fn circle_empty(&self) -> &'static str {
         match self.icon_set {
             IconSet::NerdFonts => "\u{f1db}", // Circle
@@ -316,6 +346,7 @@ impl Icons {
         }
     }
 
+    #[must_use]
     pub fn cog(&self) -> &'static str {
         match self.icon_set {
             IconSet::NerdFonts => "\u{f013}", // Cog/gear icon

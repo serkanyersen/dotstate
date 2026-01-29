@@ -26,6 +26,7 @@ pub enum ToastVariant {
 
 impl ToastVariant {
     /// Get the icon for this variant
+    #[must_use]
     pub fn icon(&self) -> &'static str {
         match self {
             ToastVariant::Success => "\u{2714}", // ✔
@@ -36,6 +37,7 @@ impl ToastVariant {
     }
 
     /// Get the border color for this variant
+    #[must_use]
     pub fn color(&self) -> ratatui::style::Color {
         let t = theme();
         match self {
@@ -92,12 +94,14 @@ impl Toast {
     }
 
     /// Set a custom duration
+    #[must_use]
     pub fn with_duration(mut self, duration: Duration) -> Self {
         self.duration = duration;
         self
     }
 
     /// Check if the toast has expired
+    #[must_use]
     pub fn is_expired(&self) -> bool {
         self.created_at.elapsed() >= self.duration
     }
@@ -112,6 +116,7 @@ pub struct ToastWidget<'a> {
 
 impl<'a> ToastWidget<'a> {
     /// Create a new toast widget
+    #[must_use]
     pub fn new(toast: &'a Toast) -> Self {
         Self { toast }
     }
@@ -129,7 +134,7 @@ impl<'a> ToastWidget<'a> {
     }
 }
 
-impl<'a> Widget for ToastWidget<'a> {
+impl Widget for ToastWidget<'_> {
     fn render(self, area: Rect, buf: &mut Buffer) {
         let toast_area = self.calculate_area(area);
         let t = theme();
@@ -168,6 +173,7 @@ pub struct ToastManager {
 
 impl ToastManager {
     /// Create a new toast manager
+    #[must_use]
     pub fn new() -> Self {
         Self { current: None }
     }
@@ -208,11 +214,13 @@ impl ToastManager {
     }
 
     /// Get the current toast to display (if any)
+    #[must_use]
     pub fn current(&self) -> Option<&Toast> {
         self.current.as_ref()
     }
 
     /// Check if there are any active toasts
+    #[must_use]
     pub fn has_toast(&self) -> bool {
         self.current.is_some()
     }

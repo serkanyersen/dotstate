@@ -31,11 +31,11 @@ impl Header {
             .borders(Borders::ALL)
             .border_style(t.border_focused_style())
             .border_type(t.border_type(false))
-            .title(format!(" {} ", title))
+            .title(format!(" {title} "))
             .title_style(t.title_style())
             .title_alignment(Alignment::Center)
             .title_bottom(
-                Line::from(format!("v{}", app_version))
+                Line::from(format!("v{app_version}"))
                     .right_aligned()
                     .style(t.muted_style()),
             )

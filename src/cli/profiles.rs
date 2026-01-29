@@ -39,15 +39,12 @@ pub fn cmd_activate() -> Result<()> {
         .clone();
 
     if active_profile_files.is_empty() {
-        eprintln!(
-            "❌ Active profile '{}' has no synced files.",
-            active_profile_name
-        );
+        eprintln!("❌ Active profile '{active_profile_name}' has no synced files.");
         eprintln!("💡 Run 'dotstate' to select and sync files.");
         std::process::exit(1);
     }
 
-    println!("🔗 Activating profile '{}'...", active_profile_name);
+    println!("🔗 Activating profile '{active_profile_name}'...");
     println!(
         "   This will create symlinks for {} files",
         active_profile_files.len()
@@ -82,10 +79,7 @@ pub fn cmd_activate() -> Result<()> {
     let failed_count = operations.len() - success_count;
 
     if failed_count > 0 {
-        eprintln!(
-            "⚠️  Activated {} files, {} failed",
-            success_count, failed_count
-        );
+        eprintln!("⚠️  Activated {success_count} files, {failed_count} failed");
         for op in &operations {
             if let OperationStatus::Failed(msg) = &op.status {
                 eprintln!("   ❌ {}: {}", op.target.display(), msg);
@@ -99,11 +93,8 @@ pub fn cmd_activate() -> Result<()> {
             .save(&config_path)
             .context("Failed to save configuration")?;
 
-        println!(
-            "✅ Successfully activated profile '{}'",
-            active_profile_name
-        );
-        println!("   {} symlinks created", success_count);
+        println!("✅ Successfully activated profile '{active_profile_name}'");
+        println!("   {success_count} symlinks created");
     }
 
     Ok(())
@@ -146,10 +137,7 @@ pub fn cmd_deactivate() -> Result<()> {
     if operations.is_empty() {
         println!("ℹ️  No symlinks were tracked. Nothing to deactivate.");
     } else if failed_count > 0 {
-        eprintln!(
-            "⚠️  Deactivated {} files, {} failed",
-            success_count, failed_count
-        );
+        eprintln!("⚠️  Deactivated {success_count} files, {failed_count} failed");
         for op in &operations {
             if let OperationStatus::Failed(msg) = &op.status {
                 eprintln!("   ❌ {}: {}", op.target.display(), msg);
@@ -164,7 +152,7 @@ pub fn cmd_deactivate() -> Result<()> {
             .context("Failed to save configuration")?;
 
         println!("✅ Successfully deactivated dotstate");
-        println!("   {} files restored", success_count);
+        println!("   {success_count} files restored");
         println!("💡 Dotstate is now deactivated. Use 'dotstate activate' to reactivate.");
     }
 

@@ -345,6 +345,7 @@ impl Default for PackageManagerState {
 
 impl PackageManagerState {
     /// Get the currently active source (selected tab)
+    #[must_use]
     pub fn import_active_source(&self) -> Option<crate::utils::DiscoverySource> {
         self.import_available_sources
             .get(self.import_active_tab)
@@ -352,19 +353,21 @@ impl PackageManagerState {
     }
 
     /// Get cached packages for current source
+    #[must_use]
     pub fn import_current_packages(&self) -> &[crate::utils::DiscoveredPackage] {
         self.import_active_source()
             .and_then(|s| self.import_source_cache.get(&s))
-            .map(|c| c.packages.as_slice())
-            .unwrap_or(&[])
+            .map_or(&[], |c| c.packages.as_slice())
     }
 
     /// Check if current source cache is valid (exists and not expired)
+    #[must_use]
     pub fn import_cache_valid(&self, max_age_secs: u64) -> bool {
         self.import_active_source()
             .and_then(|s| self.import_source_cache.get(&s))
-            .map(|c| c.discovered_at.elapsed().as_secs() < max_age_secs && !c.packages.is_empty())
-            .unwrap_or(false)
+            .is_some_and(|c| {
+                c.discovered_at.elapsed().as_secs() < max_age_secs && !c.packages.is_empty()
+            })
     }
 }
 
@@ -420,6 +423,7 @@ impl Default for UiState {
 }
 
 impl UiState {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             current_screen: Screen::MainMenu,

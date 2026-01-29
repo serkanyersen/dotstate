@@ -1,6 +1,6 @@
-//! Version checking module for DotState
+//! Version checking module for `DotState`
 //!
-//! This module handles checking for new versions of DotState from GitHub releases
+//! This module handles checking for new versions of `DotState` from GitHub releases
 //! and provides update information to users.
 
 use std::time::Duration;
@@ -24,13 +24,15 @@ pub struct UpdateInfo {
 
 impl UpdateInfo {
     /// Get the install.sh URL for self-update
+    #[must_use]
     pub fn install_script_url() -> &'static str {
         "https://dotstate.serkan.dev/install.sh"
     }
 
     /// Get the GitHub releases URL
+    #[must_use]
     pub fn releases_url() -> String {
-        format!("https://github.com/{}/{}/releases", REPO_OWNER, REPO_NAME)
+        format!("https://github.com/{REPO_OWNER}/{REPO_NAME}/releases")
     }
 }
 
@@ -45,6 +47,7 @@ impl UpdateInfo {
 /// # Returns
 /// * `Some(UpdateInfo)` if a newer version is available
 /// * `None` if already up to date or check failed/skipped
+#[must_use]
 pub fn check_for_updates(_interval_hours: u64) -> Option<UpdateInfo> {
     // Always do a fresh check - the TUI only calls this once at startup anyway
     // Using Duration::ZERO bypasses the "first run" caching behavior
@@ -61,7 +64,7 @@ pub fn check_for_updates(_interval_hours: u64) -> Option<UpdateInfo> {
 /// * `None` if already up to date or check failed
 pub fn check_for_updates_now() -> Option<UpdateInfo> {
     let current_version = env!("CARGO_PKG_VERSION");
-    let repo = format!("{}/{}", REPO_OWNER, REPO_NAME);
+    let repo = format!("{REPO_OWNER}/{REPO_NAME}");
 
     // Use Duration::ZERO to skip cache and force a fresh check every time
     let informer = update_informer::new(GitHub, &repo, current_version).interval(Duration::ZERO);
@@ -74,8 +77,7 @@ pub fn check_for_updates_now() -> Option<UpdateInfo> {
                 current_version: current_version.to_string(),
                 latest_version: version_str.clone(),
                 release_url: format!(
-                    "https://github.com/{}/{}/releases/tag/{}",
-                    REPO_OWNER, REPO_NAME, version_str
+                    "https://github.com/{REPO_OWNER}/{REPO_NAME}/releases/tag/{version_str}"
                 ),
             })
         }
@@ -102,7 +104,7 @@ pub fn check_for_updates_now() -> Option<UpdateInfo> {
 /// * `Err(String)` if the check failed
 pub fn check_for_updates_with_result() -> Result<Option<UpdateInfo>, String> {
     let current_version = env!("CARGO_PKG_VERSION");
-    let repo = format!("{}/{}", REPO_OWNER, REPO_NAME);
+    let repo = format!("{REPO_OWNER}/{REPO_NAME}");
 
     // Use Duration::ZERO to skip cache and force a fresh check every time
     let informer = update_informer::new(GitHub, &repo, current_version).interval(Duration::ZERO);
@@ -115,14 +117,13 @@ pub fn check_for_updates_with_result() -> Result<Option<UpdateInfo>, String> {
                 current_version: current_version.to_string(),
                 latest_version: version_str.clone(),
                 release_url: format!(
-                    "https://github.com/{}/{}/releases/tag/{}",
-                    REPO_OWNER, REPO_NAME, version_str
+                    "https://github.com/{REPO_OWNER}/{REPO_NAME}/releases/tag/{version_str}"
                 ),
             }))
         }
         Ok(None) => Ok(None),
         Err(e) => {
-            let error_msg = format!("{}", e);
+            let error_msg = format!("{e}");
             let mut error_details = error_msg.clone();
 
             // Include source error if available
@@ -148,7 +149,8 @@ pub fn check_for_updates_with_result() -> Result<Option<UpdateInfo>, String> {
     }
 }
 
-/// Get the current version of DotState
+/// Get the current version of `DotState`
+#[must_use]
 pub fn current_version() -> &'static str {
     env!("CARGO_PKG_VERSION")
 }
@@ -224,7 +226,7 @@ mod tests {
     #[test]
     fn test_releases_url_format() {
         let url = UpdateInfo::releases_url();
-        let expected = format!("https://github.com/{}/{}/releases", REPO_OWNER, REPO_NAME);
+        let expected = format!("https://github.com/{REPO_OWNER}/{REPO_NAME}/releases");
         assert_eq!(url, expected);
     }
 }

@@ -9,7 +9,7 @@ pub struct BackupManager {
 }
 
 impl BackupManager {
-    /// Create a new BackupManager
+    /// Create a new `BackupManager`
     pub fn new() -> Result<Self> {
         let home_dir = crate::utils::get_home_dir();
         let backup_root = home_dir.join(".dotstate-backups");
@@ -52,15 +52,11 @@ impl BackupManager {
 
         if metadata.is_dir() {
             crate::file_manager::copy_dir_all(source, &backup_dest).with_context(|| {
-                format!(
-                    "Failed to backup directory {:?} to {:?}",
-                    source, backup_dest
-                )
+                format!("Failed to backup directory {source:?} to {backup_dest:?}")
             })?;
         } else {
-            fs::copy(source, &backup_dest).with_context(|| {
-                format!("Failed to backup file {:?} to {:?}", source, backup_dest)
-            })?;
+            fs::copy(source, &backup_dest)
+                .with_context(|| format!("Failed to backup file {source:?} to {backup_dest:?}"))?;
         }
 
         Ok(backup_dest)
@@ -68,6 +64,7 @@ impl BackupManager {
 
     /// Get the backup root directory
     #[allow(dead_code)] // Kept for potential future use in CLI or programmatic access
+    #[must_use]
     pub fn backup_root(&self) -> &Path {
         &self.backup_root
     }

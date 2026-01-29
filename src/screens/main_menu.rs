@@ -32,6 +32,7 @@ pub enum MenuItem {
 
 impl MenuItem {
     /// Get all menu items in display order
+    #[must_use]
     pub fn all() -> Vec<MenuItem> {
         vec![
             MenuItem::ScanDotfiles,
@@ -43,6 +44,7 @@ impl MenuItem {
         ]
     }
 
+    #[must_use]
     pub fn requires_setup(&self) -> bool {
         match self {
             MenuItem::SetupRepository => false, // Always available
@@ -52,11 +54,13 @@ impl MenuItem {
     }
 
     /// Check if this menu item is enabled based on setup status
+    #[must_use]
     pub fn is_enabled(&self, is_setup: bool) -> bool {
         !self.requires_setup() || is_setup
     }
 
     /// Get the icon for this menu item using the icon provider
+    #[must_use]
     pub fn icon(&self, icons: &Icons) -> &'static str {
         match self {
             MenuItem::ScanDotfiles => icons.folder(),
@@ -69,6 +73,7 @@ impl MenuItem {
     }
 
     /// Get the display text for this menu item
+    #[must_use]
     pub fn text(&self) -> &'static str {
         match self {
             MenuItem::ScanDotfiles => "Manage Files",
@@ -81,6 +86,7 @@ impl MenuItem {
     }
 
     /// Get the base color for this menu item
+    #[must_use]
     pub fn color(&self, has_changes: bool) -> Color {
         let t = theme();
         match self {
@@ -90,6 +96,7 @@ impl MenuItem {
     }
 
     /// Get the explanation text for this menu item (uses icon provider)
+    #[must_use]
     pub fn explanation(&self, icons: &Icons) -> Text<'static> {
         let t = theme();
         match self {
@@ -379,6 +386,7 @@ impl MenuItem {
         }
     }
 
+    #[must_use]
     pub fn explanation_icon(&self, icons: &Icons) -> &'static str {
         match self {
             MenuItem::ScanDotfiles => icons.lightbulb(),
@@ -391,16 +399,19 @@ impl MenuItem {
     }
 
     /// Get the explanation panel color
+    #[must_use]
     pub fn explanation_color(&self) -> Color {
         theme().primary
     }
 
-    /// Convert from index to MenuItem
+    /// Convert from index to `MenuItem`
+    #[must_use]
     pub fn from_index(index: usize) -> Option<MenuItem> {
         Self::all().get(index).copied()
     }
 
-    /// Convert MenuItem to index
+    /// Convert `MenuItem` to index
+    #[must_use]
     pub fn to_index(self) -> usize {
         Self::all()
             .iter()
@@ -415,7 +426,7 @@ use crate::services::git_service::GitStatus;
 pub struct MainMenuScreen {
     selected_item: MenuItem,
     menu_state: MenuState,
-    /// Clickable areas: (rect, MenuItem)
+    /// Clickable areas: (rect, `MenuItem`)
     clickable_areas: Vec<(Rect, MenuItem)>,
     /// Clickable area for update notification (shown as last menu item)
     update_clickable_area: Option<Rect>,
@@ -433,6 +444,7 @@ pub struct MainMenuScreen {
 
 impl MainMenuScreen {
     /// Create a new main menu screen.
+    #[must_use]
     pub fn new() -> Self {
         let mut menu_state = MenuState::new();
         let default_item = MenuItem::SetupRepository;
@@ -453,6 +465,7 @@ impl MainMenuScreen {
     }
 
     /// Create and initialize with configuration.
+    #[must_use]
     pub fn with_config(config: &Config, has_changes: bool) -> Self {
         let mut menu_state = MenuState::new();
         let default_item = if config.is_repo_configured() {
@@ -492,11 +505,13 @@ impl MainMenuScreen {
     }
 
     /// Get the update info
+    #[must_use]
     pub fn get_update_info(&self) -> Option<&UpdateInfo> {
         self.update_info.as_ref()
     }
 
     /// Check if the update menu item is currently selected
+    #[must_use]
     pub fn is_update_item_selected(&self) -> bool {
         self.is_update_selected && self.update_info.is_some()
     }
@@ -581,16 +596,16 @@ impl MainMenuScreen {
     fn is_setup(&self) -> bool {
         self.config
             .as_ref()
-            .map(|c| c.is_repo_configured())
-            .unwrap_or(false)
+            .is_some_and(super::super::config::Config::is_repo_configured)
     }
 
     /// Get the currently selected menu item
+    #[must_use]
     pub fn selected_item(&self) -> MenuItem {
         self.selected_item
     }
 
-    /// Set the selected item by MenuItem enum
+    /// Set the selected item by `MenuItem` enum
     pub fn set_selected_item(&mut self, item: MenuItem) {
         self.selected_item = item;
         self.is_update_selected = false;
@@ -599,6 +614,7 @@ impl MainMenuScreen {
     }
 
     /// Get the selected index (for backward compatibility)
+    #[must_use]
     pub fn selected_index(&self) -> usize {
         self.selected_item.to_index()
     }
@@ -688,8 +704,7 @@ impl MainMenuScreen {
                 .profiles
                 .iter()
                 .find(|p| p.name == config.active_profile)
-                .map(|p| p.synced_files.len())
-                .unwrap_or(0);
+                .map_or(0, |p| p.synced_files.len());
             let profile_count = manifest.profiles.len();
             let active_profile = &config.active_profile;
 
@@ -700,8 +715,7 @@ impl MainMenuScreen {
             };
 
             let mut stats = format!(
-                "Synced Files: {}\nProfiles: {} (Active: {})\n{}",
-                synced_count, profile_count, active_profile, repo_info
+                "Synced Files: {synced_count}\nProfiles: {profile_count} (Active: {active_profile})\n{repo_info}"
             );
 
             // Add git status info
@@ -739,7 +753,7 @@ impl MainMenuScreen {
                     } else {
                         file
                     };
-                    stats.push_str(&format!("\n  • {}", display_file));
+                    stats.push_str(&format!("\n  • {display_file}"));
                 }
                 if status.uncommitted_files.len() > max_files {
                     stats.push_str(&format!(
@@ -817,7 +831,7 @@ impl MainMenuScreen {
                     if self.git_status.has_changes {
                         let count = self.git_status.uncommitted_files.len();
                         if count > 0 {
-                            info_parts.push(format!("+{}", count));
+                            info_parts.push(format!("+{count}"));
                         } else {
                             info_parts.push("*".to_string());
                         }
@@ -898,7 +912,7 @@ impl MainMenuScreen {
             .borders(Borders::ALL)
             .border_style(Style::default().fg(color))
             .border_type(t.border_type(false))
-            .title(format!(" {} What does this do? ", icon))
+            .title(format!(" {icon} What does this do? "))
             .title_style(Style::default().fg(color).add_modifier(Modifier::BOLD))
             .title_alignment(Alignment::Center)
             .padding(ratatui::widgets::Padding::new(1, 1, 1, 1));
@@ -923,7 +937,7 @@ impl MainMenuScreen {
             .borders(Borders::ALL)
             .border_style(Style::default().fg(stats_color))
             .border_type(t.border_type(false))
-            .title(format!(" {} Status ", stats_icon))
+            .title(format!(" {stats_icon} Status "))
             .title_style(
                 Style::default()
                     .fg(stats_color)
@@ -1054,7 +1068,7 @@ impl MainMenuScreen {
         }
     }
 
-    /// Build the update message from UpdateInfo.
+    /// Build the update message from `UpdateInfo`.
     fn build_update_message(&self, info: &UpdateInfo) -> (String, String) {
         let title = format!(
             "{} Version {} Available!",

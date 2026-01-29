@@ -186,6 +186,7 @@ impl Default for StorageSetupScreen {
 }
 
 impl StorageSetupScreen {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             state: StorageSetupState::default(),
@@ -199,11 +200,13 @@ impl StorageSetupScreen {
 
     /// Check if the async setup step needs processing.
     /// Returns true if there's a setup step in progress that needs ticking.
+    #[must_use]
     pub fn needs_tick(&self) -> bool {
         matches!(self.state.step, StorageSetupStep::Processing(_))
     }
 
     /// Get the current state (read-only).
+    #[must_use]
     pub fn get_state(&self) -> &StorageSetupState {
         &self.state
     }
@@ -930,7 +933,7 @@ impl StorageSetupScreen {
         }
     }
 
-    /// Handle GitHub form input (character input handled at top of handle_form_event)
+    /// Handle GitHub form input (character input handled at top of `handle_form_event`)
     fn handle_github_form_input(&mut self, action: Option<Action>) -> Result<ScreenAction> {
         // Handle field navigation
         if let Some(Action::NextTab) = action {
@@ -996,7 +999,7 @@ impl StorageSetupScreen {
         Ok(ScreenAction::None)
     }
 
-    /// Handle Local form input (character input handled at top of handle_form_event)
+    /// Handle Local form input (character input handled at top of `handle_form_event`)
     fn handle_local_form_input(&mut self, action: Option<Action>) -> Result<ScreenAction> {
         // PrevTab (Shift+Tab) goes back to menu
         if let Some(Action::PrevTab) = action {
@@ -1046,12 +1049,11 @@ impl StorageSetupScreen {
 
                 // Update the token in config
                 return Ok(ScreenAction::UpdateGitHubToken { token });
-            } else {
-                // In reconfiguration mode but not editing token - show info
-                self.state.status_message =
-                    Some("Storage already configured. Press Esc to go back.".to_string());
-                return Ok(ScreenAction::None);
             }
+            // In reconfiguration mode but not editing token - show info
+            self.state.status_message =
+                Some("Storage already configured. Press Esc to go back.".to_string());
+            return Ok(ScreenAction::None);
         }
 
         match self.state.method {

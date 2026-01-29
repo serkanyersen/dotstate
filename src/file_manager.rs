@@ -34,6 +34,7 @@ impl FileManager {
     }
 
     /// Scan for dotfiles based on the provided list
+    #[must_use]
     pub fn scan_dotfiles(&self, dotfile_names: &[String]) -> Vec<Dotfile> {
         let mut found = Vec::new();
 
@@ -72,7 +73,7 @@ impl FileManager {
 
         while current.is_symlink() && depth < MAX_SYMLINK_DEPTH {
             let target = fs::read_link(&current)
-                .with_context(|| format!("Failed to read symlink: {:?}", current))?;
+                .with_context(|| format!("Failed to read symlink: {current:?}"))?;
             debug!("Symlink at depth {}: {:?} -> {:?}", depth, current, target);
 
             // If the symlink is relative, resolve it relative to the parent
@@ -95,7 +96,7 @@ impl FileManager {
                 "Symlink depth exceeded (max {}) for: {:?}",
                 MAX_SYMLINK_DEPTH, path
             );
-            return Err(anyhow::anyhow!("Symlink depth exceeded for: {:?}", path));
+            return Err(anyhow::anyhow!("Symlink depth exceeded for: {path:?}"));
         }
 
         debug!(
@@ -106,6 +107,7 @@ impl FileManager {
     }
 
     /// Check if a path is a symlink
+    #[must_use]
     pub fn is_symlink(&self, path: &Path) -> bool {
         if let Ok(metadata) = fs::symlink_metadata(path) {
             metadata.file_type().is_symlink()
@@ -123,12 +125,12 @@ impl FileManager {
             if dest.is_dir() {
                 info!("Removing existing directory at destination: {:?}", dest);
                 fs::remove_dir_all(dest)
-                    .with_context(|| format!("Failed to remove existing directory: {:?}", dest))?;
+                    .with_context(|| format!("Failed to remove existing directory: {dest:?}"))?;
                 debug!("Successfully removed existing directory: {:?}", dest);
             } else {
                 info!("Removing existing file at destination: {:?}", dest);
                 fs::remove_file(dest)
-                    .with_context(|| format!("Failed to remove existing file: {:?}", dest))?;
+                    .with_context(|| format!("Failed to remove existing file: {dest:?}"))?;
                 debug!("Successfully removed existing file: {:?}", dest);
             }
         }
@@ -138,14 +140,14 @@ impl FileManager {
             if !parent.exists() {
                 debug!("Creating parent directory: {:?}", parent);
                 fs::create_dir_all(parent)
-                    .with_context(|| format!("Failed to create parent directory: {:?}", parent))?;
+                    .with_context(|| format!("Failed to create parent directory: {parent:?}"))?;
                 info!("Created parent directory: {:?}", parent);
             }
         }
 
         // Use metadata to check file type (follows symlinks)
         let source_metadata = fs::metadata(source)
-            .with_context(|| format!("Failed to read metadata for source: {:?}", source))?;
+            .with_context(|| format!("Failed to read metadata for source: {source:?}"))?;
 
         if source_metadata.is_file() {
             let file_size = source_metadata.len();
@@ -154,7 +156,7 @@ impl FileManager {
                 file_size, source, dest
             );
             let bytes_copied = fs::copy(source, dest)
-                .with_context(|| format!("Failed to copy file from {:?} to {:?}", source, dest))?;
+                .with_context(|| format!("Failed to copy file from {source:?} to {dest:?}"))?;
             info!(
                 "Successfully copied file ({} bytes): {:?}",
                 bytes_copied, dest
@@ -165,15 +167,13 @@ impl FileManager {
             );
         } else if source_metadata.is_dir() {
             info!("Copying directory recursively: {:?} -> {:?}", source, dest);
-            copy_dir_all(source, dest).with_context(|| {
-                format!("Failed to copy directory from {:?} to {:?}", source, dest)
-            })?;
+            copy_dir_all(source, dest)
+                .with_context(|| format!("Failed to copy directory from {source:?} to {dest:?}"))?;
             info!("Successfully copied directory: {:?} -> {:?}", source, dest);
         } else {
             warn!("Source path is neither file nor directory: {:?}", source);
             return Err(anyhow::anyhow!(
-                "Source path is neither file nor directory: {:?}",
-                source
+                "Source path is neither file nor directory: {source:?}"
             ));
         }
 
@@ -182,6 +182,7 @@ impl FileManager {
 
     /// Get home directory
     #[allow(dead_code)]
+    #[must_use]
     pub fn home_dir(&self) -> &Path {
         &self.home_dir
     }
@@ -191,16 +192,14 @@ impl FileManager {
 pub fn copy_dir_all(src: &Path, dst: &Path) -> Result<()> {
     debug!("Creating destination directory: {:?}", dst);
     fs::create_dir_all(dst)
-        .with_context(|| format!("Failed to create destination directory: {:?}", dst))?;
+        .with_context(|| format!("Failed to create destination directory: {dst:?}"))?;
 
     let mut files_copied = 0;
     let mut dirs_copied = 0;
     let mut symlinks_copied = 0;
     let mut skipped = 0;
 
-    for entry in
-        fs::read_dir(src).with_context(|| format!("Failed to read directory: {:?}", src))?
-    {
+    for entry in fs::read_dir(src).with_context(|| format!("Failed to read directory: {src:?}"))? {
         let entry = entry?;
         let path = entry.path();
         let file_name = entry.file_name();
@@ -271,8 +270,7 @@ pub fn copy_dir_all(src: &Path, dst: &Path) -> Result<()> {
             } else {
                 debug!("Copying file: {:?} -> {:?}", path, dst_path);
             }
-            fs::copy(&path, &dst_path)
-                .with_context(|| format!("Failed to copy file: {:?}", path))?;
+            fs::copy(&path, &dst_path).with_context(|| format!("Failed to copy file: {path:?}"))?;
             files_copied += 1;
         }
     }
@@ -557,7 +555,7 @@ mod tests {
 
         // Create 25 symlinks in a chain
         for i in 0..25 {
-            let next = temp_dir.path().join(format!("link{}", i));
+            let next = temp_dir.path().join(format!("link{i}"));
             std::os::unix::fs::symlink(&current, &next).unwrap();
             current = next;
         }

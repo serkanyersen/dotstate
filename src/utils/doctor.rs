@@ -160,7 +160,7 @@ fn print_category_header(category: &CheckCategory, index: usize, total: usize) {
 fn format_duration(duration: Duration) -> String {
     let ms = duration.as_millis();
     if ms < 1000 {
-        format!("{}ms", ms)
+        format!("{ms}ms")
     } else {
         format!("{:.1}s", ms as f64 / 1000.0)
     }
@@ -211,7 +211,7 @@ fn print_check_result(result: &ValidationResult, verbose: bool) {
             println!(
                 "      {} {}",
                 "💡".with(Color::Blue),
-                format!("Can fix: {}", action).with(Color::Blue)
+                format!("Can fix: {action}").with(Color::Blue)
             );
         }
     }
@@ -292,6 +292,7 @@ fn print_summary(summary: &DoctorSummary, fix_mode: bool) {
 // ============================================================================
 
 impl Doctor {
+    #[must_use]
     pub fn new(config: Config, options: DoctorOptions) -> Self {
         Self {
             config,
@@ -366,7 +367,7 @@ impl Doctor {
             message: message.to_string(),
             status: status.clone(),
             fixable: fix_action.is_some(),
-            fix_action: fix_action.map(|s| s.to_string()),
+            fix_action: fix_action.map(std::string::ToString::to_string),
             details,
             duration_ms: start_time.elapsed().as_millis() as u64,
         };
@@ -431,7 +432,7 @@ impl Doctor {
                 self.add_result(
                     "Environment",
                     "git_version",
-                    &format!("Git installed: {}", version),
+                    &format!("Git installed: {version}"),
                     ValidationStatus::Pass,
                     None,
                     None,
@@ -485,7 +486,7 @@ impl Doctor {
                 self.add_result(
                     "Environment",
                     "version",
-                    &format!("DotState {} (latest)", current),
+                    &format!("DotState {current} (latest)"),
                     ValidationStatus::Pass,
                     None,
                     None,
@@ -497,7 +498,7 @@ impl Doctor {
                 self.add_result(
                     "Environment",
                     "version",
-                    &format!("DotState {} (update check failed)", current),
+                    &format!("DotState {current} (update check failed)"),
                     ValidationStatus::Pass,
                     None,
                     if self.options.verbose {
@@ -520,7 +521,7 @@ impl Doctor {
             self.add_result(
                 "Environment",
                 "shell",
-                &format!("Default shell: {}", shell),
+                &format!("Default shell: {shell}"),
                 ValidationStatus::Pass,
                 None,
                 None,
@@ -622,17 +623,7 @@ impl Doctor {
 
         // Check active profile is set
         let start = Instant::now();
-        if !self.config.active_profile.is_empty() {
-            self.add_result(
-                "Configuration",
-                "active_profile",
-                &format!("Active profile: '{}'", self.config.active_profile),
-                ValidationStatus::Pass,
-                None,
-                None,
-                start,
-            );
-        } else {
+        if self.config.active_profile.is_empty() {
             self.add_result(
                 "Configuration",
                 "active_profile",
@@ -640,6 +631,16 @@ impl Doctor {
                 ValidationStatus::Warning,
                 None,
                 Some(vec!["Run 'dotstate' to select a profile".to_string()]),
+                start,
+            );
+        } else {
+            self.add_result(
+                "Configuration",
+                "active_profile",
+                &format!("Active profile: '{}'", self.config.active_profile),
+                ValidationStatus::Pass,
+                None,
+                None,
                 start,
             );
         }
@@ -720,7 +721,7 @@ impl Doctor {
                         self.add_result(
                             "Repository",
                             "git_remote",
-                            &format!("Remote configured: {}", safe_url),
+                            &format!("Remote configured: {safe_url}"),
                             ValidationStatus::Pass,
                             None,
                             None,
@@ -762,7 +763,7 @@ impl Doctor {
                         changes
                             .iter()
                             .take(5)
-                            .map(|s| s.to_string())
+                            .map(std::string::ToString::to_string)
                             .collect::<Vec<_>>(),
                     )
                 } else {
@@ -803,7 +804,7 @@ impl Doctor {
                         "rev-list",
                         "--left-right",
                         "--count",
-                        &format!("origin/{}...HEAD", branch),
+                        &format!("origin/{branch}...HEAD"),
                     ])
                     .current_dir(&self.config.repo_path)
                     .output();
@@ -817,13 +818,13 @@ impl Doctor {
                         let ahead: i32 = parts[1].parse().unwrap_or(0);
 
                         let message = match (ahead, behind) {
-                            (0, 0) => format!("Branch '{}' up to date with remote", branch),
+                            (0, 0) => format!("Branch '{branch}' up to date with remote"),
                             (a, 0) => {
-                                format!("Branch '{}' {} commit(s) ahead of remote", branch, a)
+                                format!("Branch '{branch}' {a} commit(s) ahead of remote")
                             }
-                            (0, b) => format!("Branch '{}' {} commit(s) behind remote", branch, b),
+                            (0, b) => format!("Branch '{branch}' {b} commit(s) behind remote"),
                             (a, b) => {
-                                format!("Branch '{}' {} ahead, {} behind remote", branch, a, b)
+                                format!("Branch '{branch}' {a} ahead, {b} behind remote")
                             }
                         };
 
@@ -846,7 +847,7 @@ impl Doctor {
                         self.add_result(
                             "Repository",
                             "git_branch",
-                            &format!("Current branch: {}", branch),
+                            &format!("Current branch: {branch}"),
                             ValidationStatus::Pass,
                             None,
                             None,
@@ -857,7 +858,7 @@ impl Doctor {
                     self.add_result(
                         "Repository",
                         "git_branch",
-                        &format!("Current branch: {} (no upstream)", branch),
+                        &format!("Current branch: {branch} (no upstream)"),
                         ValidationStatus::Pass,
                         None,
                         None,
@@ -948,7 +949,7 @@ impl Doctor {
                 self.add_result(
                     "Profiles",
                     "manifest",
-                    &format!("Failed to load manifest: {}", e),
+                    &format!("Failed to load manifest: {e}"),
                     ValidationStatus::Error,
                     Some("Rebuild manifest"),
                     None,
@@ -1148,7 +1149,7 @@ impl Doctor {
             self.add_result(
                 "Symlinks",
                 "orphaned",
-                &format!("{} tracked symlinks missing from disk", orphaned),
+                &format!("{orphaned} tracked symlinks missing from disk"),
                 ValidationStatus::Warning,
                 Some("Clean up missing symlinks"),
                 None,
@@ -1396,7 +1397,7 @@ impl Doctor {
             self.add_result(
                 "Backups",
                 "backup_files",
-                &format!("{} backup session(s) ({} total)", session_count, size_str),
+                &format!("{session_count} backup session(s) ({size_str} total)"),
                 ValidationStatus::Pass,
                 None,
                 if self.options.verbose {
@@ -1414,7 +1415,7 @@ impl Doctor {
                 self.add_result(
                     "Backups",
                     "backup_size",
-                    &format!("Backup directory is large ({})", size_str),
+                    &format!("Backup directory is large ({size_str})"),
                     ValidationStatus::Warning,
                     None,
                     Some(vec![
@@ -1463,7 +1464,7 @@ impl Doctor {
     /// Format byte size to human readable string
     fn format_size(bytes: u64) -> String {
         if bytes < 1024 {
-            format!("{} B", bytes)
+            format!("{bytes} B")
         } else if bytes < 1024 * 1024 {
             format!("{:.1} KB", bytes as f64 / 1024.0)
         } else if bytes < 1024 * 1024 * 1024 {
@@ -1492,7 +1493,7 @@ impl Doctor {
         let test_file = self.config.repo_path.join(".doctor_write_test");
 
         match fs::write(&test_file, "test") {
-            Ok(_) => {
+            Ok(()) => {
                 let _ = fs::remove_file(&test_file);
                 self.add_result(
                     "Filesystem",
@@ -1508,7 +1509,7 @@ impl Doctor {
                 self.add_result(
                     "Filesystem",
                     "write_permission",
-                    &format!("Repository not writable: {}", e),
+                    &format!("Repository not writable: {e}"),
                     ValidationStatus::Error,
                     None,
                     None,
@@ -1522,7 +1523,7 @@ impl Doctor {
         if let Some(home) = dirs::home_dir() {
             let test_file = home.join(".dotstate_doctor_test");
             match fs::write(&test_file, "test") {
-                Ok(_) => {
+                Ok(()) => {
                     let _ = fs::remove_file(&test_file);
                     self.add_result(
                         "Filesystem",
@@ -1538,7 +1539,7 @@ impl Doctor {
                     self.add_result(
                         "Filesystem",
                         "home_writable",
-                        &format!("Home directory not writable: {}", e),
+                        &format!("Home directory not writable: {e}"),
                         ValidationStatus::Error,
                         None,
                         None,
@@ -1574,7 +1575,7 @@ impl Doctor {
                             self.add_result(
                                 "Filesystem",
                                 "disk_space",
-                                &format!("Disk {}% full - {} available", pct, available),
+                                &format!("Disk {pct}% full - {available} available"),
                                 ValidationStatus::Error,
                                 None,
                                 Some(vec!["Low disk space may cause sync failures".to_string()]),
@@ -1584,7 +1585,7 @@ impl Doctor {
                             self.add_result(
                                 "Filesystem",
                                 "disk_space",
-                                &format!("Disk {}% full - {} available", pct, available),
+                                &format!("Disk {pct}% full - {available} available"),
                                 ValidationStatus::Warning,
                                 None,
                                 None,
@@ -1594,7 +1595,7 @@ impl Doctor {
                             self.add_result(
                                 "Filesystem",
                                 "disk_space",
-                                &format!("Disk space OK - {} available ({}% used)", available, pct),
+                                &format!("Disk space OK - {available} available ({pct}% used)"),
                                 ValidationStatus::Pass,
                                 None,
                                 None,
@@ -1659,7 +1660,7 @@ impl Doctor {
                     } else {
                         "✗".with(Color::Red).to_string()
                     };
-                    println!("  {} {}", icon, action);
+                    println!("  {icon} {action}");
                 }
             }
         }
@@ -1687,15 +1688,15 @@ impl Doctor {
             "Re-activate profile" => {
                 use crate::services::ProfileService;
 
-                if !self.config.active_profile.is_empty() {
+                if self.config.active_profile.is_empty() {
+                    Ok(false)
+                } else {
                     ProfileService::activate_profile(
                         &self.config.repo_path,
                         &self.config.active_profile,
                         false,
                     )?;
                     Ok(true)
-                } else {
-                    Ok(false)
                 }
             }
             "Rebuild manifest" => {
@@ -1711,6 +1712,7 @@ impl Doctor {
 // Keep the old interface for compatibility (will be removed later)
 impl Doctor {
     #[allow(dead_code)]
+    #[must_use]
     pub fn new_legacy(config: Config, fix_mode: bool) -> Self {
         Self::new(
             config,

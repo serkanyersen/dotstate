@@ -105,6 +105,7 @@ pub struct GitHubConfig {
 // Profile struct removed - profiles are now stored in the repository manifest (.dotstate-profiles.toml)
 // Use crate::utils::ProfileManifest and ProfileInfo instead
 
+#[must_use]
 pub fn default_repo_name() -> String {
     "dotstate-storage".to_string()
 }
@@ -148,7 +149,7 @@ impl Config {
         if config_path.exists() {
             tracing::debug!("Loading config from: {:?}", config_path);
             let content = std::fs::read_to_string(config_path)
-                .with_context(|| format!("Failed to read config file: {:?}", config_path))?;
+                .with_context(|| format!("Failed to read config file: {config_path:?}"))?;
             let mut config: Config =
                 toml::from_str(&content).with_context(|| "Failed to parse config file")?;
 
@@ -206,29 +207,30 @@ impl Config {
 
         if let Some(parent) = config_path.parent() {
             std::fs::create_dir_all(parent)
-                .with_context(|| format!("Failed to create config directory: {:?}", parent))?;
+                .with_context(|| format!("Failed to create config directory: {parent:?}"))?;
         }
 
         // Write file
         std::fs::write(config_path, content)
-            .with_context(|| format!("Failed to write config file: {:?}", config_path))?;
+            .with_context(|| format!("Failed to write config file: {config_path:?}"))?;
 
         // Set secure permissions (600: owner read/write only)
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
             let mut perms = std::fs::metadata(config_path)
-                .with_context(|| format!("Failed to get file metadata: {:?}", config_path))?
+                .with_context(|| format!("Failed to get file metadata: {config_path:?}"))?
                 .permissions();
             perms.set_mode(0o600);
             std::fs::set_permissions(config_path, perms)
-                .with_context(|| format!("Failed to set file permissions: {:?}", config_path))?;
+                .with_context(|| format!("Failed to set file permissions: {config_path:?}"))?;
         }
 
         Ok(())
     }
 
     /// Check if the repository is configured (either GitHub or Local mode)
+    #[must_use]
     pub fn is_repo_configured(&self) -> bool {
         match self.repo_mode {
             RepoMode::GitHub => self.github.is_some(),
@@ -248,7 +250,7 @@ impl Config {
     }
 
     /// Get GitHub token from environment variable or config
-    /// Priority: DOTSTATE_GITHUB_TOKEN env var > config token
+    /// Priority: `DOTSTATE_GITHUB_TOKEN` env var > config token
     /// Returns None if neither is set
     pub fn get_github_token(&self) -> Option<String> {
         // First, check environment variable
@@ -270,6 +272,7 @@ impl Config {
 
     /// Get the icon set based on config value
     /// Returns the configured icon set, or auto-detects if set to "auto"
+    #[must_use]
     pub fn get_icon_set(&self) -> crate::icons::IconSet {
         use crate::icons::IconSet;
 

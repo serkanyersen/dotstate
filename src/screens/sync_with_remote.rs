@@ -30,6 +30,7 @@ pub struct SyncWithRemoteScreen {
 
 impl SyncWithRemoteScreen {
     /// Create a new sync with remote screen.
+    #[must_use]
     pub fn new() -> Self {
         Self {
             state: SyncWithRemoteState::default(),
@@ -37,6 +38,7 @@ impl SyncWithRemoteScreen {
     }
 
     /// Get a reference to the state.
+    #[must_use]
     pub fn get_state(&self) -> &SyncWithRemoteState {
         &self.state
     }
@@ -310,7 +312,7 @@ impl SyncWithRemoteScreen {
                 if parts.len() == 2 {
                     let path_str = parts[1].trim();
                     let path = std::path::PathBuf::from(path_str);
-                    let preview_title = format!("Diff: {}", path_str);
+                    let preview_title = format!("Diff: {path_str}");
 
                     FilePreview::render(
                         frame,
@@ -447,9 +449,8 @@ impl Screen for SyncWithRemoteScreen {
                                 self.state.sync_result = None;
                                 self.state.pulled_changes_count = None;
                                 return Ok(ScreenAction::Navigate(ScreenId::MainMenu));
-                            } else {
-                                return Ok(ScreenAction::Navigate(ScreenId::MainMenu));
                             }
+                            return Ok(ScreenAction::Navigate(ScreenId::MainMenu));
                         }
                         Action::MoveUp => {
                             self.state.list_state.select_previous();

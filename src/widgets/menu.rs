@@ -43,18 +43,21 @@ impl MenuItem {
     }
 
     /// Set whether the item is enabled
+    #[must_use]
     pub fn enabled(mut self, enabled: bool) -> Self {
         self.enabled = enabled;
         self
     }
 
     /// Set additional info text
+    #[must_use]
     pub fn info(mut self, info: String) -> Self {
         self.info = Some(info);
         self
     }
 
     /// Set whether the text should be centered
+    #[must_use]
     pub fn centered(mut self, centered: bool) -> Self {
         self.centered = centered;
         self
@@ -70,6 +73,7 @@ pub struct MenuState {
 
 impl MenuState {
     /// Create a new menu state
+    #[must_use]
     pub fn new() -> Self {
         Self { selected: None }
     }
@@ -80,6 +84,7 @@ impl MenuState {
     }
 
     /// Get the currently selected index
+    #[must_use]
     pub fn selected(&self) -> Option<usize> {
         self.selected
     }
@@ -94,12 +99,14 @@ pub struct Menu {
 
 impl Menu {
     /// Create a new menu with items
+    #[must_use]
     pub fn new(items: Vec<MenuItem>) -> Self {
         Self { items }
     }
 
     /// Calculate the clickable area for each item
     /// Returns a vector of (Rect, index) tuples
+    #[must_use]
     pub fn clickable_areas(&self, area: Rect) -> Vec<(Rect, usize)> {
         let mut areas = Vec::new();
         let item_height = 3; // Each card is 3 lines tall
@@ -145,10 +152,10 @@ impl StatefulWidget for Menu {
             let bold_style = style.add_modifier(Modifier::BOLD);
 
             // Icon style
-            let icon_fg_color = if !item.enabled {
-                t.text_muted
-            } else {
+            let icon_fg_color = if item.enabled {
                 t.primary
+            } else {
+                t.text_muted
             };
             let icon_style = Style::default()
                 .fg(icon_fg_color)
@@ -176,7 +183,7 @@ impl StatefulWidget for Menu {
                 let mut temp_content = vec![];
                 temp_content.push(format!("{} {}", item.icon, item.text));
                 if let Some(ref info) = item.info {
-                    temp_content.push(format!(" ({})", info));
+                    temp_content.push(format!(" ({info})"));
                 }
                 if !item.enabled {
                     temp_content.push(" (requires setup)".to_string());
@@ -213,7 +220,7 @@ impl StatefulWidget for Menu {
 
                 if let Some(ref info) = item.info {
                     content_spans.push(Span::styled(
-                        format!(" ({})", info),
+                        format!(" ({info})"),
                         Style::default().fg(t.text).bg(bg_color),
                     ));
                 }
@@ -247,7 +254,7 @@ impl StatefulWidget for Menu {
                 // Additional info if present
                 if let Some(ref info) = item.info {
                     content_spans.push(Span::styled(
-                        format!(" ({})", info),
+                        format!(" ({info})"),
                         Style::default()
                             .fg(t.text_muted)
                             .bg(bg_color)

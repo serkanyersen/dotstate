@@ -11,6 +11,7 @@ use tracing::{debug, info};
 /// - `https://user:password@github.com/user/repo.git` -> `https://***@github.com/user/repo.git`
 /// - `https://oauth2:TOKEN@github.com/user/repo.git` -> `https://***@github.com/user/repo.git`
 /// - `https://github.com/user/repo.git` -> unchanged
+#[must_use]
 pub fn redact_credentials(url: &str) -> String {
     if let Some(protocol_end) = url.find("://") {
         let after_protocol = &url[protocol_end + 3..];
@@ -32,11 +33,11 @@ impl GitManager {
     pub fn open_or_init(repo_path: &Path) -> Result<Self> {
         let repo = if repo_path.join(".git").exists() {
             Repository::open(repo_path)
-                .with_context(|| format!("Failed to open repository: {:?}", repo_path))?
+                .with_context(|| format!("Failed to open repository: {repo_path:?}"))?
         } else {
             // Initialize as a normal (non-bare) repository so it has a working directory
             let mut repo = Repository::init(repo_path)
-                .with_context(|| format!("Failed to initialize repository: {:?}", repo_path))?;
+                .with_context(|| format!("Failed to initialize repository: {repo_path:?}"))?;
 
             // Create .gitignore with common patterns for frequently changing files
             Self::ensure_gitignore(repo_path)?;
@@ -56,9 +57,8 @@ impl GitManager {
         // Verify the repository has a working directory (not bare)
         if repo.is_bare() {
             return Err(anyhow::anyhow!(
-                "Repository at {:?} is a bare repository and has no working directory. \
-                Cannot add files to index.",
-                repo_path
+                "Repository at {repo_path:?} is a bare repository and has no working directory. \
+                Cannot add files to index."
             ));
         }
 
@@ -78,7 +78,7 @@ impl GitManager {
         }
 
         let mut file = fs::File::create(&gitignore_path)
-            .with_context(|| format!("Failed to create .gitignore at {:?}", gitignore_path))?;
+            .with_context(|| format!("Failed to create .gitignore at {gitignore_path:?}"))?;
 
         // Write common patterns for files that shouldn't be tracked
         writeln!(file, "# OS files")?;
@@ -98,31 +98,23 @@ impl GitManager {
     /// If the repo was just initialized and has "master", rename it to "main"
     fn ensure_main_branch(repo: &Repository) -> Result<()> {
         // Check if HEAD exists and what branch it points to
-        match repo.head() {
-            Ok(head) => {
-                if let Some(branch_name) = head.name().and_then(|n| n.strip_prefix("refs/heads/")) {
-                    if branch_name == "master" {
-                        // Rename master to main
-                        let master_ref = repo.find_reference("refs/heads/master")?;
-                        if let Some(target) = master_ref.target() {
-                            repo.reference(
-                                "refs/heads/main",
-                                target,
-                                true,
-                                "Rename master to main",
-                            )?;
-                            // Update HEAD to point to main
-                            repo.set_head("refs/heads/main")?;
-                            // Delete old master branch
-                            repo.find_reference("refs/heads/master")?.delete()?;
-                        }
+        if let Ok(head) = repo.head() {
+            if let Some(branch_name) = head.name().and_then(|n| n.strip_prefix("refs/heads/")) {
+                if branch_name == "master" {
+                    // Rename master to main
+                    let master_ref = repo.find_reference("refs/heads/master")?;
+                    if let Some(target) = master_ref.target() {
+                        repo.reference("refs/heads/main", target, true, "Rename master to main")?;
+                        // Update HEAD to point to main
+                        repo.set_head("refs/heads/main")?;
+                        // Delete old master branch
+                        repo.find_reference("refs/heads/master")?.delete()?;
                     }
                 }
             }
-            Err(_) => {
-                // No HEAD yet - this is fine, the first commit will create the branch
-                // We can't set HEAD to a non-existent branch, so we'll handle it in commit_all
-            }
+        } else {
+            // No HEAD yet - this is fine, the first commit will create the branch
+            // We can't set HEAD to a non-existent branch, so we'll handle it in commit_all
         }
         Ok(())
     }
@@ -155,7 +147,7 @@ impl GitManager {
         // We ignore it unless it's the ONLY file that changed (meaning profile config was updated)
         let (manifest_changes, other_files): (Vec<&str>, Vec<&str>) = changed_files
             .iter()
-            .map(|s| s.as_str())
+            .map(std::string::String::as_str)
             .partition(|s| s.contains(MANIFEST_FILE));
 
         // If only manifest changed (modified), it means profile configuration was updated
@@ -333,15 +325,15 @@ impl GitManager {
         let mut remote = self
             .repo
             .find_remote(remote_name)
-            .with_context(|| format!("Remote '{}' not found", remote_name))?;
+            .with_context(|| format!("Remote '{remote_name}' not found"))?;
 
         let remote_url = remote
             .url()
-            .ok_or_else(|| anyhow::anyhow!("Remote '{}' has no URL", remote_name))?;
+            .ok_or_else(|| anyhow::anyhow!("Remote '{remote_name}' has no URL"))?;
 
         let mut callbacks = RemoteCallbacks::new();
         let token_to_use = token
-            .map(|t| t.to_string())
+            .map(std::string::ToString::to_string)
             .or_else(|| Self::extract_token_from_url(remote_url));
         Self::setup_credentials(&mut callbacks, token_to_use);
 
@@ -349,36 +341,34 @@ impl GitManager {
         push_options.remote_callbacks(callbacks);
 
         // Check if branch exists locally
-        let branch_ref = format!("refs/heads/{}", branch);
+        let branch_ref = format!("refs/heads/{branch}");
         if self.repo.find_reference(&branch_ref).is_err() {
             // Branch doesn't exist, try to get current branch
             if let Some(current_branch) = self.get_current_branch() {
-                let refspec = format!("refs/heads/{}:refs/heads/{}", current_branch, branch);
+                let refspec = format!("refs/heads/{current_branch}:refs/heads/{branch}");
                 remote
                     .push(&[&refspec], Some(&mut push_options))
-                    .with_context(|| format!("Failed to push to remote '{}'", remote_name))?;
+                    .with_context(|| format!("Failed to push to remote '{remote_name}'"))?;
                 return Ok(());
             }
             return Err(anyhow::anyhow!(
-                "No branch '{}' exists and no current branch found",
-                branch
+                "No branch '{branch}' exists and no current branch found"
             ));
         }
 
-        let refspec = format!("refs/heads/{}:refs/heads/{}", branch, branch);
+        let refspec = format!("refs/heads/{branch}:refs/heads/{branch}");
         remote.push(&[&refspec], Some(&mut push_options))
             .with_context(|| {
                 // Get more detailed error information - redact credentials for safety
-                let remote_url = remote.url().map(redact_credentials).unwrap_or_else(|| "unknown".to_string());
+                let remote_url = remote.url().map_or_else(|| "unknown".to_string(), redact_credentials);
                 format!(
-                    "Failed to push to remote '{}' (URL: {}).\n\n\
+                    "Failed to push to remote '{remote_name}' (URL: {remote_url}).\n\n\
                     Check token permissions:\n\
                     • Classic tokens (ghp_): needs 'repo' scope\n\
                     • Fine-grained tokens (github_pat_): needs 'Contents' set to 'Read and write'\n\n\
                     Also verify:\n\
                     • Remote branch exists\n\
-                    • You have push access to this repository",
-                    remote_name, remote_url
+                    • You have push access to this repository"
                 )
             })?;
 
@@ -386,7 +376,7 @@ impl GitManager {
         Ok(())
     }
 
-    /// Extract token from a GitHub URL (format: https://token@github.com/...)
+    /// Extract token from a GitHub URL (format: <https://token@github.com>/...)
     fn extract_token_from_url(url: &str) -> Option<String> {
         if let Some(at_pos) = url.find('@') {
             if url.starts_with("https://") {
@@ -436,7 +426,7 @@ impl GitManager {
                         ("", "")
                     };
 
-                    let credential_input = format!("protocol=https\nhost={}\npath={}\n", host, path);
+                    let credential_input = format!("protocol=https\nhost={host}\npath={path}\n");
 
                     if let Ok(output) = Command::new("git")
                         .arg("credential")
@@ -488,14 +478,14 @@ impl GitManager {
                     let home = std::env::var("HOME").ok();
                     if let Some(ref home_dir) = home {
                         let key_paths = [
-                            format!("{}/.ssh/id_ed25519", home_dir),
-                            format!("{}/.ssh/id_rsa", home_dir),
+                            format!("{home_dir}/.ssh/id_ed25519"),
+                            format!("{home_dir}/.ssh/id_rsa"),
                         ];
 
                         for key_path in &key_paths {
                             let key_path_obj = std::path::Path::new(key_path);
                             if key_path_obj.exists() {
-                                let pubkey_path_str = format!("{}.pub", key_path);
+                                let pubkey_path_str = format!("{key_path}.pub");
                                 let pubkey_path_obj = std::path::Path::new(&pubkey_path_str);
                                 // Try without passphrase first (most common case)
                                 if pubkey_path_obj.exists() {
@@ -530,14 +520,14 @@ impl GitManager {
         let mut remote = self
             .repo
             .find_remote(remote_name)
-            .with_context(|| format!("Remote '{}' not found", remote_name))?;
+            .with_context(|| format!("Remote '{remote_name}' not found"))?;
 
         let mut callbacks = RemoteCallbacks::new();
         let remote_url = remote
             .url()
-            .ok_or_else(|| anyhow::anyhow!("Remote '{}' has no URL", remote_name))?;
+            .ok_or_else(|| anyhow::anyhow!("Remote '{remote_name}' has no URL"))?;
         let token_to_use = token
-            .map(|t| t.to_string())
+            .map(std::string::ToString::to_string)
             .or_else(|| Self::extract_token_from_url(remote_url));
         Self::setup_credentials(&mut callbacks, token_to_use);
 
@@ -546,7 +536,7 @@ impl GitManager {
 
         remote
             .fetch(&[branch], Some(&mut fetch_options), None)
-            .with_context(|| format!("Failed to fetch from remote '{}'", remote_name))?;
+            .with_context(|| format!("Failed to fetch from remote '{remote_name}'"))?;
 
         // Check if FETCH_HEAD exists (remote might not have the branch yet)
         let fetch_head = match self.repo.find_reference("FETCH_HEAD") {
@@ -629,7 +619,7 @@ impl GitManager {
             }
         } else {
             // No local commits, just update HEAD to point to remote
-            let branch_ref = format!("refs/heads/{}", branch);
+            let branch_ref = format!("refs/heads/{branch}");
             self.repo.reference(
                 &branch_ref,
                 fetch_commit.id(),
@@ -660,14 +650,14 @@ impl GitManager {
         let mut remote = self
             .repo
             .find_remote(remote_name)
-            .with_context(|| format!("Remote '{}' not found", remote_name))?;
+            .with_context(|| format!("Remote '{remote_name}' not found"))?;
 
         let mut callbacks = RemoteCallbacks::new();
         let remote_url = remote
             .url()
-            .ok_or_else(|| anyhow::anyhow!("Remote '{}' has no URL", remote_name))?;
+            .ok_or_else(|| anyhow::anyhow!("Remote '{remote_name}' has no URL"))?;
         let token_to_use = token
-            .map(|t| t.to_string())
+            .map(std::string::ToString::to_string)
             .or_else(|| Self::extract_token_from_url(remote_url));
         Self::setup_credentials(&mut callbacks, token_to_use);
 
@@ -676,16 +666,15 @@ impl GitManager {
 
         remote
             .fetch(&[branch], Some(&mut fetch_options), None)
-            .with_context(|| format!("Failed to fetch from remote '{}'", remote_name))?;
+            .with_context(|| format!("Failed to fetch from remote '{remote_name}'"))?;
 
         // Check if FETCH_HEAD exists (remote might not have the branch yet)
-        let fetch_head = match self.repo.find_reference("FETCH_HEAD") {
-            Ok(ref_) => ref_,
-            Err(_) => {
-                // No remote commits yet, nothing to rebase
-                debug!("No remote commits found, nothing to pull");
-                return Ok(0);
-            }
+        let fetch_head = if let Ok(ref_) = self.repo.find_reference("FETCH_HEAD") {
+            ref_
+        } else {
+            // No remote commits yet, nothing to rebase
+            debug!("No remote commits found, nothing to pull");
+            return Ok(0);
         };
 
         let fetch_commit = fetch_head
@@ -734,7 +723,7 @@ impl GitManager {
             if !local_ahead {
                 // Local is at merge base, we can fast-forward
                 debug!("Fast-forwarding to remote HEAD");
-                let branch_ref = format!("refs/heads/{}", branch);
+                let branch_ref = format!("refs/heads/{branch}");
                 self.repo.reference(
                     &branch_ref,
                     fetch_commit_id,
@@ -813,16 +802,13 @@ impl GitManager {
                                 }
                                 // For other errors, abort and return
                                 let _ = rebase.abort();
-                                return Err(anyhow::anyhow!(
-                                    "Failed to commit during rebase: {}",
-                                    e
-                                ));
+                                return Err(anyhow::anyhow!("Failed to commit during rebase: {e}"));
                             }
                         }
                     }
                     Some(Err(e)) => {
                         let _ = rebase.abort();
-                        return Err(anyhow::anyhow!("Rebase operation failed: {}", e));
+                        return Err(anyhow::anyhow!("Rebase operation failed: {e}"));
                     }
                     None => {
                         // No more operations, finish the rebase
@@ -846,7 +832,7 @@ impl GitManager {
                 .peel_to_commit()
                 .context("Failed to peel HEAD to commit after rebase")?;
 
-            let branch_ref = format!("refs/heads/{}", branch);
+            let branch_ref = format!("refs/heads/{branch}");
             self.repo.reference(
                 &branch_ref,
                 head_commit.id(),
@@ -869,7 +855,7 @@ impl GitManager {
             Ok(pulled_count)
         } else {
             // No local commits, just update HEAD to point to remote
-            let branch_ref = format!("refs/heads/{}", branch);
+            let branch_ref = format!("refs/heads/{branch}");
             self.repo.reference(
                 &branch_ref,
                 fetch_commit_id,
@@ -902,14 +888,14 @@ impl GitManager {
         let mut remote = self
             .repo
             .find_remote(remote_name)
-            .with_context(|| format!("Remote '{}' not found", remote_name))?;
+            .with_context(|| format!("Remote '{remote_name}' not found"))?;
 
         let mut callbacks = RemoteCallbacks::new();
         let remote_url = remote
             .url()
-            .ok_or_else(|| anyhow::anyhow!("Remote '{}' has no URL", remote_name))?;
+            .ok_or_else(|| anyhow::anyhow!("Remote '{remote_name}' has no URL"))?;
         let token_to_use = token
-            .map(|t| t.to_string())
+            .map(std::string::ToString::to_string)
             .or_else(|| Self::extract_token_from_url(remote_url));
         Self::setup_credentials(&mut callbacks, token_to_use);
 
@@ -918,7 +904,7 @@ impl GitManager {
 
         remote
             .fetch(&[branch], Some(&mut fetch_options), None)
-            .with_context(|| format!("Failed to fetch from remote '{}'", remote_name))?;
+            .with_context(|| format!("Failed to fetch from remote '{remote_name}'"))?;
 
         Ok(())
     }
@@ -926,7 +912,7 @@ impl GitManager {
     /// Get ahead/behind counts for a branch relative to its upstream
     /// Returns (ahead, behind) tuple
     pub fn get_ahead_behind(&self, remote_name: &str, branch: &str) -> Result<(usize, usize)> {
-        let local_ref_name = format!("refs/heads/{}", branch);
+        let local_ref_name = format!("refs/heads/{branch}");
 
         // Ensure we have the local branch references
         let local_oid = match self.repo.refname_to_id(&local_ref_name) {
@@ -941,7 +927,7 @@ impl GitManager {
         } else {
             // Fallback to finding the remote tracking branch ref
             // Note: This might be stale if we didn't just fetch
-            let remote_ref_name = format!("refs/remotes/{}/{}", remote_name, branch);
+            let remote_ref_name = format!("refs/remotes/{remote_name}/{branch}");
             match self.repo.refname_to_id(&remote_ref_name) {
                 Ok(oid) => oid,
                 Err(_) => return Ok((0, 0)), // Remote branch doesn't exist
@@ -958,11 +944,11 @@ impl GitManager {
         if self.repo.find_remote(name).is_ok() {
             self.repo
                 .remote_delete(name)
-                .with_context(|| format!("Failed to delete existing remote '{}'", name))?;
+                .with_context(|| format!("Failed to delete existing remote '{name}'"))?;
         }
         self.repo
             .remote(name, url)
-            .with_context(|| format!("Failed to add remote '{}'", name))?;
+            .with_context(|| format!("Failed to add remote '{name}'"))?;
 
         // Configure remote tracking for the current branch
         self.configure_remote_tracking(name)?;
@@ -982,11 +968,11 @@ impl GitManager {
         let remote = self
             .repo
             .find_remote(remote_name)
-            .with_context(|| format!("Remote '{}' not found", remote_name))?;
+            .with_context(|| format!("Remote '{remote_name}' not found"))?;
 
         let current_url = remote
             .url()
-            .ok_or_else(|| anyhow::anyhow!("Remote '{}' has no URL", remote_name))?;
+            .ok_or_else(|| anyhow::anyhow!("Remote '{remote_name}' has no URL"))?;
 
         // Build new URL with updated token
         let new_url = if current_url.starts_with("https://") {
@@ -994,27 +980,26 @@ impl GitManager {
             if let Some(at_pos) = current_url.find('@') {
                 // Replace existing token: https://old_token@github.com/... -> https://new_token@github.com/...
                 let host_and_path = &current_url[at_pos + 1..];
-                format!("https://{}@{}", new_token, host_and_path)
+                format!("https://{new_token}@{host_and_path}")
             } else {
                 // No token in URL, insert after https://
-                current_url.replacen("https://", &format!("https://{}@", new_token), 1)
+                current_url.replacen("https://", &format!("https://{new_token}@"), 1)
             }
         } else {
             // Not HTTPS, can't embed token
             return Err(anyhow::anyhow!(
-                "Cannot update token for non-HTTPS remote URL: {}",
-                current_url
+                "Cannot update token for non-HTTPS remote URL: {current_url}"
             ));
         };
 
         // Delete and recreate remote with new URL
         self.repo
             .remote_delete(remote_name)
-            .with_context(|| format!("Failed to delete remote '{}'", remote_name))?;
+            .with_context(|| format!("Failed to delete remote '{remote_name}'"))?;
 
         self.repo
             .remote(remote_name, &new_url)
-            .with_context(|| format!("Failed to recreate remote '{}' with new URL", remote_name))?;
+            .with_context(|| format!("Failed to recreate remote '{remote_name}' with new URL"))?;
 
         // Reconfigure tracking
         self.configure_remote_tracking(remote_name)?;
@@ -1034,14 +1019,14 @@ impl GitManager {
                 .config()
                 .context("Failed to get repository config")?;
 
-            let remote_key = format!("branch.{}.remote", branch_name);
-            let merge_key = format!("branch.{}.merge", branch_name);
+            let remote_key = format!("branch.{branch_name}.remote");
+            let merge_key = format!("branch.{branch_name}.merge");
 
             config
                 .set_str(&remote_key, remote_name)
                 .context("Failed to set branch remote")?;
             config
-                .set_str(&merge_key, &format!("refs/heads/{}", branch_name))
+                .set_str(&merge_key, &format!("refs/heads/{branch_name}"))
                 .context("Failed to set branch merge")?;
         }
         Ok(())
@@ -1055,14 +1040,14 @@ impl GitManager {
             .config()
             .context("Failed to get repository config")?;
 
-        let remote_key = format!("branch.{}.remote", branch_name);
-        let merge_key = format!("branch.{}.merge", branch_name);
+        let remote_key = format!("branch.{branch_name}.remote");
+        let merge_key = format!("branch.{branch_name}.merge");
 
         config
             .set_str(&remote_key, remote_name)
             .context("Failed to set branch remote")?;
         config
-            .set_str(&merge_key, &format!("refs/heads/{}", branch_name))
+            .set_str(&merge_key, &format!("refs/heads/{branch_name}"))
             .context("Failed to set branch merge")?;
 
         Ok(())
@@ -1088,6 +1073,7 @@ impl GitManager {
 
     /// Get the repository reference
     #[allow(dead_code)]
+    #[must_use]
     pub fn repo(&self) -> &Repository {
         &self.repo
     }
@@ -1155,7 +1141,7 @@ impl GitManager {
         };
 
         // Get local branch
-        let branch_ref = format!("refs/heads/{}", branch);
+        let branch_ref = format!("refs/heads/{branch}");
         let local_branch = match self.repo.find_reference(&branch_ref) {
             Ok(r) => r,
             Err(_) => return Ok(false), // No local branch
@@ -1180,7 +1166,7 @@ impl GitManager {
         let _ = remote.fetch(&[branch], Some(&mut fetch_opts), None);
 
         // Get remote branch reference
-        let remote_ref = format!("refs/remotes/{}/{}", remote_name, branch);
+        let remote_ref = format!("refs/remotes/{remote_name}/{branch}");
         let remote_branch = match self.repo.find_reference(&remote_ref) {
             Ok(r) => r,
             Err(_) => return Ok(true), // No remote branch, so we have unpushed commits
@@ -1198,11 +1184,13 @@ impl GitManager {
     }
 
     /// Get the current branch name
+    #[must_use]
     pub fn get_current_branch(&self) -> Option<String> {
         let head = self.repo.head().ok()?;
         let name = head.name()?;
         // Remove 'refs/heads/' prefix
-        name.strip_prefix("refs/heads/").map(|s| s.to_string())
+        name.strip_prefix("refs/heads/")
+            .map(std::string::ToString::to_string)
     }
 
     /// Get list of changed files (modified, added, deleted)
@@ -1239,7 +1227,7 @@ impl GitManager {
                 } else {
                     "? " // Unknown
                 };
-                changed_files.push(format!("{}{}", prefix, path));
+                changed_files.push(format!("{prefix}{path}"));
             }
         }
 
@@ -1278,7 +1266,7 @@ impl GitManager {
                         );
                         // Remove and clone fresh
                         std::fs::remove_dir_all(path)
-                            .with_context(|| format!("Failed to remove directory {:?}", path))?;
+                            .with_context(|| format!("Failed to remove directory {path:?}"))?;
                         let manager = Self::clone(url, path, token)?;
                         return Ok((manager, false));
                     }
@@ -1293,7 +1281,7 @@ impl GitManager {
                     );
                     // Not a valid repo, remove it
                     std::fs::remove_dir_all(path)
-                        .with_context(|| format!("Failed to remove directory {:?}", path))?;
+                        .with_context(|| format!("Failed to remove directory {path:?}"))?;
                 }
             }
         } else if path.exists() {
@@ -1303,7 +1291,7 @@ impl GitManager {
                 path
             );
             std::fs::remove_dir_all(path)
-                .with_context(|| format!("Failed to remove directory {:?}", path))?;
+                .with_context(|| format!("Failed to remove directory {path:?}"))?;
         }
 
         // Clone fresh
@@ -1318,11 +1306,11 @@ impl GitManager {
         let remote = self
             .repo
             .find_remote(remote_name)
-            .with_context(|| format!("Remote '{}' not found", remote_name))?;
+            .with_context(|| format!("Remote '{remote_name}' not found"))?;
 
         let actual_url = remote
             .url()
-            .ok_or_else(|| anyhow::anyhow!("Remote '{}' has no URL", remote_name))?;
+            .ok_or_else(|| anyhow::anyhow!("Remote '{remote_name}' has no URL"))?;
 
         // Normalize URLs for comparison (remove token, trailing .git)
         let normalize = |url: &str| -> String {
@@ -1363,7 +1351,7 @@ impl GitManager {
     /// Clone a repository from a remote URL
     ///
     /// This function handles authentication by embedding the token directly in the URL
-    /// (format: https://token@github.com/...) to bypass gitconfig URL rewrites
+    /// (format: <https://token@github.com>/...) to bypass gitconfig URL rewrites
     /// (e.g., `url."git@github.com:".insteadOf = "https://github.com/"`).
     ///
     /// Note: Consider using `clone_or_open` instead, which handles existing repositories gracefully.
@@ -1376,7 +1364,7 @@ impl GitManager {
             // If token is not already in URL, embed it
             if !url.contains('@') && url.starts_with("https://") {
                 // Insert token after "https://"
-                url.replacen("https://", &format!("https://{}@", token), 1)
+                url.replacen("https://", &format!("https://{token}@"), 1)
             } else {
                 // Token already in URL or not HTTPS, use as-is
                 url.to_string()
@@ -1392,14 +1380,13 @@ impl GitManager {
             // Provide more detailed error message
             let error_msg = e.message();
             anyhow::anyhow!(
-                "Failed to clone repository from {} to {:?}\n\n\
-                Underlying error: {}\n\n\
+                "Failed to clone repository from {url} to {path:?}\n\n\
+                Underlying error: {error_msg}\n\n\
                 Common causes:\n\
                 - Repository URL rewrite in .gitconfig (try: git config --global --unset url.git@github.com:.insteadOf)\n\
                 - Invalid or expired GitHub token\n\
                 - Network connectivity issues\n\
-                - Repository does not exist or is private and token lacks access",
-                url, path, error_msg
+                - Repository does not exist or is private and token lacks access"
             )
         })?;
 
@@ -1452,7 +1439,7 @@ impl GitManager {
                 buf.extend_from_slice(line.content());
                 true
             })
-            .map_err(|e| anyhow::anyhow!("Diff print error: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("Diff print error: {e}"))?;
             Ok(())
         };
 
@@ -1488,12 +1475,13 @@ impl GitManager {
     #[allow(dead_code)]
     pub fn get_remote_url(&self, remote_name: &str) -> Result<Option<String>> {
         match self.repo.find_remote(remote_name) {
-            Ok(remote) => Ok(remote.url().map(|s| s.to_string())),
+            Ok(remote) => Ok(remote.url().map(std::string::ToString::to_string)),
             Err(_) => Ok(None),
         }
     }
 
     /// Check if a remote exists
+    #[must_use]
     pub fn has_remote(&self, remote_name: &str) -> bool {
         self.repo.find_remote(remote_name).is_ok()
     }
@@ -1511,12 +1499,13 @@ pub struct LocalRepoValidation {
     pub error_message: Option<String>,
 }
 
-/// Validate a local repository for use with DotState
+/// Validate a local repository for use with `DotState`
 ///
 /// Checks:
 /// 1. Path exists
 /// 2. Is a git repository (has .git directory)
 /// 3. Has a remote named "origin" configured
+#[must_use]
 pub fn validate_local_repo(path: &Path) -> LocalRepoValidation {
     // Expand ~ to home directory
     let expanded_path = if path.starts_with("~") {
@@ -1563,14 +1552,14 @@ pub fn validate_local_repo(path: &Path) -> LocalRepoValidation {
                 has_git: true,
                 has_origin: false,
                 remote_url: None,
-                error_message: Some(format!("Failed to open repository: {}", e)),
+                error_message: Some(format!("Failed to open repository: {e}")),
             };
         }
     };
 
     // Check for origin remote
     let remote_url = match repo.find_remote("origin") {
-        Ok(remote) => remote.url().map(|s| s.to_string()),
+        Ok(remote) => remote.url().map(std::string::ToString::to_string),
         Err(_) => {
             return LocalRepoValidation {
                 is_valid: false,
@@ -1595,6 +1584,7 @@ pub fn validate_local_repo(path: &Path) -> LocalRepoValidation {
 }
 
 /// Expand ~ to home directory in a path string
+#[must_use]
 pub fn expand_path(path_str: &str) -> std::path::PathBuf {
     if let Some(stripped) = path_str.strip_prefix("~/") {
         if let Some(home) = dirs::home_dir() {
@@ -1692,7 +1682,7 @@ mod tests {
 
         let msg = git_mgr.generate_commit_message().unwrap();
         assert!(msg.contains("Add"));
-        assert!(msg.contains("3") || msg.contains("file"));
+        assert!(msg.contains('3') || msg.contains("file"));
     }
 
     #[test]

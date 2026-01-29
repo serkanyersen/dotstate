@@ -167,7 +167,7 @@ impl App {
                 let (tx, rx) = oneshot::channel();
                 thread::spawn(move || {
                     let result = crate::version_check::check_for_updates_with_result()
-                        .map_err(|e| e.to_string());
+                        .map_err(|e| e.clone());
                     // Ignore send error - receiver might be dropped if app quits
                     let _ = tx.send(result);
                 });
@@ -252,7 +252,7 @@ impl App {
                             true,
                         );
                         self.storage_setup_screen.get_state_mut().error_message =
-                            Some(format!("Setup failed: {}", e));
+                            Some(format!("Setup failed: {e}"));
                         self.storage_setup_screen.get_state_mut().step =
                             crate::screens::storage_setup::StorageSetupStep::Input;
                         self.setup_step_handle = None;
@@ -580,7 +580,7 @@ impl App {
         Ok(())
     }
 
-    /// Sync input_mode_active based on current focus states
+    /// Sync `input_mode_active` based on current focus states
     /// Called after event handling to keep input mode in sync with field focus
     fn sync_input_mode(&mut self) {
         use crate::ui::Screen;
@@ -856,7 +856,7 @@ impl App {
         self.git_status_receiver = Some(rx);
     }
 
-    /// Handle navigation-specific logic when navigating from MainMenu
+    /// Handle navigation-specific logic when navigating from `MainMenu`
     fn handle_menu_navigation(&mut self, target: Screen) -> Result<()> {
         match target {
             Screen::DotfileSelection => {
@@ -898,7 +898,7 @@ impl App {
         Ok(())
     }
 
-    /// Process a ScreenAction returned from a screen's handle_event method.
+    /// Process a `ScreenAction` returned from a screen's `handle_event` method.
     fn process_screen_action(&mut self, action: crate::screens::ScreenAction) -> Result<()> {
         use crate::screens::ScreenAction;
         match action {
@@ -977,14 +977,14 @@ impl App {
 
                 if let Err(e) = self.config.save(&self.config_path) {
                     self.storage_setup_screen.get_state_mut().error_message =
-                        Some(format!("Failed to save config: {}", e));
+                        Some(format!("Failed to save config: {e}"));
                     return Ok(());
                 }
 
                 // Verify git repository can be opened
                 if let Err(e) = crate::git::GitManager::open_or_init(&repo_path) {
                     self.storage_setup_screen.get_state_mut().error_message =
-                        Some(format!("Failed to open repository: {}", e));
+                        Some(format!("Failed to open repository: {e}"));
                     return Ok(());
                 }
 
@@ -1040,13 +1040,12 @@ impl App {
             }
             ScreenAction::UpdateGitHubToken { token } => {
                 // Update the GitHub token with validation and remote URL update
-                let github_config = match &self.config.github {
-                    Some(gh) => gh.clone(),
-                    None => {
-                        self.storage_setup_screen.get_state_mut().error_message =
-                            Some("No GitHub configuration to update".to_string());
-                        return Ok(());
-                    }
+                let github_config = if let Some(gh) = &self.config.github {
+                    gh.clone()
+                } else {
+                    self.storage_setup_screen.get_state_mut().error_message =
+                        Some("No GitHub configuration to update".to_string());
+                    return Ok(());
                 };
 
                 // Show validating status
@@ -1066,7 +1065,7 @@ impl App {
                     Ok(exists) => {
                         if !exists {
                             self.storage_setup_screen.get_state_mut().error_message =
-                                Some(format!("Token cannot access repository {}/{}", owner, repo));
+                                Some(format!("Token cannot access repository {owner}/{repo}"));
                             return Ok(());
                         }
 
@@ -1095,20 +1094,20 @@ impl App {
                         // Save config
                         if let Err(e) = self.config.save(&self.config_path) {
                             self.storage_setup_screen.get_state_mut().error_message =
-                                Some(format!("Failed to save token: {}", e));
+                                Some(format!("Failed to save token: {e}"));
                             return Ok(());
                         }
 
                         // Show success and reset
                         self.storage_setup_screen.get_state_mut().status_message =
-                            Some(format!("✅ Token updated for {}/{}", owner, repo));
+                            Some(format!("✅ Token updated for {owner}/{repo}"));
                         self.storage_setup_screen.get_state_mut().is_editing_token = false;
                         self.storage_setup_screen.get_state_mut().token_input =
                             crate::utils::TextInput::with_text("••••••••••••••••••••");
                     }
                     Err(e) => {
                         self.storage_setup_screen.get_state_mut().error_message =
-                            Some(format!("Token validation failed: {}", e));
+                            Some(format!("Token validation failed: {e}"));
                     }
                 }
             }
@@ -1266,7 +1265,7 @@ impl App {
         Ok(())
     }
 
-    /// Handle an ActionResult from a screen's process_action
+    /// Handle an `ActionResult` from a screen's `process_action`
     fn handle_action_result(&mut self, result: ActionResult) -> Result<()> {
         match result {
             ActionResult::None => {}
@@ -1295,7 +1294,7 @@ impl App {
         Ok(())
     }
 
-    /// Call on_enter for the target screen when navigating
+    /// Call `on_enter` for the target screen when navigating
     fn call_on_enter(&mut self, target: Screen) -> Result<()> {
         use crate::screens::{Screen as ScreenTrait, ScreenContext};
         let ctx = ScreenContext::new(&self.config, &self.config_path);

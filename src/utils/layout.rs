@@ -8,7 +8,8 @@ use ratatui::prelude::*;
 /// * `footer_height` - Height of the footer (default: 2 for Footer component)
 ///
 /// # Returns
-/// Tuple of (header_area, content_area, footer_area)
+/// Tuple of (`header_area`, `content_area`, `footer_area`)
+#[must_use]
 pub fn create_standard_layout(
     area: Rect,
     header_height: u16,
@@ -34,6 +35,7 @@ pub fn create_standard_layout(
 ///
 /// # Returns
 /// Vector of Rects for each section
+#[must_use]
 pub fn create_split_layout(area: Rect, percentages: &[u16]) -> Vec<Rect> {
     let constraints: Vec<Constraint> = percentages
         .iter()
@@ -56,9 +58,10 @@ pub fn create_split_layout(area: Rect, percentages: &[u16]) -> Vec<Rect> {
 ///
 /// # Returns
 /// Centered Rect for the popup
+#[must_use]
 pub fn center_popup(area: Rect, width_percent: u16, height_percent: u16) -> Rect {
-    let popup_width = (area.width as f32 * (width_percent as f32 / 100.0)) as u16;
-    let popup_height = (area.height as f32 * (height_percent as f32 / 100.0)) as u16;
+    let popup_width = (f32::from(area.width) * (f32::from(width_percent) / 100.0)) as u16;
+    let popup_height = (f32::from(area.height) * (f32::from(height_percent) / 100.0)) as u16;
     let popup_x = (area.width - popup_width) / 2;
     let popup_y = (area.height - popup_height) / 2;
 

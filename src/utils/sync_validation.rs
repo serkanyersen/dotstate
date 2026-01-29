@@ -24,6 +24,7 @@ pub struct ValidationResult {
 }
 
 impl ValidationResult {
+    #[must_use]
     pub fn safe() -> Self {
         Self {
             is_safe: true,
@@ -31,6 +32,7 @@ impl ValidationResult {
         }
     }
 
+    #[must_use]
     pub fn unsafe_with(message: String) -> Self {
         Self {
             is_safe: false,
@@ -43,6 +45,7 @@ impl ValidationResult {
 ///
 /// This checks the path itself and all parent directories for .git folders.
 /// This is more robust than just checking the immediate directory.
+#[must_use]
 pub fn contains_git_repo(path: &Path) -> bool {
     // Check if the path itself is a git repo
     if path.is_dir() && path.join(".git").exists() {
@@ -90,8 +93,8 @@ pub fn contains_nested_git_repo(path: &Path) -> Result<bool> {
             return Ok(true);
         }
 
-        let entries = std::fs::read_dir(dir)
-            .with_context(|| format!("Failed to read directory: {:?}", dir))?;
+        let entries =
+            std::fs::read_dir(dir).with_context(|| format!("Failed to read directory: {dir:?}"))?;
 
         for entry in entries {
             let entry = entry?;
@@ -118,6 +121,7 @@ pub fn contains_nested_git_repo(path: &Path) -> Result<bool> {
 /// Check if a file path is already inside a synced directory
 ///
 /// Returns true if the file would conflict with an already-synced parent directory.
+#[must_use]
 pub fn is_file_inside_synced_directory(file_path: &str, synced_files: &HashSet<String>) -> bool {
     // Normalize the path (remove leading ./ if present)
     let normalized = file_path.strip_prefix("./").unwrap_or(file_path);
@@ -136,7 +140,7 @@ pub fn is_file_inside_synced_directory(file_path: &str, synced_files: &HashSet<S
 
         // Check with leading dot (e.g., if synced has ".nvim" and parent is "nvim")
         if !parent_str.starts_with('.') {
-            let with_dot = format!(".{}", parent_str);
+            let with_dot = format!(".{parent_str}");
             if synced_files.contains(&with_dot) {
                 return true;
             }
@@ -159,6 +163,7 @@ pub fn is_file_inside_synced_directory(file_path: &str, synced_files: &HashSet<S
 /// Check if a directory contains already-synced files
 ///
 /// Returns true if the directory would conflict with already-synced files inside it.
+#[must_use]
 pub fn directory_contains_synced_files(dir_path: &str, synced_files: &HashSet<String>) -> bool {
     // Normalize the path (remove leading ./ if present)
     let normalized = dir_path.strip_prefix("./").unwrap_or(dir_path);
@@ -177,7 +182,7 @@ pub fn directory_contains_synced_files(dir_path: &str, synced_files: &HashSet<St
         let dir_with_dot = if normalized.starts_with('.') {
             normalized.to_string()
         } else {
-            format!(".{}", normalized)
+            format!(".{normalized}")
         };
         let dir_without_dot = if normalized.starts_with('.') && normalized.len() > 1 {
             &normalized[1..]
@@ -287,6 +292,7 @@ pub struct SymlinkValidationResult {
 }
 
 impl SymlinkValidationResult {
+    #[must_use]
     pub fn safe() -> Self {
         Self {
             is_safe: true,
@@ -294,6 +300,7 @@ impl SymlinkValidationResult {
         }
     }
 
+    #[must_use]
     pub fn unsafe_with(issues: Vec<SymlinkIssue>) -> Self {
         Self {
             is_safe: false,
@@ -324,7 +331,7 @@ pub fn validate_directory_symlinks(source_dir: &Path) -> Result<SymlinkValidatio
 
     let source_dir = source_dir
         .canonicalize()
-        .with_context(|| format!("Failed to canonicalize source directory: {:?}", source_dir))?;
+        .with_context(|| format!("Failed to canonicalize source directory: {source_dir:?}"))?;
 
     info!(
         "Validating symlinks in directory: {:?}",
@@ -432,8 +439,7 @@ fn validate_single_symlink(
     let resolved_target = if target.is_relative() {
         symlink_path
             .parent()
-            .map(|p| p.join(&target))
-            .unwrap_or_else(|| target.clone())
+            .map_or_else(|| target.clone(), |p| p.join(&target))
     } else {
         target.clone()
     };
@@ -522,7 +528,7 @@ fn validate_single_symlink(
 }
 
 /// Calculate the total size of a directory (recursively)
-/// Returns early if size exceeds MAX_DIRECTORY_SIZE_BYTES for efficiency
+/// Returns early if size exceeds `MAX_DIRECTORY_SIZE_BYTES` for efficiency
 fn calculate_directory_size(dir: &Path) -> Result<u64> {
     let mut total_size: u64 = 0;
 
@@ -579,26 +585,23 @@ pub fn validate_before_sync(
     // Check if already synced
     if synced_files.contains(normalized) {
         return ValidationResult::unsafe_with(format!(
-            "File or directory is already synced: {}",
-            normalized
+            "File or directory is already synced: {normalized}"
         ));
     }
 
     // Check if file is inside a synced directory
     if is_file_inside_synced_directory(normalized, synced_files) {
         return ValidationResult::unsafe_with(format!(
-            "Cannot sync '{}': it is already inside a synced directory.\n\n\
-             If you want to sync this file, remove the parent directory from sync first.",
-            normalized
+            "Cannot sync '{normalized}': it is already inside a synced directory.\n\n\
+             If you want to sync this file, remove the parent directory from sync first."
         ));
     }
 
     // Check if directory contains already-synced files
     if full_path.is_dir() && directory_contains_synced_files(normalized, synced_files) {
         return ValidationResult::unsafe_with(format!(
-            "Cannot sync directory '{}': it contains files that are already synced.\n\n\
-             If you want to sync this directory, remove the individual files from sync first.",
-            normalized
+            "Cannot sync directory '{normalized}': it contains files that are already synced.\n\n\
+             If you want to sync this directory, remove the individual files from sync first."
         ));
     }
 
@@ -615,9 +618,8 @@ pub fn validate_before_sync(
         match contains_nested_git_repo(full_path) {
             Ok(true) => {
                 return ValidationResult::unsafe_with(format!(
-                    "Cannot sync directory '{}': it contains a nested git repository.\n\n\
-                     You cannot have a git repository inside a git repository.",
-                    normalized
+                    "Cannot sync directory '{normalized}': it contains a nested git repository.\n\n\
+                     You cannot have a git repository inside a git repository."
                 ));
             }
             Ok(false) => {}
@@ -631,7 +633,7 @@ pub fn validate_before_sync(
         match validate_directory_symlinks(full_path) {
             Ok(result) if !result.is_safe => {
                 let issue_descriptions: Vec<String> =
-                    result.issues.iter().map(|i| format!("  • {}", i)).collect();
+                    result.issues.iter().map(|i| format!("  • {i}")).collect();
                 return ValidationResult::unsafe_with(format!(
                     "Cannot sync directory '{}': it contains problematic symlinks.\n\n\
                      Issues found:\n{}\n\n\
@@ -678,8 +680,7 @@ pub fn validate_symlink_creation(
     // Check if original source exists (the file we'll copy to repo)
     if !original_source.exists() {
         return Ok(ValidationResult::unsafe_with(format!(
-            "Source file does not exist: {:?}",
-            original_source
+            "Source file does not exist: {original_source:?}"
         )));
     }
 
@@ -688,7 +689,7 @@ pub fn validate_symlink_creation(
         if !parent.exists() {
             // Try to create it (dry run - we'll remove it if it's empty)
             std::fs::create_dir_all(parent)
-                .with_context(|| format!("Failed to create parent directory: {:?}", parent))?;
+                .with_context(|| format!("Failed to create parent directory: {parent:?}"))?;
 
             // Check if we created an empty directory (remove it for dry run)
             if parent.read_dir()?.next().is_none() {
@@ -696,8 +697,7 @@ pub fn validate_symlink_creation(
             }
         } else if !parent.is_dir() {
             return Ok(ValidationResult::unsafe_with(format!(
-                "Target parent exists but is not a directory: {:?}",
-                parent
+                "Target parent exists but is not a directory: {parent:?}"
             )));
         }
     }
@@ -711,8 +711,7 @@ pub fn validate_symlink_creation(
                 let _ = std::fs::remove_file(&test_file);
             } else {
                 return Ok(ValidationResult::unsafe_with(format!(
-                    "Cannot write to target location: {:?}",
-                    parent
+                    "Cannot write to target location: {parent:?}"
                 )));
             }
         }
@@ -940,7 +939,7 @@ mod tests {
 
         // Create a very deep directory structure (beyond MAX_DEPTH = 10)
         for i in 0..15 {
-            current = current.join(format!("level{}", i));
+            current = current.join(format!("level{i}"));
             std::fs::create_dir_all(&current).unwrap();
         }
 

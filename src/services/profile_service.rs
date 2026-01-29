@@ -120,7 +120,7 @@ impl ProfileService {
         let existing_names: Vec<String> =
             manifest.profiles.iter().map(|p| p.name.clone()).collect();
         if let Err(e) = validate_profile_name(&sanitized_name, &existing_names) {
-            return Err(anyhow::anyhow!("Invalid profile name: {}", e));
+            return Err(anyhow::anyhow!("Invalid profile name: {e}"));
         }
 
         // Check if profile folder exists but is not in manifest
@@ -135,8 +135,7 @@ impl ProfileService {
             );
         } else if folder_exists && profile_in_manifest {
             return Err(anyhow::anyhow!(
-                "Profile '{}' already exists in manifest",
-                sanitized_name
+                "Profile '{sanitized_name}' already exists in manifest"
             ));
         }
 
@@ -218,7 +217,7 @@ impl ProfileService {
             .profiles
             .iter()
             .find(|p| p.name == target_profile_name)
-            .ok_or_else(|| anyhow::anyhow!("Profile '{}' not found", target_profile_name))?;
+            .ok_or_else(|| anyhow::anyhow!("Profile '{target_profile_name}' not found"))?;
 
         // Don't switch if already active
         if old_profile_name == target_profile_name {
@@ -291,12 +290,12 @@ impl ProfileService {
             .map(|p| p.name.clone())
             .collect();
         if let Err(e) = validate_profile_name(&sanitized_name, &existing_names) {
-            return Err(anyhow::anyhow!("Invalid profile name: {}", e));
+            return Err(anyhow::anyhow!("Invalid profile name: {e}"));
         }
 
         // Check if profile exists in manifest
         if !manifest.has_profile(old_name) {
-            return Err(anyhow::anyhow!("Profile '{}' not found", old_name));
+            return Err(anyhow::anyhow!("Profile '{old_name}' not found"));
         }
 
         // Rename profile folder in repo
@@ -357,8 +356,7 @@ impl ProfileService {
         // Cannot delete active profile
         if active_profile_name == profile_name {
             return Err(anyhow::anyhow!(
-                "Cannot delete active profile '{}'. Please switch to another profile first.",
-                profile_name
+                "Cannot delete active profile '{profile_name}'. Please switch to another profile first."
             ));
         }
 
@@ -371,7 +369,7 @@ impl ProfileService {
         // Remove from manifest
         let mut manifest = Self::load_manifest(repo_path)?;
         if !manifest.remove_profile(profile_name) {
-            return Err(anyhow::anyhow!("Profile '{}' not found", profile_name));
+            return Err(anyhow::anyhow!("Profile '{profile_name}' not found"));
         }
         Self::save_manifest(repo_path, &manifest)?;
 
@@ -399,7 +397,7 @@ impl ProfileService {
 
         // Get profile to activate from manifest
         let profile = Self::get_profile_info(repo_path, profile_name)?
-            .ok_or_else(|| anyhow::anyhow!("Profile '{}' not found", profile_name))?;
+            .ok_or_else(|| anyhow::anyhow!("Profile '{profile_name}' not found"))?;
 
         // Get files to sync from the profile
         let files_to_sync = profile.synced_files.clone();
@@ -435,7 +433,7 @@ impl ProfileService {
             }
             Err(e) => {
                 error!("Failed to activate profile '{}': {}", profile_name, e);
-                Err(anyhow::anyhow!("Failed to activate profile: {}", e))
+                Err(anyhow::anyhow!("Failed to activate profile: {e}"))
             }
         }?;
 
@@ -468,7 +466,7 @@ impl ProfileService {
     ///
     /// # Returns
     ///
-    /// A tuple of (created_count, skipped_count, errors)
+    /// A tuple of (`created_count`, `skipped_count`, errors)
     pub fn ensure_profile_symlinks(
         repo_path: &Path,
         profile_name: &str,
@@ -478,7 +476,7 @@ impl ProfileService {
 
         // Get the list of files that should be synced from the manifest
         let profile = Self::get_profile_info(repo_path, profile_name)?
-            .ok_or_else(|| anyhow::anyhow!("Profile '{}' not found", profile_name))?;
+            .ok_or_else(|| anyhow::anyhow!("Profile '{profile_name}' not found"))?;
 
         let files_to_sync = profile.synced_files;
 
@@ -507,7 +505,7 @@ impl ProfileService {
     ///
     /// # Returns
     ///
-    /// A tuple of (created_count, skipped_count, errors)
+    /// A tuple of (`created_count`, `skipped_count`, errors)
     pub fn ensure_common_symlinks(
         repo_path: &Path,
         backup_enabled: bool,

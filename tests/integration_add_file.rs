@@ -2,7 +2,7 @@
 //!
 //! These tests verify the complete end-to-end workflow of adding files,
 //! ensuring that core functionality works correctly. This would have caught
-//! the bug where validate_symlink_creation was checking the wrong path.
+//! the bug where `validate_symlink_creation` was checking the wrong path.
 //!
 //! ✅ NOW POSSIBLE: With src/lib.rs, we can now write proper integration tests
 //! that access internal APIs and test the full workflow.
@@ -38,8 +38,7 @@ fn test_validation_prevents_file_inside_synced_directory() {
     assert!(
         error_msg.contains("already inside a synced directory")
             || error_msg.contains("synced directory"),
-        "Error message should mention synced directory, got: {}",
-        error_msg
+        "Error message should mention synced directory, got: {error_msg}"
     );
 }
 
@@ -64,8 +63,7 @@ fn test_validation_prevents_directory_containing_synced_files() {
 
     assert!(
         !result.is_safe,
-        "Should block directory containing synced files. Synced: {:?}, Trying to add: {}",
-        synced_files, relative_path
+        "Should block directory containing synced files. Synced: {synced_files:?}, Trying to add: {relative_path}"
     );
     assert!(
         result.error_message.is_some(),
@@ -74,8 +72,7 @@ fn test_validation_prevents_directory_containing_synced_files() {
     let error_msg = result.error_message.unwrap();
     assert!(
         error_msg.contains("contains files") || error_msg.contains("already synced"),
-        "Error message should mention containing files or already synced, got: {}",
-        error_msg
+        "Error message should mention containing files or already synced, got: {error_msg}"
     );
 }
 

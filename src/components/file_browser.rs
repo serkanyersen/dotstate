@@ -84,6 +84,7 @@ impl Default for FileBrowser {
 
 impl FileBrowser {
     /// Create a new file browser
+    #[must_use]
     pub fn new() -> Self {
         Self {
             is_active: false,
@@ -116,6 +117,7 @@ impl FileBrowser {
     }
 
     /// Check if the browser is currently open
+    #[must_use]
     pub fn is_open(&self) -> bool {
         self.is_active
     }
@@ -171,6 +173,7 @@ impl FileBrowser {
     }
 
     /// Check if input field is focused (for blocking global keybindings)
+    #[must_use]
     pub fn is_input_focused(&self) -> bool {
         self.is_active && self.focus == FileBrowserFocus::PathInput
     }
@@ -239,10 +242,10 @@ impl FileBrowser {
                         } else {
                             // It's a file - select it directly
                             let home_dir = crate::utils::get_home_dir();
-                            let relative_path = full_path
-                                .strip_prefix(&home_dir)
-                                .map(|p| p.to_string_lossy().to_string())
-                                .unwrap_or_else(|_| full_path.to_string_lossy().to_string());
+                            let relative_path = full_path.strip_prefix(&home_dir).map_or_else(
+                                |_| full_path.to_string_lossy().to_string(),
+                                |p| p.to_string_lossy().to_string(),
+                            );
 
                             self.close();
                             return Ok(FileBrowserResult::Selected {
@@ -341,10 +344,10 @@ impl FileBrowser {
                     // Add current folder
                     let current_folder = self.current_path.clone();
                     let home_dir = crate::utils::get_home_dir();
-                    let relative_path = current_folder
-                        .strip_prefix(&home_dir)
-                        .map(|p| p.to_string_lossy().to_string())
-                        .unwrap_or_else(|_| current_folder.to_string_lossy().to_string());
+                    let relative_path = current_folder.strip_prefix(&home_dir).map_or_else(
+                        |_| current_folder.to_string_lossy().to_string(),
+                        |p| p.to_string_lossy().to_string(),
+                    );
 
                     // Validate
                     let repo_path = &config.repo_path;
@@ -384,10 +387,10 @@ impl FileBrowser {
                     } else if full_path.is_file() {
                         // Select file
                         let home_dir = crate::utils::get_home_dir();
-                        let relative_path = full_path
-                            .strip_prefix(&home_dir)
-                            .map(|p| p.to_string_lossy().to_string())
-                            .unwrap_or_else(|_| full_path.to_string_lossy().to_string());
+                        let relative_path = full_path.strip_prefix(&home_dir).map_or_else(
+                            |_| full_path.to_string_lossy().to_string(),
+                            |p| p.to_string_lossy().to_string(),
+                        );
 
                         self.close();
                         return Ok(FileBrowserResult::Selected {
@@ -542,10 +545,10 @@ impl FileBrowser {
                 } else if path == Path::new(".") {
                     ". (add this folder)".to_string()
                 } else {
-                    path.file_name()
-                        .and_then(|n| n.to_str())
-                        .map(|s| s.to_string())
-                        .unwrap_or_else(|| path.to_string_lossy().to_string())
+                    path.file_name().and_then(|n| n.to_str()).map_or_else(
+                        || path.to_string_lossy().to_string(),
+                        std::string::ToString::to_string,
+                    )
                 };
 
                 let prefix = if is_dir {
@@ -554,7 +557,7 @@ impl FileBrowser {
                     format!("{} ", icons.file())
                 };
 
-                ListItem::new(format!("{}{}", prefix, name)).style(t.text_style())
+                ListItem::new(format!("{prefix}{name}")).style(t.text_style())
             })
             .collect();
 
@@ -607,12 +610,11 @@ impl FileBrowser {
                 let full_path = if selected == Path::new("..") {
                     self.current_path
                         .parent()
-                        .map(|p| p.to_path_buf())
-                        .unwrap_or_else(|| PathBuf::from("/"))
+                        .map_or_else(|| PathBuf::from("/"), std::path::Path::to_path_buf)
                 } else if selected == Path::new(".") {
                     self.current_path.clone()
                 } else if selected.is_absolute() {
-                    selected.to_path_buf()
+                    selected.clone()
                 } else {
                     self.current_path.join(selected)
                 };

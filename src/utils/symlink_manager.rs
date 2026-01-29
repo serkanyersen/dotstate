@@ -99,18 +99,18 @@ pub struct SymlinkManager {
 }
 
 impl SymlinkManager {
-    /// Create a new SymlinkManager
+    /// Create a new `SymlinkManager`
     pub fn new(repo_path: PathBuf) -> Result<Self> {
         Self::new_with_backup(repo_path, true)
     }
 
-    /// Create a new SymlinkManager with backup settings
+    /// Create a new `SymlinkManager` with backup settings
     pub fn new_with_backup(repo_path: PathBuf, backup_enabled: bool) -> Result<Self> {
         let config_dir = crate::utils::get_config_dir();
         Self::new_with_config_dir(repo_path, backup_enabled, config_dir)
     }
 
-    /// Create a new SymlinkManager with a custom config directory.
+    /// Create a new `SymlinkManager` with a custom config directory.
     ///
     /// This is primarily used for testing to avoid polluting the real user's
     /// config directory with test data.
@@ -172,8 +172,7 @@ impl SymlinkManager {
 
         if !profile_path.exists() {
             return Err(anyhow::anyhow!(
-                "Profile directory does not exist: {:?}",
-                profile_path
+                "Profile directory does not exist: {profile_path:?}"
             ));
         }
 
@@ -380,8 +379,7 @@ impl SymlinkManager {
                 report.errors.push((
                     PathBuf::from("rollback"),
                     format!(
-                        "Rollback not fully supported - profile '{}' may need manual reactivation",
-                        from
+                        "Rollback not fully supported - profile '{from}' may need manual reactivation"
                     ),
                 ));
             }
@@ -568,7 +566,7 @@ impl SymlinkManager {
                     }
                     // Remove the symlink (whether we backed up or not)
                     fs::remove_file(target).with_context(|| {
-                        format!("Failed to remove existing symlink: {:?}", target)
+                        format!("Failed to remove existing symlink: {target:?}")
                     })?;
                 } else if metadata.is_file() || metadata.is_dir() {
                     // It's a real file or directory, back it up
@@ -585,11 +583,11 @@ impl SymlinkManager {
                     }
                     if metadata.is_dir() {
                         fs::remove_dir_all(target).with_context(|| {
-                            format!("Failed to remove existing directory: {:?}", target)
+                            format!("Failed to remove existing directory: {target:?}")
                         })?;
                     } else {
                         fs::remove_file(target).with_context(|| {
-                            format!("Failed to remove existing file: {:?}", target)
+                            format!("Failed to remove existing file: {target:?}")
                         })?;
                     }
                 }
@@ -609,9 +607,8 @@ impl SymlinkManager {
         #[cfg(unix)]
         {
             debug!("Creating Unix symlink: {:?} -> {:?}", target, source);
-            std::os::unix::fs::symlink(source, target).with_context(|| {
-                format!("Failed to create symlink: {:?} -> {:?}", target, source)
-            })?;
+            std::os::unix::fs::symlink(source, target)
+                .with_context(|| format!("Failed to create symlink: {target:?} -> {source:?}"))?;
         }
 
         #[cfg(windows)]
@@ -829,7 +826,7 @@ impl SymlinkManager {
         })
     }
 
-    /// Remove a symlink, restoring backup if it exists (legacy method, calls remove_symlink_with_restore)
+    /// Remove a symlink, restoring backup if it exists (legacy method, calls `remove_symlink_with_restore`)
     fn remove_symlink(&self, tracked: &TrackedSymlink) -> Result<SymlinkOperation> {
         self.remove_symlink_with_restore(tracked)
     }
@@ -876,6 +873,7 @@ impl SymlinkManager {
     /// Get the currently active profile name
     /// Get the currently active profile name
     #[allow(dead_code)] // Kept for potential future use in CLI or programmatic access
+    #[must_use]
     pub fn get_active_profile(&self) -> Option<&str> {
         if self.tracking.active_profile.is_empty() {
             None
@@ -887,6 +885,7 @@ impl SymlinkManager {
     /// Get all tracked symlinks
     /// Get all tracked symlinks
     #[allow(dead_code)] // Kept for potential future use in CLI or programmatic access
+    #[must_use]
     pub fn get_tracked_symlinks(&self) -> &[TrackedSymlink] {
         &self.tracking.symlinks
     }
@@ -995,7 +994,7 @@ impl SymlinkManager {
 
     /// Add a single symlink to an existing profile.
     ///
-    /// This is more efficient than calling activate_profile with a single file,
+    /// This is more efficient than calling `activate_profile` with a single file,
     /// as it doesn't need to iterate or create unnecessary data structures.
     ///
     /// # Arguments
@@ -1069,7 +1068,7 @@ impl SymlinkManager {
     ///
     /// # Returns
     ///
-    /// A tuple of (created_count, skipped_count, errors)
+    /// A tuple of (`created_count`, `skipped_count`, errors)
     pub fn ensure_profile_symlinks(
         &mut self,
         profile_name: &str,
@@ -1137,12 +1136,11 @@ impl SymlinkManager {
                                 );
                                 skipped_count += 1;
                                 continue;
-                            } else {
-                                debug!(
-                                    "Symlink exists but points to wrong location: {:?} -> {:?} (expected: {:?})",
-                                    target, existing_normalized, source_normalized
-                                );
                             }
+                            debug!(
+                                "Symlink exists but points to wrong location: {:?} -> {:?} (expected: {:?})",
+                                target, existing_normalized, source_normalized
+                            );
                         }
                     } else {
                         // Regular file exists at target location
@@ -1150,7 +1148,7 @@ impl SymlinkManager {
                             "Regular file exists at target location (not a symlink): {:?}",
                             target
                         );
-                        errors.push(format!("File exists at {} (not a symlink)", relative_path));
+                        errors.push(format!("File exists at {relative_path} (not a symlink)"));
                         continue;
                     }
                 }
@@ -1181,12 +1179,12 @@ impl SymlinkManager {
                             "Failed to create symlink for {}: {:?}",
                             relative_path, operation.status
                         );
-                        errors.push(format!("Failed to create symlink for {}", relative_path));
+                        errors.push(format!("Failed to create symlink for {relative_path}"));
                     }
                 }
                 Err(e) => {
                     error!("Error creating symlink for {}: {}", relative_path, e);
-                    errors.push(format!("Error for {}: {}", relative_path, e));
+                    errors.push(format!("Error for {relative_path}: {e}"));
                 }
             }
         }
@@ -1209,7 +1207,7 @@ impl SymlinkManager {
     /// Remove a specific symlink from tracking without affecting other symlinks.
     ///
     /// This is a surgical operation that only updates the tracking data for a single file,
-    /// unlike deactivate_profile which removes all symlinks for a profile.
+    /// unlike `deactivate_profile` which removes all symlinks for a profile.
     ///
     /// # Arguments
     ///
@@ -1341,7 +1339,7 @@ impl SymlinkManager {
 
             if target.symlink_metadata().is_ok() {
                 fs::remove_file(&target)
-                    .with_context(|| format!("Failed to remove symlink: {:?}", target))?;
+                    .with_context(|| format!("Failed to remove symlink: {target:?}"))?;
             }
 
             SymlinkOperation {
@@ -1399,7 +1397,7 @@ impl SymlinkManager {
     ///
     /// # Returns
     ///
-    /// A tuple of (created_count, skipped_count, errors)
+    /// A tuple of (`created_count`, `skipped_count`, errors)
     pub fn ensure_common_symlinks(
         &mut self,
         files: &[String],
@@ -1460,7 +1458,7 @@ impl SymlinkManager {
                             }
                         }
                     } else {
-                        errors.push(format!("File exists at {} (not a symlink)", relative_path));
+                        errors.push(format!("File exists at {relative_path} (not a symlink)"));
                         continue;
                     }
                 }
@@ -1481,8 +1479,7 @@ impl SymlinkManager {
                 }
                 Err(e) => {
                     errors.push(format!(
-                        "Failed to create common symlink for {}: {}",
-                        relative_path, e
+                        "Failed to create common symlink for {relative_path}: {e}"
                     ));
                 }
             }
@@ -1576,6 +1573,7 @@ impl SymlinkManager {
     /// # Returns
     ///
     /// True if the symlink is for a common file
+    #[must_use]
     pub fn is_common_symlink(&self, source_path: &Path) -> bool {
         let common_path = self.repo_path.join("common");
         source_path.starts_with(&common_path)

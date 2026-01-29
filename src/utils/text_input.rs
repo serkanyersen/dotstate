@@ -23,6 +23,7 @@ pub struct TextInput {
 
 impl TextInput {
     /// Create a new empty text input.
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
@@ -35,21 +36,25 @@ impl TextInput {
     }
 
     /// Get the current text as a string slice.
+    #[must_use]
     pub fn text(&self) -> &str {
         &self.text
     }
 
     /// Get the current cursor position.
+    #[must_use]
     pub fn cursor(&self) -> usize {
         self.cursor
     }
 
     /// Get the trimmed text.
+    #[must_use]
     pub fn text_trimmed(&self) -> &str {
         self.text.trim()
     }
 
     /// Check if the text is empty (ignoring whitespace).
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.text.trim().is_empty()
     }
@@ -183,6 +188,7 @@ impl TextInput {
     /// be processed even when the input has focus.
     /// Returns false if the action should be suppressed (like 'Quit' bound to 'q') so that
     /// the key can be treated as text input.
+    #[must_use]
     pub fn is_action_allowed_when_focused(action: &Action) -> bool {
         matches!(
             action,
@@ -288,7 +294,7 @@ fn handle_input(text: &mut String, cursor_pos: &mut usize, key_code: KeyCode) {
         KeyCode::Backspace => handle_backspace(text, cursor_pos),
         KeyCode::Delete => handle_delete(text, cursor_pos),
         KeyCode::Left | KeyCode::Right | KeyCode::Home | KeyCode::End => {
-            handle_cursor_movement(text, cursor_pos, key_code)
+            handle_cursor_movement(text, cursor_pos, key_code);
         }
         _ => {}
     }

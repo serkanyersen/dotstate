@@ -7,6 +7,7 @@ pub struct DotfileCandidate {
 
 impl DotfileCandidate {
     /// Get the path as a String
+    #[must_use]
     pub fn path_string(&self) -> String {
         self.path.to_string()
     }
@@ -307,11 +308,16 @@ pub const DEFAULT_DOTFILES: &[DotfileCandidate] = &[
 ];
 
 /// Get default dotfile paths as a Vec<String>
+#[must_use]
 pub fn get_default_dotfile_paths() -> Vec<String> {
-    DEFAULT_DOTFILES.iter().map(|c| c.path_string()).collect()
+    DEFAULT_DOTFILES
+        .iter()
+        .map(DotfileCandidate::path_string)
+        .collect()
 }
 
 /// Find a dotfile candidate by path
+#[must_use]
 pub fn find_candidate(path: &str) -> Option<&DotfileCandidate> {
     DEFAULT_DOTFILES.iter().find(|c| c.path == path)
 }

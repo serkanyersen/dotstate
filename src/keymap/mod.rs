@@ -39,6 +39,7 @@ impl Default for Keymap {
 impl Keymap {
     /// Get the action for a key event, checking overrides first then preset
     /// Note: If an action is overridden, preset bindings for that action are ignored
+    #[must_use]
     pub fn get_action(&self, code: KeyCode, modifiers: KeyModifiers) -> Option<Action> {
         // Use all_bindings which already handles override shadowing
         for binding in self.all_bindings() {
@@ -51,6 +52,7 @@ impl Keymap {
 
     /// Get all bindings (overrides + preset) for display in help
     /// Overrides shadow preset bindings for the same action
+    #[must_use]
     pub fn all_bindings(&self) -> Vec<KeyBinding> {
         let mut bindings = self.overrides.clone();
         let preset_bindings = self.preset.bindings();
@@ -71,32 +73,36 @@ impl Keymap {
 
     /// Get the display string for navigation keys (up/down)
     /// Reflects actual bindings including overrides
+    #[must_use]
     pub fn navigation_display(&self) -> String {
         let up_key = self.get_key_display_for_action(Action::MoveUp);
         let down_key = self.get_key_display_for_action(Action::MoveDown);
-        format!("{}/{}", up_key, down_key)
+        format!("{up_key}/{down_key}")
     }
 
     /// Get the display string for quit/cancel key
     /// Reflects actual bindings including overrides
+    #[must_use]
     pub fn quit_display(&self) -> String {
         let quit_key = self.get_key_display_for_action(Action::Quit);
         let cancel_key = self.get_key_display_for_action(Action::Cancel);
         if quit_key == cancel_key {
             quit_key
         } else {
-            format!("{}/{}", quit_key, cancel_key)
+            format!("{quit_key}/{cancel_key}")
         }
     }
 
     /// Get the display string for confirm key
     /// Reflects actual bindings including overrides
+    #[must_use]
     pub fn confirm_display(&self) -> String {
         self.get_key_display_for_action(Action::Confirm)
     }
 
-    /// Get the display string for a specific action (e.g., Action::Quit -> "q")
+    /// Get the display string for a specific action (e.g., `Action::Quit` -> "q")
     /// Checks overrides first, then preset. Returns generic fallback if not found.
+    #[must_use]
     pub fn get_key_display_for_action(&self, action: Action) -> String {
         // Check overrides
         if let Some(binding) = self.overrides.iter().find(|b| b.action == action) {
@@ -114,15 +120,17 @@ impl Keymap {
         }
 
         // Fallback for actions not in current map (shouldn't happen for core actions)
-        format!("{:?}", action)
+        format!("{action:?}")
     }
 
     /// Generate theme key hint with the given theme type name
+    #[must_use]
     pub fn theme_key_hint(theme_type_name: &str) -> String {
-        format!("Theme: {} (t)", theme_type_name)
+        format!("Theme: {theme_type_name} (t)")
     }
 
     /// Generate footer text for common navigation screens
+    #[must_use]
     pub fn footer_navigation(&self, theme_type_name: &str) -> String {
         format!(
             "{}: Navigate | {}: Select | {}: Back | ?: Help | {}",

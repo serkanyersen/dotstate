@@ -75,9 +75,10 @@ impl PackageCache {
     }
 
     fn get_key(profile_name: &str, package_name: &str) -> String {
-        format!("{}::{}", profile_name, package_name)
+        format!("{profile_name}::{package_name}")
     }
 
+    #[must_use]
     pub fn get_status(&self, profile_name: &str, package_name: &str) -> Option<&PackageCacheEntry> {
         self.data
             .entries

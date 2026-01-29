@@ -108,6 +108,7 @@ impl Default for ManageProfilesScreen {
 }
 
 impl ManageProfilesScreen {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             state: ProfileManagerState::default(),
@@ -171,7 +172,7 @@ impl ManageProfilesScreen {
                 }
 
                 Ok(ActionResult::ShowToast {
-                    message: format!("Profile '{}' created", sanitized_name),
+                    message: format!("Profile '{sanitized_name}' created"),
                     variant: crate::widgets::ToastVariant::Success,
                 })
             }
@@ -179,7 +180,7 @@ impl ManageProfilesScreen {
                 error!("Failed to create profile '{}': {}", name, e);
                 Ok(ActionResult::ShowDialog {
                     title: "Error Creating Profile".to_string(),
-                    content: format!("Failed to create profile: {}", e),
+                    content: format!("Failed to create profile: {e}"),
                     variant: DialogVariant::Error,
                 })
             }
@@ -201,7 +202,7 @@ impl ManageProfilesScreen {
         // Don't switch if already on this profile
         if config.active_profile == target_name {
             return Ok(ActionResult::ShowToast {
-                message: format!("Already on profile '{}'", target_name),
+                message: format!("Already on profile '{target_name}'"),
                 variant: crate::widgets::ToastVariant::Info,
             });
         }
@@ -226,7 +227,7 @@ impl ManageProfilesScreen {
                     error!("Failed to save config after profile switch: {}", e);
                     return Ok(ActionResult::ShowDialog {
                         title: "Warning".to_string(),
-                        content: format!("Profile switched but failed to save config: {}", e),
+                        content: format!("Profile switched but failed to save config: {e}"),
                         variant: DialogVariant::Warning,
                     });
                 }
@@ -237,7 +238,7 @@ impl ManageProfilesScreen {
                 }
 
                 Ok(ActionResult::ShowToast {
-                    message: format!("Switched to profile '{}'", target_name),
+                    message: format!("Switched to profile '{target_name}'"),
                     variant: crate::widgets::ToastVariant::Success,
                 })
             }
@@ -245,7 +246,7 @@ impl ManageProfilesScreen {
                 error!("Failed to switch to profile '{}': {}", target_name, e);
                 Ok(ActionResult::ShowDialog {
                     title: "Error Switching Profile".to_string(),
-                    content: format!("Failed to switch profile: {}", e),
+                    content: format!("Failed to switch profile: {e}"),
                     variant: DialogVariant::Error,
                 })
             }
@@ -284,7 +285,7 @@ impl ManageProfilesScreen {
                         error!("Failed to save config after profile rename: {}", e);
                         return Ok(ActionResult::ShowDialog {
                             title: "Warning".to_string(),
-                            content: format!("Profile renamed but failed to save config: {}", e),
+                            content: format!("Profile renamed but failed to save config: {e}"),
                             variant: DialogVariant::Warning,
                         });
                     }
@@ -296,7 +297,7 @@ impl ManageProfilesScreen {
                 }
 
                 Ok(ActionResult::ShowToast {
-                    message: format!("Profile renamed to '{}'", sanitized_name),
+                    message: format!("Profile renamed to '{sanitized_name}'"),
                     variant: crate::widgets::ToastVariant::Success,
                 })
             }
@@ -307,7 +308,7 @@ impl ManageProfilesScreen {
                 );
                 Ok(ActionResult::ShowDialog {
                     title: "Error Renaming Profile".to_string(),
-                    content: format!("Failed to rename profile: {}", e),
+                    content: format!("Failed to rename profile: {e}"),
                     variant: DialogVariant::Error,
                 })
             }
@@ -324,8 +325,7 @@ impl ManageProfilesScreen {
             return Ok(ActionResult::ShowDialog {
                 title: "Cannot Delete Active Profile".to_string(),
                 content: format!(
-                    "Profile '{}' is currently active.\nPlease switch to another profile first.",
-                    name
+                    "Profile '{name}' is currently active.\nPlease switch to another profile first."
                 ),
                 variant: DialogVariant::Error,
             });
@@ -341,7 +341,7 @@ impl ManageProfilesScreen {
                 }
 
                 Ok(ActionResult::ShowToast {
-                    message: format!("Profile '{}' deleted", name),
+                    message: format!("Profile '{name}' deleted"),
                     variant: crate::widgets::ToastVariant::Success,
                 })
             }
@@ -349,7 +349,7 @@ impl ManageProfilesScreen {
                 error!("Failed to delete profile '{}': {}", name, e);
                 Ok(ActionResult::ShowDialog {
                     title: "Error Deleting Profile".to_string(),
-                    content: format!("Failed to delete profile: {}", e),
+                    content: format!("Failed to delete profile: {e}"),
                     variant: DialogVariant::Error,
                 })
             }
@@ -459,7 +459,7 @@ impl ManageProfilesScreen {
                 let file_text = if file_count == 1 {
                     "1 file".to_string()
                 } else {
-                    format!("{} files", file_count)
+                    format!("{file_count} files")
                 };
 
                 let text = format!("{} {} ({})", icon, profile.name, file_text);
@@ -531,7 +531,7 @@ impl ManageProfilesScreen {
                     .synced_files
                     .iter()
                     .take(10) // Show first 10
-                    .map(|f| format!("  • {}", f))
+                    .map(|f| format!("  • {f}"))
                     .collect::<Vec<_>>()
                     .join("\n")
             };
@@ -657,12 +657,8 @@ impl ManageProfilesScreen {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Length(3), // Name input
-                Constraint::Length(if self.state.error_message.is_some() {
-                    1
-                } else {
-                    0
-                }), // Error message
+                Constraint::Length(3),                                             // Name input
+                Constraint::Length(u16::from(self.state.error_message.is_some())), // Error message
                 Constraint::Length(3), // Description input
                 Constraint::Min(8),    // Copy from option (at least 8 lines, can grow)
                 Constraint::Min(0),    // Spacer
@@ -726,8 +722,7 @@ impl ManageProfilesScreen {
                 t.text_style()
             };
             items.push(
-                ListItem::new(format!("{}Start Blank", start_blank_prefix))
-                    .style(start_blank_style),
+                ListItem::new(format!("{start_blank_prefix}Start Blank")).style(start_blank_style),
             );
 
             // Add profiles (offset by 1 because "Start Blank" is at index 0)
@@ -749,7 +744,7 @@ impl ManageProfilesScreen {
                 } else if file_count == 1 {
                     " (1 file)".to_string()
                 } else {
-                    format!(" ({} files)", file_count)
+                    format!(" ({file_count} files)")
                 };
                 let text = format!("{}{}{}", prefix, profile.name, file_text);
                 items.push(ListItem::new(text).style(style));
@@ -864,8 +859,7 @@ impl ManageProfilesScreen {
         let selected_idx = self.state.list_state.selected();
         let profile_name = selected_idx
             .and_then(|idx| self.state.profiles.get(idx))
-            .map(|p| p.name.as_str())
-            .unwrap_or("Profile");
+            .map_or("Profile", |p| p.name.as_str());
 
         let k = |a| config.keymap.get_key_display_for_action(a);
         let footer_text = format!(
@@ -877,7 +871,7 @@ impl ManageProfilesScreen {
         let result = Popup::new()
             .width(60)
             .height(35)
-            .title(format!("Rename Profile: {}", profile_name))
+            .title(format!("Rename Profile: {profile_name}"))
             .dim_background(true)
             .footer(&footer_text)
             .render(frame, area);
@@ -885,13 +879,9 @@ impl ManageProfilesScreen {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Length(3), // Input
-                Constraint::Length(if self.state.error_message.is_some() {
-                    1
-                } else {
-                    0
-                }), // Error message
-                Constraint::Min(0),    // Spacer
+                Constraint::Length(3),                                             // Input
+                Constraint::Length(u16::from(self.state.error_message.is_some())), // Error message
+                Constraint::Min(0),                                                // Spacer
             ])
             .split(result.content_area);
 
@@ -921,7 +911,7 @@ impl ManageProfilesScreen {
         let selected_idx = self.state.list_state.selected();
         let profile = selected_idx.and_then(|idx| self.state.profiles.get(idx));
         let active_profile = &config.active_profile;
-        let is_active = profile.map(|p| p.name == *active_profile).unwrap_or(false);
+        let is_active = profile.is_some_and(|p| p.name == *active_profile);
 
         let (title, content, variant) = if let Some(p) = profile {
             if is_active {
@@ -980,7 +970,8 @@ impl ManageProfilesScreen {
         if let Some(p) = profile {
             if !is_active {
                 // Calculate dialog position to match Dialog's internal calculation
-                let dialog_height = (area.height as f32 * (dialog_height as f32 / 100.0)) as u16;
+                let dialog_height =
+                    (f32::from(area.height) * (f32::from(dialog_height) / 100.0)) as u16;
                 let dialog_y = area.y + (area.height.saturating_sub(dialog_height)) / 2;
                 let input_y = dialog_y + dialog_height + 2; // 2 lines spacing
 
@@ -1183,7 +1174,7 @@ impl Screen for ManageProfilesScreen {
                                 Some(Action::MoveUp) => {
                                     if self.state.create_focused_field == CreateField::CopyFrom {
                                         let current =
-                                            self.state.create_copy_from.map(|i| i + 1).unwrap_or(0);
+                                            self.state.create_copy_from.map_or(0, |i| i + 1);
                                         if current > 0 {
                                             let new_val = current - 1;
                                             self.state.create_copy_from = if new_val == 0 {
@@ -1202,7 +1193,7 @@ impl Screen for ManageProfilesScreen {
                                         let profiles = &self.state.profiles;
                                         let total = profiles.len() + 1; // +1 for "Blank"
                                         let current =
-                                            self.state.create_copy_from.map(|i| i + 1).unwrap_or(0);
+                                            self.state.create_copy_from.map_or(0, |i| i + 1);
                                         if current < total - 1 {
                                             let new_val = current + 1;
                                             self.state.create_copy_from = Some(new_val - 1);
@@ -1216,7 +1207,7 @@ impl Screen for ManageProfilesScreen {
                                             Action::MoveLeft => {
                                                 match self.state.create_focused_field {
                                                     CreateField::Name => {
-                                                        self.state.create_name_input.move_left()
+                                                        self.state.create_name_input.move_left();
                                                     }
                                                     CreateField::Description => self
                                                         .state
@@ -1229,7 +1220,7 @@ impl Screen for ManageProfilesScreen {
                                             Action::MoveRight => {
                                                 match self.state.create_focused_field {
                                                     CreateField::Name => {
-                                                        self.state.create_name_input.move_right()
+                                                        self.state.create_name_input.move_right();
                                                     }
                                                     CreateField::Description => self
                                                         .state
@@ -1242,7 +1233,7 @@ impl Screen for ManageProfilesScreen {
                                             Action::Home => {
                                                 match self.state.create_focused_field {
                                                     CreateField::Name => {
-                                                        self.state.create_name_input.move_home()
+                                                        self.state.create_name_input.move_home();
                                                     }
                                                     CreateField::Description => self
                                                         .state
@@ -1255,7 +1246,7 @@ impl Screen for ManageProfilesScreen {
                                             Action::End => {
                                                 match self.state.create_focused_field {
                                                     CreateField::Name => {
-                                                        self.state.create_name_input.move_end()
+                                                        self.state.create_name_input.move_end();
                                                     }
                                                     CreateField::Description => self
                                                         .state
@@ -1268,7 +1259,7 @@ impl Screen for ManageProfilesScreen {
                                             Action::Backspace => {
                                                 match self.state.create_focused_field {
                                                     CreateField::Name => {
-                                                        self.state.create_name_input.backspace()
+                                                        self.state.create_name_input.backspace();
                                                     }
                                                     CreateField::Description => self
                                                         .state
@@ -1281,10 +1272,12 @@ impl Screen for ManageProfilesScreen {
                                             Action::DeleteChar => {
                                                 match self.state.create_focused_field {
                                                     CreateField::Name => {
-                                                        self.state.create_name_input.delete()
+                                                        self.state.create_name_input.delete();
                                                     }
                                                     CreateField::Description => {
-                                                        self.state.create_description_input.delete()
+                                                        self.state
+                                                            .create_description_input
+                                                            .delete();
                                                     }
                                                     _ => {}
                                                 }

@@ -42,27 +42,23 @@ fn test_display_reflects_overrides() {
     // Navigation display should show W/j (w overrides k, display is uppercase)
     let nav_display = keymap.navigation_display();
     assert!(
-        nav_display.contains("W") || nav_display.contains("w"),
-        "nav_display should contain 'w', got: '{}'",
-        nav_display
+        nav_display.contains('W') || nav_display.contains('w'),
+        "nav_display should contain 'w', got: '{nav_display}'"
     );
     assert!(
-        nav_display.contains("j") || nav_display.contains("J"),
-        "nav_display should contain 'j', got: '{}'",
-        nav_display
+        nav_display.contains('j') || nav_display.contains('J'),
+        "nav_display should contain 'j', got: '{nav_display}'"
     );
     assert!(
-        !nav_display.contains("k") && !nav_display.contains("K"),
-        "nav_display should not contain 'k' since it's shadowed, got: '{}'",
-        nav_display
+        !nav_display.contains('k') && !nav_display.contains('K'),
+        "nav_display should not contain 'k' since it's shadowed, got: '{nav_display}'"
     );
 
     // Quit display should show X (override) instead of q
     let quit_display = keymap.quit_display();
     assert!(
-        quit_display.contains("x") || quit_display.contains("X"),
-        "quit_display should contain 'x', got: '{}'",
-        quit_display
+        quit_display.contains('x') || quit_display.contains('X'),
+        "quit_display should contain 'x', got: '{quit_display}'"
     );
 
     // Verify that get_key_display_for_action returns the override
@@ -73,7 +69,6 @@ fn test_display_reflects_overrides() {
     let confirm_display = keymap.confirm_display();
     assert!(
         confirm_display.contains("Enter") || confirm_display.contains("enter"),
-        "confirm_display should contain 'Enter', got: '{}'",
-        confirm_display
+        "confirm_display should contain 'Enter', got: '{confirm_display}'"
     );
 }

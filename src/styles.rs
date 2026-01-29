@@ -1,4 +1,4 @@
-//! Theme and style system for DotState
+//! Theme and style system for `DotState`
 //!
 //! Provides consistent styling across the application with support for
 //! light and dark themes.
@@ -36,13 +36,21 @@ static THEME: RwLock<Theme> = RwLock::new(Theme {
 
 /// Initialize the global theme (call once at startup, or to update at runtime)
 pub fn init_theme(theme_type: ThemeType) {
-    let mut theme = THEME.write().unwrap();
+    // Recover from poison - if a thread panicked while holding the lock,
+    // we still want to update the theme rather than propagate the panic
+    let mut theme = THEME
+        .write()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     *theme = Theme::new(theme_type);
 }
 
 /// Get the current theme
 pub fn theme() -> Theme {
-    THEME.read().unwrap().clone()
+    // Recover from poison - theme should always be accessible
+    THEME
+        .read()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .clone()
 }
 
 /// Theme type selector
@@ -63,6 +71,7 @@ pub enum ThemeType {
 
 impl ThemeType {
     /// Get the display name of this theme
+    #[must_use]
     pub fn name(&self) -> &'static str {
         match self {
             ThemeType::Dark => "Dark",
@@ -75,6 +84,7 @@ impl ThemeType {
     }
 
     /// Get the config string value for this theme
+    #[must_use]
     pub fn to_config_string(&self) -> &'static str {
         match self {
             ThemeType::Dark => "dark",
@@ -87,6 +97,7 @@ impl ThemeType {
     }
 
     /// Get all available themes
+    #[must_use]
     pub fn all() -> &'static [ThemeType] {
         &[
             ThemeType::Dark,
@@ -168,6 +179,7 @@ pub struct Theme {
 }
 
 impl Theme {
+    #[must_use]
     pub fn new(theme_type: ThemeType) -> Self {
         match theme_type {
             ThemeType::Dark => Self::dark(),
@@ -180,6 +192,7 @@ impl Theme {
     }
 
     /// Midnight theme - unified color palette
+    #[must_use]
     pub fn midnight() -> Self {
         Self {
             theme_type: ThemeType::Midnight,
@@ -214,6 +227,7 @@ impl Theme {
     }
 
     /// Solarized Dark theme
+    #[must_use]
     pub fn solarized_dark() -> Self {
         Self {
             theme_type: ThemeType::SolarizedDark,
@@ -266,6 +280,7 @@ impl Theme {
     }
 
     /// Solarized Light theme
+    #[must_use]
     pub fn solarized_light() -> Self {
         Self {
             theme_type: ThemeType::SolarizedLight,
@@ -310,6 +325,7 @@ impl Theme {
     }
 
     /// Dark theme - for dark terminal backgrounds
+    #[must_use]
     pub fn dark() -> Self {
         Self {
             theme_type: ThemeType::Dark,
@@ -344,6 +360,7 @@ impl Theme {
     }
 
     /// Light theme - for light terminal backgrounds
+    #[must_use]
     pub fn light() -> Self {
         Self {
             theme_type: ThemeType::Light,
@@ -381,6 +398,7 @@ impl Theme {
     ///
     /// Note: In this mode, style helpers below intentionally avoid setting fg/bg
     /// so the UI uses the terminal defaults without emitting color codes.
+    #[must_use]
     pub fn no_color() -> Self {
         Self {
             theme_type: ThemeType::NoColor,
@@ -414,6 +432,7 @@ impl Theme {
     // === Style Helpers ===
 
     /// Style for primary/title text
+    #[must_use]
     pub fn title_style(&self) -> Style {
         if self.theme_type == ThemeType::NoColor {
             return Style::default().add_modifier(Modifier::BOLD);
@@ -424,6 +443,7 @@ impl Theme {
     }
 
     /// Style for regular text
+    #[must_use]
     pub fn text_style(&self) -> Style {
         if self.theme_type == ThemeType::NoColor {
             return Style::default();
@@ -432,6 +452,7 @@ impl Theme {
     }
 
     /// Style for muted/secondary text
+    #[must_use]
     pub fn muted_style(&self) -> Style {
         if self.theme_type == ThemeType::NoColor {
             return Style::default().add_modifier(Modifier::DIM);
@@ -440,6 +461,7 @@ impl Theme {
     }
 
     /// Style for emphasized text (commands, code)
+    #[must_use]
     pub fn emphasis_style(&self) -> Style {
         if self.theme_type == ThemeType::NoColor {
             return Style::default().add_modifier(Modifier::BOLD);
@@ -448,6 +470,7 @@ impl Theme {
     }
 
     /// Style for success states
+    #[must_use]
     pub fn success_style(&self) -> Style {
         if self.theme_type == ThemeType::NoColor {
             return Style::default().add_modifier(Modifier::BOLD);
@@ -457,17 +480,20 @@ impl Theme {
 
     /// Style for warning states
     #[allow(dead_code)]
+    #[must_use]
     pub fn warning_style(&self) -> Style {
         Style::default().fg(self.warning)
     }
 
     /// Style for error states
     #[allow(dead_code)]
+    #[must_use]
     pub fn error_style(&self) -> Style {
         Style::default().fg(self.error)
     }
 
     /// Style for list item highlight (selected row)
+    #[must_use]
     pub fn highlight_style(&self) -> Style {
         if self.theme_type == ThemeType::NoColor {
             return Style::default().add_modifier(Modifier::BOLD | Modifier::REVERSED);
@@ -479,6 +505,7 @@ impl Theme {
     }
 
     /// Get the border style based on focus
+    #[must_use]
     pub fn border_style(&self, focused: bool) -> Style {
         if focused {
             self.border_focused_style()
@@ -488,6 +515,7 @@ impl Theme {
     }
 
     /// Get the border type based on focus
+    #[must_use]
     pub fn border_type(&self, focused: bool) -> BorderType {
         if focused {
             self.border_focused_type
@@ -497,6 +525,7 @@ impl Theme {
     }
 
     /// Style for focused borders
+    #[must_use]
     pub fn border_focused_style(&self) -> Style {
         if self.theme_type == ThemeType::NoColor {
             return Style::default().add_modifier(Modifier::BOLD);
@@ -505,6 +534,7 @@ impl Theme {
     }
 
     /// Style for unfocused borders
+    #[must_use]
     pub fn unfocused_border_style(&self) -> Style {
         if self.theme_type == ThemeType::NoColor {
             return Style::default();
@@ -513,6 +543,7 @@ impl Theme {
     }
 
     /// Style for disabled items
+    #[must_use]
     pub fn disabled_style(&self) -> Style {
         if self.theme_type == ThemeType::NoColor {
             return Style::default().add_modifier(Modifier::DIM);
@@ -521,6 +552,7 @@ impl Theme {
     }
 
     /// Background style
+    #[must_use]
     pub fn background_style(&self) -> Style {
         if self.theme_type == ThemeType::NoColor {
             return Style::default();
@@ -529,6 +561,7 @@ impl Theme {
     }
 
     /// Dimmed background style for modals
+    #[must_use]
     pub fn dim_style(&self) -> Style {
         if self.theme_type == ThemeType::NoColor {
             return Style::default();

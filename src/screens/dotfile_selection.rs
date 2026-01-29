@@ -155,6 +155,7 @@ pub struct DotfileSelectionScreen {
 
 impl DotfileSelectionScreen {
     /// Create a new dotfile selection screen.
+    #[must_use]
     pub fn new() -> Self {
         Self {
             state: DotfileSelectionState::default(),
@@ -163,6 +164,7 @@ impl DotfileSelectionScreen {
     }
 
     /// Get the current state.
+    #[must_use]
     pub fn get_state(&self) -> &DotfileSelectionState {
         &self.state
     }
@@ -210,11 +212,10 @@ impl DotfileSelectionScreen {
 
         if !profile_indices.is_empty() {
             if !items.is_empty() {
-                items.push(DisplayItem::Header("".to_string())); // Spacer
+                items.push(DisplayItem::Header(String::new())); // Spacer
             }
             items.push(DisplayItem::Header(format!(
-                "Profile Files ({})",
-                profile_name
+                "Profile Files ({profile_name})"
             )));
             for idx in profile_indices {
                 items.push(DisplayItem::File(idx));
@@ -232,7 +233,7 @@ impl DotfileSelectionScreen {
         use crate::keymap::Action;
 
         match action {
-            Some(Action::Yes) | Some(Action::Confirm) => {
+            Some(Action::Yes | Action::Confirm) => {
                 // YES logic - extract values and close modal
                 let full_path = self.state.custom_file_confirm_path.clone().unwrap();
                 let relative_path = self.state.custom_file_confirm_relative.clone().unwrap();
@@ -245,7 +246,7 @@ impl DotfileSelectionScreen {
                     relative_path,
                 })
             }
-            Some(Action::No) | Some(Action::Cancel) => {
+            Some(Action::No | Action::Cancel) => {
                 // NO logic - close modal
                 self.state.show_custom_file_confirm = false;
                 self.state.custom_file_confirm_path = None;
@@ -305,12 +306,7 @@ impl DotfileSelectionScreen {
                 } else {
                     let full_path = crate::utils::expand_path(path_str);
 
-                    if !full_path.exists() {
-                        return Ok(ScreenAction::ShowMessage {
-                            title: "File Not Found".to_string(),
-                            content: format!("File does not exist: {:?}", full_path),
-                        });
-                    } else {
+                    if full_path.exists() {
                         // Calculate relative path
                         let home_dir = crate::utils::get_home_dir();
                         let relative_path = match full_path.strip_prefix(&home_dir) {
@@ -341,6 +337,11 @@ impl DotfileSelectionScreen {
                         self.state.show_custom_file_confirm = true;
                         self.state.custom_file_confirm_path = Some(full_path);
                         self.state.custom_file_confirm_relative = Some(relative_path);
+                    } else {
+                        return Ok(ScreenAction::ShowMessage {
+                            title: "File Not Found".to_string(),
+                            content: format!("File does not exist: {full_path:?}"),
+                        });
                     }
                 }
             }
@@ -563,17 +564,15 @@ impl DotfileSelectionScreen {
                                                 return Ok(ScreenAction::ShowMessage {
                                                     title: "Validation Error".to_string(),
                                                     content: format!(
-                                                        "Failed to validate move: {}",
-                                                        e
+                                                        "Failed to validate move: {e}"
                                                     ),
                                                 });
                                             }
                                         }
-                                    } else {
-                                        // Moving from common to profile - no validation needed
-                                        self.state.confirm_move = Some(*file_idx);
-                                        return Ok(ScreenAction::Refresh);
                                     }
+                                    // Moving from common to profile - no validation needed
+                                    self.state.confirm_move = Some(*file_idx);
+                                    return Ok(ScreenAction::Refresh);
                                 }
                             }
                         }
@@ -750,7 +749,7 @@ impl DotfileSelectionScreen {
                     if title.is_empty() {
                         ListItem::new("").style(Style::default())
                     } else {
-                        ListItem::new(title.to_string())
+                        ListItem::new(title.clone())
                             .style(Style::default().fg(t.tertiary).add_modifier(Modifier::BOLD))
                     }
                 }
@@ -787,7 +786,7 @@ impl DotfileSelectionScreen {
                     let content = ratatui::text::Line::from(vec![
                         ratatui::text::Span::styled(prefix.to_string(), Style::default()),
                         ratatui::text::Span::styled(
-                            format!(" {}\u{2009}{}", sync_marker, path_str),
+                            format!(" {sync_marker}\u{2009}{path_str}"),
                             style,
                         ),
                     ]);
@@ -807,10 +806,7 @@ impl DotfileSelectionScreen {
 
         // Add focus indicator to files list with common/profile breakdown
         let list_title = if common_count > 0 {
-            format!(
-                " Dotfiles ({} common, {} profile) ",
-                common_count, profile_count
-            )
+            format!(" Dotfiles ({common_count} common, {profile_count} profile) ")
         } else {
             format!(" Found {} dotfiles ", self.state.dotfiles.len())
         };
@@ -947,14 +943,13 @@ impl DotfileSelectionScreen {
                 DisplayItem::File(file_idx) => self.state.dotfiles.get(*file_idx),
                 _ => None,
             })
-            .map(|dotfile| {
+            .map_or("Move", |dotfile| {
                 if dotfile.is_common {
                     "Move to Profile"
                 } else {
                     "Move to Common"
                 }
-            })
-            .unwrap_or("Move");
+            });
 
         let footer_text = format!(
             "Tab: Focus | {}: Navigate | Space/{}: Toggle | {}: {} | {}: Add Custom | {}: Backup ({}) | {}: Back",
@@ -983,14 +978,12 @@ impl DotfileSelectionScreen {
             .state
             .custom_file_confirm_path
             .as_ref()
-            .map(|p| p.display().to_string())
-            .unwrap_or_else(|| "Unknown".to_string());
+            .map_or_else(|| "Unknown".to_string(), |p| p.display().to_string());
 
         let content = format!(
-            "Path: {}\n\n\
+            "Path: {path}\n\n\
             ⚠️  This will move this path to the storage repo and replace it with a symlink.\n\
-            Make sure you know what you are doing.",
-            path
+            Make sure you know what you are doing."
         );
 
         let k = |a| config.keymap.get_key_display_for_action(a);
@@ -1084,7 +1077,7 @@ impl DotfileSelectionScreen {
 
         // Handle explicit chars 'y' and 'n'
         match key_code {
-            KeyCode::Char('y') | KeyCode::Char('f') => {
+            KeyCode::Char('y' | 'f') => {
                 if let Some(idx) = self.state.confirm_move {
                     if idx < self.state.dotfiles.len() {
                         let dotfile = &self.state.dotfiles[idx];
@@ -1247,10 +1240,9 @@ impl DotfileSelectionScreen {
 
                 if has_path_conflict {
                     return self.render_move_blocked_dialog(frame, area, config);
-                } else {
-                    // Different content conflict
-                    return self.render_move_force_dialog(frame, area, config);
                 }
+                // Different content conflict
+                return self.render_move_force_dialog(frame, area, config);
             }
             // Otherwise fall through to normal confirmation (same content conflicts are auto-resolved)
         }
@@ -1265,13 +1257,11 @@ impl DotfileSelectionScreen {
         // Message
         let msg = if is_moving_to_common {
             format!(
-                "Move '{}' to common files?\nIt will become available to all profiles.",
-                dotfile_name
+                "Move '{dotfile_name}' to common files?\nIt will become available to all profiles."
             )
         } else {
             format!(
-                "Move '{}' back to profile?\nIt will no longer be available to other profiles.",
-                dotfile_name
+                "Move '{dotfile_name}' back to profile?\nIt will no longer be available to other profiles."
             )
         };
 
@@ -1320,20 +1310,19 @@ impl DotfileSelectionScreen {
                     } else {
                         String::new()
                     };
-                    conflict_lines.push(format!("  • {}{}", profile_name, size_text));
+                    conflict_lines.push(format!("  • {profile_name}{size_text}"));
                 }
             }
         }
 
         let conflict_list = conflict_lines.join("\n");
         let msg = format!(
-            "⚠ \"{}\" exists in other profiles with DIFFERENT\n\
-            content:\n\n{}\n\n\
+            "⚠ \"{dotfile_name}\" exists in other profiles with DIFFERENT\n\
+            content:\n\n{conflict_list}\n\n\
             If you proceed, their versions will be DELETED and\n\
             replaced with the common version.\n\n\
             Tip: To preserve different configs, remove them from\n\
-            sync first in each profile.",
-            dotfile_name, conflict_list
+            sync first in each profile."
         );
 
         let k = |a| config.keymap.get_key_display_for_action(a);
@@ -1380,15 +1369,13 @@ impl DotfileSelectionScreen {
                 {
                     if *is_parent {
                         conflict_msg.push_str(&format!(
-                            "  You are trying to move: {}\n\
-                            But profile \"{}\" has: {} (directory)\n\n",
-                            dotfile_name, profile_name, conflicting_path
+                            "  You are trying to move: {dotfile_name}\n\
+                            But profile \"{profile_name}\" has: {conflicting_path} (directory)\n\n"
                         ));
                     } else {
                         conflict_msg.push_str(&format!(
-                            "  You are trying to move: {} (directory)\n\
-                            But profile \"{}\" has: {}\n\n",
-                            dotfile_name, profile_name, conflicting_path
+                            "  You are trying to move: {dotfile_name} (directory)\n\
+                            But profile \"{profile_name}\" has: {conflicting_path}\n\n"
                         ));
                     }
                 }
@@ -1396,11 +1383,10 @@ impl DotfileSelectionScreen {
         }
 
         let msg = format!(
-            "✗ Path conflict detected:\n\n{}\
+            "✗ Path conflict detected:\n\n{conflict_msg}\
             This would create an invalid state.\n\n\
             To fix: Remove the conflicting path from sync in the\n\
-            affected profile first.",
-            conflict_msg
+            affected profile first."
         );
 
         let k = |a| config.keymap.get_key_display_for_action(a);
@@ -1432,10 +1418,9 @@ impl DotfileSelectionScreen {
         };
 
         let msg = format!(
-            "Remove '{}' from sync?\n\n\
+            "Remove '{dotfile_name}' from sync?\n\n\
             This file is in 'common' and is shared across ALL profiles.\n\
-            Removing it will affect every profile that uses it.",
-            dotfile_name
+            Removing it will affect every profile that uses it."
         );
 
         let k = |a| config.keymap.get_key_display_for_action(a);
@@ -1588,7 +1573,7 @@ impl DotfileSelectionScreen {
 
                 info!("Successfully added file to sync: {}", relative_path);
                 Ok(ActionResult::ShowToast {
-                    message: format!("Added {} to sync", relative_path),
+                    message: format!("Added {relative_path} to sync"),
                     variant: crate::widgets::ToastVariant::Success,
                 })
             }
@@ -1598,7 +1583,7 @@ impl DotfileSelectionScreen {
                 self.state.dotfiles[file_index].synced = true;
 
                 Ok(ActionResult::ShowToast {
-                    message: format!("{} is already synced", relative_path),
+                    message: format!("{relative_path} is already synced"),
                     variant: crate::widgets::ToastVariant::Info,
                 })
             }
@@ -1613,7 +1598,7 @@ impl DotfileSelectionScreen {
             Err(e) => {
                 warn!("Error adding file to sync: {}", e);
                 Ok(ActionResult::ShowToast {
-                    message: format!("Error: {}", e),
+                    message: format!("Error: {e}"),
                     variant: crate::widgets::ToastVariant::Error,
                 })
             }
@@ -1645,7 +1630,7 @@ impl DotfileSelectionScreen {
                         relative_path
                     );
                     Ok(ActionResult::ShowToast {
-                        message: format!("Removed {} from sync", relative_path),
+                        message: format!("Removed {relative_path} from sync"),
                         variant: crate::widgets::ToastVariant::Success,
                     })
                 }
@@ -1655,14 +1640,14 @@ impl DotfileSelectionScreen {
                     self.state.dotfiles[file_index].synced = false;
 
                     Ok(ActionResult::ShowToast {
-                        message: format!("{} is not synced", relative_path),
+                        message: format!("{relative_path} is not synced"),
                         variant: crate::widgets::ToastVariant::Info,
                     })
                 }
                 Err(e) => {
                     warn!("Error removing common file from sync: {}", e);
                     Ok(ActionResult::ShowToast {
-                        message: format!("Error: {}", e),
+                        message: format!("Error: {e}"),
                         variant: crate::widgets::ToastVariant::Error,
                     })
                 }
@@ -1678,7 +1663,7 @@ impl DotfileSelectionScreen {
 
                     info!("Successfully removed file from sync: {}", relative_path);
                     Ok(ActionResult::ShowToast {
-                        message: format!("Removed {} from sync", relative_path),
+                        message: format!("Removed {relative_path} from sync"),
                         variant: crate::widgets::ToastVariant::Success,
                     })
                 }
@@ -1688,14 +1673,14 @@ impl DotfileSelectionScreen {
                     self.state.dotfiles[file_index].synced = false;
 
                     Ok(ActionResult::ShowToast {
-                        message: format!("{} is not synced", relative_path),
+                        message: format!("{relative_path} is not synced"),
                         variant: crate::widgets::ToastVariant::Info,
                     })
                 }
                 Err(e) => {
                     warn!("Error removing file from sync: {}", e);
                     Ok(ActionResult::ShowToast {
-                        message: format!("Error: {}", e),
+                        message: format!("Error: {e}"),
                         variant: crate::widgets::ToastVariant::Error,
                     })
                 }
@@ -1754,12 +1739,12 @@ impl DotfileSelectionScreen {
 
                 info!("Successfully added custom file to sync: {}", relative_path);
                 Ok(ActionResult::ShowToast {
-                    message: format!("Added {} to sync", relative_path),
+                    message: format!("Added {relative_path} to sync"),
                     variant: crate::widgets::ToastVariant::Success,
                 })
             }
             Ok(crate::services::AddFileResult::AlreadySynced) => Ok(ActionResult::ShowToast {
-                message: format!("{} is already synced", relative_path),
+                message: format!("{relative_path} is already synced"),
                 variant: crate::widgets::ToastVariant::Info,
             }),
             Ok(crate::services::AddFileResult::ValidationFailed(msg)) => {
@@ -1776,7 +1761,7 @@ impl DotfileSelectionScreen {
             Err(e) => {
                 warn!("Error adding custom file to sync: {}", e);
                 Ok(ActionResult::ShowToast {
-                    message: format!("Error: {}", e),
+                    message: format!("Error: {e}"),
                     variant: crate::widgets::ToastVariant::Error,
                 })
             }
@@ -1813,14 +1798,14 @@ impl DotfileSelectionScreen {
 
                     info!("Successfully moved {} to profile", relative_path);
                     Ok(ActionResult::ShowToast {
-                        message: format!("Moved {} to profile", relative_path),
+                        message: format!("Moved {relative_path} to profile"),
                         variant: crate::widgets::ToastVariant::Success,
                     })
                 }
                 Err(e) => {
                     warn!("Error moving file from common: {}", e);
                     Ok(ActionResult::ShowToast {
-                        message: format!("Error: {}", e),
+                        message: format!("Error: {e}"),
                         variant: crate::widgets::ToastVariant::Error,
                     })
                 }
@@ -1850,14 +1835,14 @@ impl DotfileSelectionScreen {
 
                     info!("Successfully moved {} to common", relative_path);
                     Ok(ActionResult::ShowToast {
-                        message: format!("Moved {} to common", relative_path),
+                        message: format!("Moved {relative_path} to common"),
                         variant: crate::widgets::ToastVariant::Success,
                     })
                 }
                 Err(e) => {
                     warn!("Error moving file to common: {}", e);
                     Ok(ActionResult::ShowToast {
-                        message: format!("Error: {}", e),
+                        message: format!("Error: {e}"),
                         variant: crate::widgets::ToastVariant::Error,
                     })
                 }
@@ -1869,7 +1854,7 @@ impl DotfileSelectionScreen {
 // Helper function to format file sizes
 fn format_size(bytes: u64) -> String {
     if bytes < 1024 {
-        format!("{}B", bytes)
+        format!("{bytes}B")
     } else if bytes < 1024 * 1024 {
         format!("{:.1}KB", bytes as f64 / 1024.0)
     } else {

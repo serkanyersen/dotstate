@@ -20,6 +20,7 @@ pub enum KeymapPreset {
 
 impl KeymapPreset {
     /// Get all key bindings for this preset
+    #[must_use]
     pub fn bindings(&self) -> Vec<KeyBinding> {
         match self {
             KeymapPreset::Standard => standard_bindings(),
@@ -29,6 +30,7 @@ impl KeymapPreset {
     }
 
     /// Get human-readable name
+    #[must_use]
     pub fn name(&self) -> &'static str {
         match self {
             KeymapPreset::Standard => "Standard",

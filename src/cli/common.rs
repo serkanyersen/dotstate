@@ -61,10 +61,12 @@ impl CliContext {
     ///
     /// # Returns
     /// The resolved profile name
+    #[must_use]
     pub fn resolve_profile(&self, profile: Option<&str>) -> String {
-        profile
-            .map(|s| s.to_string())
-            .unwrap_or_else(|| self.config.active_profile.clone())
+        profile.map_or_else(
+            || self.config.active_profile.clone(),
+            std::string::ToString::to_string,
+        )
     }
 
     /// Check if the given profile name is the active profile.
@@ -74,6 +76,7 @@ impl CliContext {
     ///
     /// # Returns
     /// `true` if the profile is the active profile
+    #[must_use]
     pub fn is_active_profile(&self, profile_name: &str) -> bool {
         self.config.active_profile == profile_name
     }
@@ -85,6 +88,7 @@ impl CliContext {
     ///
     /// # Returns
     /// `true` if the profile exists
+    #[must_use]
     pub fn profile_exists(&self, profile_name: &str) -> bool {
         self.manifest
             .profiles
@@ -99,6 +103,7 @@ impl CliContext {
     ///
     /// # Returns
     /// Reference to the profile info if found
+    #[must_use]
     pub fn get_profile(&self, profile_name: &str) -> Option<&crate::utils::ProfileInfo> {
         self.manifest
             .profiles
@@ -123,7 +128,7 @@ impl CliContext {
 /// # Arguments
 /// * `msg` - The message to print
 pub fn print_success(msg: &str) {
-    println!("\u{2713} {}", msg);
+    println!("\u{2713} {msg}");
 }
 
 /// Print an error message with an X prefix to stderr.
@@ -131,7 +136,7 @@ pub fn print_success(msg: &str) {
 /// # Arguments
 /// * `msg` - The message to print
 pub fn print_error(msg: &str) {
-    eprintln!("\u{2717} {}", msg);
+    eprintln!("\u{2717} {msg}");
 }
 
 /// Print a warning message with a warning sign prefix.
@@ -139,7 +144,7 @@ pub fn print_error(msg: &str) {
 /// # Arguments
 /// * `msg` - The message to print
 pub fn print_warning(msg: &str) {
-    println!("\u{26A0}\u{FE0F} {}", msg);
+    println!("\u{26A0}\u{FE0F} {msg}");
 }
 
 /// Print an info message with an info sign prefix.
@@ -147,7 +152,7 @@ pub fn print_warning(msg: &str) {
 /// # Arguments
 /// * `msg` - The message to print
 pub fn print_info(msg: &str) {
-    println!("\u{2139}\u{FE0F} {}", msg);
+    println!("\u{2139}\u{FE0F} {msg}");
 }
 
 // =============================================================================
@@ -164,9 +169,9 @@ pub fn print_info(msg: &str) {
 /// The user's input, or the default if they pressed Enter
 pub fn prompt_string(label: &str, default: Option<&str>) -> Result<String> {
     if let Some(def) = default {
-        print!("{} [{}]: ", label, def);
+        print!("{label} [{def}]: ");
     } else {
-        print!("{}: ", label);
+        print!("{label}: ");
     }
     io::stdout().flush().context("Failed to flush stdout")?;
 
@@ -191,7 +196,7 @@ pub fn prompt_string(label: &str, default: Option<&str>) -> Result<String> {
 /// # Returns
 /// `Some(input)` if the user entered text, `None` if they pressed Enter
 pub fn prompt_string_optional(label: &str) -> Result<Option<String>> {
-    print!("{} (optional): ", label);
+    print!("{label} (optional): ");
     io::stdout().flush().context("Failed to flush stdout")?;
 
     let mut input = String::new();
@@ -224,7 +229,7 @@ pub fn prompt_select(label: &str, options: &[&str]) -> Result<usize> {
         std::process::exit(1);
     }
 
-    println!("{}:", label);
+    println!("{label}:");
     for (i, option) in options.iter().enumerate() {
         println!("  {}. {}", i + 1, option);
     }
@@ -253,7 +258,7 @@ pub fn prompt_select(label: &str, options: &[&str]) -> Result<usize> {
 ///
 /// # Arguments
 /// * `label` - The prompt label to display
-/// * `options` - List of (name, optional_suffix) tuples to display (shown as 1-indexed)
+/// * `options` - List of (name, `optional_suffix`) tuples to display (shown as 1-indexed)
 ///
 /// # Returns
 /// The 0-indexed position of the selected option
@@ -266,7 +271,7 @@ pub fn prompt_select_with_suffix(label: &str, options: &[(&str, Option<&str>)]) 
         std::process::exit(1);
     }
 
-    println!("{}:", label);
+    println!("{label}:");
     for (i, (name, suffix)) in options.iter().enumerate() {
         if let Some(s) = suffix {
             println!("  {}. {} {}", i + 1, name, s);
@@ -303,7 +308,7 @@ pub fn prompt_select_with_suffix(label: &str, options: &[(&str, Option<&str>)]) 
 /// # Returns
 /// `true` if the user confirmed (y/yes), `false` otherwise
 pub fn prompt_confirm(message: &str) -> Result<bool> {
-    print!("{} [y/N]: ", message);
+    print!("{message} [y/N]: ");
     io::stdout().flush().context("Failed to flush stdout")?;
 
     let mut input = String::new();
@@ -346,7 +351,7 @@ fn all_package_managers() -> Vec<PackageManager> {
 /// * `is_active_profile` - Whether this is the active profile
 ///
 /// # Returns
-/// The selected PackageManager
+/// The selected `PackageManager`
 pub fn prompt_manager(is_active_profile: bool) -> Result<PackageManager> {
     // For active profile: use OS-detected managers with installed markers
     // For non-active profile: show ALL managers (may be for different OS)
@@ -393,7 +398,8 @@ pub fn prompt_manager(is_active_profile: bool) -> Result<PackageManager> {
 /// * `s` - The string to parse
 ///
 /// # Returns
-/// The parsed PackageManager, or None if invalid
+/// The parsed `PackageManager`, or None if invalid
+#[must_use]
 pub fn parse_manager(s: &str) -> Option<PackageManager> {
     match s.to_lowercase().as_str() {
         "brew" | "homebrew" => Some(PackageManager::Brew),

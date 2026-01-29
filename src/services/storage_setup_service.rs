@@ -79,7 +79,7 @@ pub struct StorageSetupService;
 impl StorageSetupService {
     /// Start processing a setup step asynchronously
     ///
-    /// Returns a StepHandle that can be polled for the result.
+    /// Returns a `StepHandle` that can be polled for the result.
     pub fn start_step(
         runtime: &tokio::runtime::Runtime,
         step: GitHubSetupStep,
@@ -139,7 +139,7 @@ impl StorageSetupService {
         }
     }
 
-    /// Handle the Connecting step (transition to ValidatingToken)
+    /// Handle the Connecting step (transition to `ValidatingToken`)
     async fn handle_connecting(setup_data: GitHubSetupData) -> Result<StepResult> {
         Ok(StepResult::Continue {
             next_step: GitHubSetupStep::ValidatingToken,
@@ -149,7 +149,7 @@ impl StorageSetupService {
         })
     }
 
-    /// Handle the ValidatingToken step
+    /// Handle the `ValidatingToken` step
     async fn handle_validating_token(mut setup_data: GitHubSetupData) -> Result<StepResult> {
         let client = GitHubClient::new(setup_data.token.clone());
 
@@ -170,44 +170,45 @@ impl StorageSetupService {
                 })
             }
             Err(e) => Ok(StepResult::Failed {
-                error_message: format!("Authentication failed: {}", e),
+                error_message: format!("Authentication failed: {e}"),
                 cleanup_repo: false,
             }),
         }
     }
 
-    /// Handle the CheckingRepo step
+    /// Handle the `CheckingRepo` step
     async fn handle_checking_repo(setup_data: GitHubSetupData) -> Result<StepResult> {
-        if setup_data.username.is_none() || setup_data.repo_exists.is_none() {
+        // Extract and validate required fields using pattern matching
+        let (Some(username), Some(_repo_exists)) =
+            (setup_data.username.clone(), setup_data.repo_exists)
+        else {
             return Ok(StepResult::Failed {
                 error_message: "Internal error: Setup state is invalid. Please try again."
                     .to_string(),
                 cleanup_repo: false,
             });
-        }
+        };
 
-        // Clone the values we need for the status message before moving setup_data
-        let username = setup_data.username.clone().unwrap();
         let repo_name = setup_data.repo_name.clone();
 
         if setup_data.repo_exists == Some(true) {
             Ok(StepResult::Continue {
                 next_step: GitHubSetupStep::CloningRepo,
                 setup_data,
-                status_message: format!("Cloning repository {}/{}...", username, repo_name),
+                status_message: format!("Cloning repository {username}/{repo_name}..."),
                 delay_ms: Some(500),
             })
         } else {
             Ok(StepResult::Continue {
                 next_step: GitHubSetupStep::CreatingRepo,
                 setup_data,
-                status_message: format!("Creating repository {}/{}...", username, repo_name),
+                status_message: format!("Creating repository {username}/{repo_name}..."),
                 delay_ms: Some(600),
             })
         }
     }
 
-    /// Handle the CloningRepo step
+    /// Handle the `CloningRepo` step
     async fn handle_cloning_repo(
         mut setup_data: GitHubSetupData,
         repo_path: &Path,
@@ -254,13 +255,13 @@ impl StorageSetupService {
                 })
             }
             Err(e) => Ok(StepResult::Failed {
-                error_message: format!("Failed to clone repository: {}", e),
+                error_message: format!("Failed to clone repository: {e}"),
                 cleanup_repo: true,
             }),
         }
     }
 
-    /// Handle the CreatingRepo step
+    /// Handle the `CreatingRepo` step
     async fn handle_creating_repo(mut setup_data: GitHubSetupData) -> Result<StepResult> {
         if setup_data.username.is_none() {
             return Ok(StepResult::Failed {
@@ -291,13 +292,13 @@ impl StorageSetupService {
                 })
             }
             Err(e) => Ok(StepResult::Failed {
-                error_message: format!("Failed to create repository: {}", e),
+                error_message: format!("Failed to create repository: {e}"),
                 cleanup_repo: false, // No local repo created yet
             }),
         }
     }
 
-    /// Handle the InitializingRepo step
+    /// Handle the `InitializingRepo` step
     async fn handle_initializing_repo(
         mut setup_data: GitHubSetupData,
         repo_path: &Path,
@@ -346,14 +347,13 @@ impl StorageSetupService {
                     next_step: GitHubSetupStep::DiscoveringProfiles,
                     setup_data,
                     status_message: format!(
-                        "Setup complete!\n\nRepository: {}/{}\nLocal path: {:?}\n\nPreparing profile selection...",
-                        username_for_status, repo_name_for_status, repo_path
+                        "Setup complete!\n\nRepository: {username_for_status}/{repo_name_for_status}\nLocal path: {repo_path:?}\n\nPreparing profile selection..."
                     ),
                     delay_ms: Some(2000),
                 })
             }
             Err(e) => Ok(StepResult::Failed {
-                error_message: format!("{}", e),
+                error_message: format!("{e}"),
                 cleanup_repo: true,
             }),
         }
@@ -373,16 +373,13 @@ impl StorageSetupService {
         let mut git_mgr = GitManager::open_or_init(repo_path)?;
 
         // Add remote
-        let remote_url = format!(
-            "https://{}@github.com/{}/{}.git",
-            token, username, repo_name
-        );
+        let remote_url = format!("https://{token}@github.com/{username}/{repo_name}.git");
         git_mgr.add_remote("origin", &remote_url)?;
 
         // Create initial commit
         std::fs::write(
             repo_path.join("README.md"),
-            format!("# {}\n\nDotfiles managed by dotstate", repo_name),
+            format!("# {repo_name}\n\nDotfiles managed by dotstate"),
         )?;
 
         // Create profile manifest with default profile
@@ -435,7 +432,7 @@ impl StorageSetupService {
         Ok(default_profile_name)
     }
 
-    /// Handle the DiscoveringProfiles step
+    /// Handle the `DiscoveringProfiles` step
     async fn handle_discovering_profiles(
         mut setup_data: GitHubSetupData,
         repo_path: &Path,
@@ -478,7 +475,7 @@ impl StorageSetupService {
                 })
             }
             Err(e) => Ok(StepResult::Failed {
-                error_message: format!("Failed to discover profiles: {}", e),
+                error_message: format!("Failed to discover profiles: {e}"),
                 cleanup_repo: true,
             }),
         }

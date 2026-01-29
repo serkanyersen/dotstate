@@ -103,6 +103,7 @@ pub enum Action {
 
 impl Action {
     /// Get a human-readable description of this action
+    #[must_use]
     pub fn description(&self) -> &'static str {
         match self {
             Action::MoveUp => "Move up",
@@ -146,6 +147,7 @@ impl Action {
     }
 
     /// Get action category for grouping in help display
+    #[must_use]
     pub fn category(&self) -> &'static str {
         match self {
             Action::MoveUp

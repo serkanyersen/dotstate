@@ -184,7 +184,7 @@ fn cmd_help(command: Option<String>) -> Result<()> {
             println!("  -v, --verbose         Show package manager output");
         }
         Some(cmd) => {
-            eprintln!("Unknown command: {}", cmd);
+            eprintln!("Unknown command: {cmd}");
             eprintln!("Available commands: list, add, remove, check, install");
             std::process::exit(1);
         }
@@ -216,7 +216,7 @@ fn cmd_list(profile: Option<String>, verbose: bool) -> Result<()> {
 
     // Validate profile exists
     if !ctx.profile_exists(&profile_name) {
-        print_error(&format!("Profile '{}' not found", profile_name));
+        print_error(&format!("Profile '{profile_name}' not found"));
         std::process::exit(1);
     }
 
@@ -224,12 +224,12 @@ fn cmd_list(profile: Option<String>, verbose: bool) -> Result<()> {
     let packages = PackageService::get_packages(&ctx.config.repo_path, &profile_name)?;
 
     if packages.is_empty() {
-        println!("No packages configured for profile '{}'", profile_name);
+        println!("No packages configured for profile '{profile_name}'");
         println!("Use 'dotstate packages add' to add packages.");
         return Ok(());
     }
 
-    println!("Packages for profile '{}':\n", profile_name);
+    println!("Packages for profile '{profile_name}':\n");
 
     let mut installed_count = 0;
     let mut missing_count = 0;
@@ -250,28 +250,28 @@ fn cmd_list(profile: Option<String>, verbose: bool) -> Result<()> {
                     "\u{2717} not installed".to_string()
                 }
                 PackageCheckStatus::Error(ref e) => {
-                    format!("? {}", e)
+                    format!("? {e}")
                 }
                 PackageCheckStatus::Unknown => "? unknown".to_string(),
             };
 
             if verbose {
                 println!("  {}", package.name);
-                println!("    Manager: {}", manager_str);
+                println!("    Manager: {manager_str}");
                 if let Some(ref pkg_name) = package.package_name {
-                    println!("    Package: {}", pkg_name);
+                    println!("    Package: {pkg_name}");
                 }
                 println!("    Binary: {}", package.binary_name);
                 if let Some(ref desc) = package.description {
-                    println!("    Description: {}", desc);
+                    println!("    Description: {desc}");
                 }
                 if let Some(ref cmd) = package.install_command {
-                    println!("    Install: {}", cmd);
+                    println!("    Install: {cmd}");
                 }
                 if let Some(ref check) = package.existence_check {
-                    println!("    Check: {}", check);
+                    println!("    Check: {check}");
                 }
-                println!("    Status: {}", status_str);
+                println!("    Status: {status_str}");
                 println!();
             } else {
                 println!("  {:<12} {:<8} {}", package.name, manager_str, status_str);
@@ -280,19 +280,19 @@ fn cmd_list(profile: Option<String>, verbose: bool) -> Result<()> {
             // Non-active profile - no status checks
             if verbose {
                 println!("  {}", package.name);
-                println!("    Manager: {}", manager_str);
+                println!("    Manager: {manager_str}");
                 if let Some(ref pkg_name) = package.package_name {
-                    println!("    Package: {}", pkg_name);
+                    println!("    Package: {pkg_name}");
                 }
                 println!("    Binary: {}", package.binary_name);
                 if let Some(ref desc) = package.description {
-                    println!("    Description: {}", desc);
+                    println!("    Description: {desc}");
                 }
                 if let Some(ref cmd) = package.install_command {
-                    println!("    Install: {}", cmd);
+                    println!("    Install: {cmd}");
                 }
                 if let Some(ref check) = package.existence_check {
-                    println!("    Check: {}", check);
+                    println!("    Check: {check}");
                 }
                 println!();
             } else {
@@ -332,7 +332,7 @@ fn cmd_add(
 
     // Validate profile exists
     if !ctx.profile_exists(&profile_name) {
-        print_error(&format!("Profile '{}' not found", profile_name));
+        print_error(&format!("Profile '{profile_name}' not found"));
         std::process::exit(1);
     }
 
@@ -350,8 +350,7 @@ fn cmd_add(
     // Check for duplicate
     if existing.iter().any(|p| p.name == name) {
         print_error(&format!(
-            "Package '{}' already exists in profile '{}'",
-            name, profile_name
+            "Package '{name}' already exists in profile '{profile_name}'"
         ));
         std::process::exit(1);
     }
@@ -359,8 +358,7 @@ fn cmd_add(
     let manager = match manager {
         Some(m) => parse_manager(&m).ok_or_else(|| {
             anyhow::anyhow!(
-                "Invalid manager '{}'. Valid: brew, apt, cargo, npm, pip, custom, etc.",
-                m
+                "Invalid manager '{m}'. Valid: brew, apt, cargo, npm, pip, custom, etc."
             )
         })?,
         None => prompt_manager(is_active)?,
@@ -448,8 +446,7 @@ fn cmd_add(
     PackageService::add_package(&ctx.config.repo_path, &profile_name, package)?;
 
     print_success(&format!(
-        "Package '{}' added to profile '{}'",
-        name, profile_name
+        "Package '{name}' added to profile '{profile_name}'"
     ));
 
     Ok(())
@@ -461,67 +458,55 @@ fn cmd_remove(profile: Option<String>, yes: bool, name: Option<String>) -> Resul
 
     // Validate profile exists
     if !ctx.profile_exists(&profile_name) {
-        print_error(&format!("Profile '{}' not found", profile_name));
+        print_error(&format!("Profile '{profile_name}' not found"));
         std::process::exit(1);
     }
 
     let packages = PackageService::get_packages(&ctx.config.repo_path, &profile_name)?;
 
     if packages.is_empty() {
-        println!("No packages found in profile '{}'", profile_name);
+        println!("No packages found in profile '{profile_name}'");
         return Ok(());
     }
 
     // Find package by name or prompt for selection
-    let (index, package_name, manager_str) = match name {
-        Some(ref n) => {
-            // Find by name
-            match packages.iter().position(|p| p.name == *n) {
-                Some(i) => {
-                    let mgr = format!("{:?}", packages[i].manager).to_lowercase();
-                    (i, n.clone(), mgr)
-                }
-                None => {
-                    print_error(&format!(
-                        "Package '{}' not found in profile '{}'",
-                        n, profile_name
-                    ));
-                    std::process::exit(1);
-                }
-            }
+    let (index, package_name, manager_str) = if let Some(ref n) = name {
+        // Find by name
+        if let Some(i) = packages.iter().position(|p| p.name == *n) {
+            let mgr = format!("{:?}", packages[i].manager).to_lowercase();
+            (i, n.clone(), mgr)
+        } else {
+            print_error(&format!(
+                "Package '{n}' not found in profile '{profile_name}'"
+            ));
+            std::process::exit(1);
         }
-        None => {
-            // Interactive selection
-            println!(
-                "Select package to remove from profile '{}':\n",
-                profile_name
-            );
-            let options: Vec<(String, Option<String>)> = packages
-                .iter()
-                .map(|p| {
-                    let mgr = format!("{:?}", p.manager).to_lowercase();
-                    let suffix = format!("({})", mgr);
-                    (p.name.clone(), Some(suffix))
-                })
-                .collect();
+    } else {
+        // Interactive selection
+        println!("Select package to remove from profile '{profile_name}':\n");
+        let options: Vec<(String, Option<String>)> = packages
+            .iter()
+            .map(|p| {
+                let mgr = format!("{:?}", p.manager).to_lowercase();
+                let suffix = format!("({mgr})");
+                (p.name.clone(), Some(suffix))
+            })
+            .collect();
 
-            let options_ref: Vec<(&str, Option<&str>)> = options
-                .iter()
-                .map(|(n, s)| (n.as_str(), s.as_deref()))
-                .collect();
+        let options_ref: Vec<(&str, Option<&str>)> = options
+            .iter()
+            .map(|(n, s)| (n.as_str(), s.as_deref()))
+            .collect();
 
-            let selected = prompt_select_with_suffix("Package", &options_ref)?;
-            let mgr = format!("{:?}", packages[selected].manager).to_lowercase();
-            (selected, packages[selected].name.clone(), mgr)
-        }
+        let selected = prompt_select_with_suffix("Package", &options_ref)?;
+        let mgr = format!("{:?}", packages[selected].manager).to_lowercase();
+        (selected, packages[selected].name.clone(), mgr)
     };
 
     // Confirm unless --yes
     if !yes {
-        let confirm_msg = format!(
-            "Remove '{}' ({}) from profile '{}'?",
-            package_name, manager_str, profile_name
-        );
+        let confirm_msg =
+            format!("Remove '{package_name}' ({manager_str}) from profile '{profile_name}'?");
         if !prompt_confirm(&confirm_msg)? {
             println!("Cancelled.");
             return Ok(());
@@ -532,8 +517,7 @@ fn cmd_remove(profile: Option<String>, yes: bool, name: Option<String>) -> Resul
     PackageService::delete_package(&ctx.config.repo_path, &profile_name, index)?;
 
     print_success(&format!(
-        "Package '{}' removed from profile '{}'",
-        package_name, profile_name
+        "Package '{package_name}' removed from profile '{profile_name}'"
     ));
 
     Ok(())
@@ -545,15 +529,14 @@ fn cmd_check(profile: Option<String>) -> Result<()> {
 
     // Validate profile exists
     if !ctx.profile_exists(&profile_name) {
-        print_error(&format!("Profile '{}' not found", profile_name));
+        print_error(&format!("Profile '{profile_name}' not found"));
         std::process::exit(1);
     }
 
     // Check can only work for active profile
     if !ctx.is_active_profile(&profile_name) {
         print_warning(&format!(
-            "Cannot check installation status for non-active profile '{}'",
-            profile_name
+            "Cannot check installation status for non-active profile '{profile_name}'"
         ));
         println!("   Packages may be for a different system. Use 'list' to view packages.");
         return Ok(());
@@ -562,11 +545,11 @@ fn cmd_check(profile: Option<String>) -> Result<()> {
     let packages = PackageService::get_packages(&ctx.config.repo_path, &profile_name)?;
 
     if packages.is_empty() {
-        println!("No packages configured for profile '{}'", profile_name);
+        println!("No packages configured for profile '{profile_name}'");
         return Ok(());
     }
 
-    println!("Checking packages for profile '{}'...\n", profile_name);
+    println!("Checking packages for profile '{profile_name}'...\n");
 
     let mut installed = 0;
     let mut not_installed = 0;
@@ -613,7 +596,7 @@ fn cmd_check(profile: Option<String>) -> Result<()> {
     }
 
     if errors > 0 {
-        println!("({} check errors)", errors);
+        println!("({errors} check errors)");
     }
 
     Ok(())
@@ -628,15 +611,14 @@ fn cmd_install(profile: Option<String>, verbose: bool) -> Result<()> {
 
     // Validate profile exists
     if !ctx.profile_exists(&profile_name) {
-        print_error(&format!("Profile '{}' not found", profile_name));
+        print_error(&format!("Profile '{profile_name}' not found"));
         std::process::exit(1);
     }
 
     // Install can only work for active profile
     if !ctx.is_active_profile(&profile_name) {
         print_warning(&format!(
-            "Cannot install packages for non-active profile '{}'",
-            profile_name
+            "Cannot install packages for non-active profile '{profile_name}'"
         ));
         println!("   Switch to this profile first or install manually on the target system.");
         return Ok(());
@@ -645,7 +627,7 @@ fn cmd_install(profile: Option<String>, verbose: bool) -> Result<()> {
     let packages = PackageService::get_packages(&ctx.config.repo_path, &profile_name)?;
 
     if packages.is_empty() {
-        println!("No packages configured for profile '{}'", profile_name);
+        println!("No packages configured for profile '{profile_name}'");
         return Ok(());
     }
 
@@ -691,7 +673,7 @@ fn cmd_install(profile: Option<String>, verbose: bool) -> Result<()> {
             match status {
                 crate::ui::InstallationStatus::Output(line) => {
                     if verbose {
-                        println!("{}", line);
+                        println!("{line}");
                     }
                 }
                 crate::ui::InstallationStatus::Complete { success, error } => {
@@ -713,7 +695,7 @@ fn cmd_install(profile: Option<String>, verbose: bool) -> Result<()> {
 
     println!();
     if fail_count == 0 {
-        print_success(&format!("{} package(s) installed", success_count));
+        print_success(&format!("{success_count} package(s) installed"));
     } else {
         println!(
             "{} of {} package(s) installed ({} failed)",

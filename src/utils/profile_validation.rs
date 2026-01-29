@@ -64,7 +64,7 @@ pub fn validate_profile_name(name: &str, existing_profiles: &[String]) -> Result
     // Check reserved names (case-insensitive)
     let lower_name = trimmed.to_lowercase();
     if RESERVED_NAMES.contains(&lower_name.as_str()) {
-        bail!("'{}' is a reserved name and cannot be used", trimmed);
+        bail!("'{trimmed}' is a reserved name and cannot be used");
     }
 
     // Check uniqueness (case-insensitive)
@@ -72,7 +72,7 @@ pub fn validate_profile_name(name: &str, existing_profiles: &[String]) -> Result
         .iter()
         .any(|p| p.eq_ignore_ascii_case(trimmed))
     {
-        bail!("A profile with the name '{}' already exists", trimmed);
+        bail!("A profile with the name '{trimmed}' already exists");
     }
 
     Ok(())
@@ -90,7 +90,8 @@ pub fn validate_profile_name(name: &str, existing_profiles: &[String]) -> Result
 /// - Trim whitespace
 /// - Replace spaces with hyphens
 /// - Remove invalid characters
-/// - Truncate to MAX_NAME_LENGTH
+/// - Truncate to `MAX_NAME_LENGTH`
+#[must_use]
 pub fn sanitize_profile_name(name: &str) -> String {
     name.trim()
         .chars()
@@ -117,6 +118,7 @@ pub fn sanitize_profile_name(name: &str) -> String {
 /// # Returns
 /// * `true` if the name is safe to use as a folder name
 #[allow(dead_code)] // Kept for potential future use in CLI or programmatic access
+#[must_use]
 pub fn is_safe_profile_name(name: &str) -> bool {
     let trimmed = name.trim();
 

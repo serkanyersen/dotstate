@@ -64,3 +64,70 @@ tempfile = "3.10"
 [[bin]]
 name = "dotstate"
 path = "src/main.rs"
+
+# Lint configuration
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+# Enable all standard lints (lower priority so pedantic can override)
+all = { level = "warn", priority = -1 }
+# Enable pedantic but allow noisy lints
+pedantic = { level = "warn", priority = -1 }
+# Allow documentation-heavy pedantic lints (can address incrementally)
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+module_name_repetitions = "allow"
+# Allow style preferences that don't affect correctness
+items_after_statements = "allow"
+similar_names = "allow"
+too_many_lines = "allow"
+# Allow cast warnings in TUI code (ratatui uses u16 extensively)
+cast_possible_truncation = "allow"
+cast_sign_loss = "allow"
+cast_precision_loss = "allow"
+cast_lossless = "allow"
+# Allow format/debug preferences (low-value fixes)
+unnecessary_debug_formatting = "allow"
+uninlined_format_args = "allow"
+# Allow format append patterns (often clearer than write!)
+format_push_string = "allow"
+# Allow Result wrapper warnings (refactoring these is risky)
+unnecessary_wraps = "allow"
+must_use_candidate = "allow"
+# Allow trivial pass-by-ref (Copy types by ref is idiomatic for &self)
+trivially_copy_pass_by_ref = "allow"
+# Allow match arm combining (sometimes separate arms are clearer)
+match_same_arms = "allow"
+# Allow unused self (trait implementations may require it)
+unused_self = "allow"
+# Allow wildcard enum matches (we handle new variants case-by-case)
+match_wildcard_for_single_variants = "allow"
+# Allow needless pass by value (sometimes ownership semantics matter)
+needless_pass_by_value = "allow"
+# Allow clone assignment patterns (often clearer)
+assigning_clones = "allow"
+# Allow if-let vs let-else preference (both valid)
+option_if_let_else = "allow"
+# Allow HashSet without hasher generalization (overkill for internal code)
+implicit_hasher = "allow"
+# Allow case-sensitive extension checks (intentional for dotfiles)
+case_sensitive_file_extension_comparisons = "allow"
+# Allow async without await (trait compatibility)
+unused_async = "allow"
+# Allow redundant else blocks (sometimes clearer)
+redundant_else = "allow"
+# Allow structs with multiple bools (UI state often needs this)
+struct_excessive_bools = "allow"
+# Allow missing must_use on Self-returning methods
+return_self_not_must_use = "allow"
+# Allow map().unwrap_or_else() pattern
+map_unwrap_or = "allow"
+# Allow bool-to-int with if (clearer than cast sometimes)
+bool_to_int_with_if = "allow"
+# Allow if chains vs match (context-dependent)
+comparison_chain = "allow"
+# Allow default() vs Default::default()
+default_trait_access = "allow"
+# Allow if-let patterns that could be let-else (both valid styles)
+manual_let_else = "allow"

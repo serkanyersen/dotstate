@@ -67,7 +67,7 @@ pub fn execute(message: Option<String>) -> Result<()> {
         RepoMode::GitHub => "GitHub",
         RepoMode::Local => "remote",
     };
-    println!("📤 Pushing to {}...", push_dest);
+    println!("📤 Pushing to {push_dest}...");
     git_mgr
         .push("origin", &branch, token)
         .context("Failed to push to remote")?;
@@ -75,8 +75,7 @@ pub fn execute(message: Option<String>) -> Result<()> {
     if pulled_count > 0 {
         info!("CLI sync completed: pulled {} commit(s)", pulled_count);
         println!(
-            "✅ Successfully synced with remote! Pulled {} change(s) from remote.",
-            pulled_count
+            "✅ Successfully synced with remote! Pulled {pulled_count} change(s) from remote."
         );
 
         // Ensure symlinks for any new files pulled from remote
@@ -88,23 +87,20 @@ pub fn execute(message: Option<String>) -> Result<()> {
         ) {
             Ok((created, _skipped, errors)) => {
                 if created > 0 {
-                    println!("   Created {} symlink(s) for new files.", created);
+                    println!("   Created {created} symlink(s) for new files.");
                 } else {
                     println!("   All files already have symlinks.");
                 }
                 if !errors.is_empty() {
                     eprintln!("⚠️  Warning: {} error(s) creating symlinks:", errors.len());
                     for error in errors {
-                        eprintln!("   {}", error);
+                        eprintln!("   {error}");
                     }
                 }
             }
             Err(e) => {
                 warn!("Failed to ensure symlinks after pull: {}", e);
-                eprintln!(
-                    "⚠️  Warning: Failed to create symlinks for new files: {}",
-                    e
-                );
+                eprintln!("⚠️  Warning: Failed to create symlinks for new files: {e}");
             }
         }
 
@@ -112,7 +108,7 @@ pub fn execute(message: Option<String>) -> Result<()> {
         match ProfileService::ensure_common_symlinks(repo_path, config.backup_enabled) {
             Ok((created, _skipped, errors)) => {
                 if created > 0 {
-                    println!("   Created {} common symlink(s).", created);
+                    println!("   Created {created} common symlink(s).");
                 }
                 if !errors.is_empty() {
                     eprintln!(
@@ -120,13 +116,13 @@ pub fn execute(message: Option<String>) -> Result<()> {
                         errors.len()
                     );
                     for error in errors {
-                        eprintln!("   {}", error);
+                        eprintln!("   {error}");
                     }
                 }
             }
             Err(e) => {
                 warn!("Failed to ensure common symlinks after pull: {}", e);
-                eprintln!("⚠️  Warning: Failed to create common symlinks: {}", e);
+                eprintln!("⚠️  Warning: Failed to create common symlinks: {e}");
             }
         }
     } else {

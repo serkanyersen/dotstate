@@ -32,6 +32,7 @@ impl Default for ManagePackagesScreen {
 }
 
 impl ManagePackagesScreen {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             state: PackageManagerState::default(),
@@ -118,7 +119,7 @@ impl ManagePackagesScreen {
     }
 
     /// Process periodic tasks (package checking, installation monitoring, import discovery)
-    /// Returns ScreenAction::Refresh if a redraw is needed
+    /// Returns `ScreenAction::Refresh` if a redraw is needed
     pub fn tick(&mut self) -> Result<ScreenAction> {
         let mut needs_redraw = false;
 
@@ -201,8 +202,7 @@ impl ManagePackagesScreen {
                             state.package_statuses[index] = PackageStatus::Installed;
                         } else if !PackageManagerImpl::is_manager_installed(&pkg_manager) {
                             state.package_statuses[index] = PackageStatus::Error(format!(
-                                "Package not found and package manager '{:?}' is not installed",
-                                pkg_manager
+                                "Package not found and package manager '{pkg_manager:?}' is not installed"
                             ));
                         } else {
                             state.package_statuses[index] = PackageStatus::NotInstalled;
@@ -332,7 +332,7 @@ impl ManagePackagesScreen {
                                         installed.push(*package_index);
                                         state
                                             .installation_output
-                                            .push(format!("✅ Installed {}", package_name));
+                                            .push(format!("✅ Installed {package_name}"));
                                         // Update status in list
                                         if *package_index < state.package_statuses.len() {
                                             state.package_statuses[*package_index] =
@@ -357,8 +357,7 @@ impl ManagePackagesScreen {
                                         error!("Failed to install {}: {}", package_name, err_msg);
                                         failed.push((*package_index, err_msg.clone()));
                                         state.installation_output.push(format!(
-                                            "❌ Failed to install {}: {}",
-                                            package_name, err_msg
+                                            "❌ Failed to install {package_name}: {err_msg}"
                                         ));
                                     }
                                     // Break after Complete to avoid hitting Disconnected
@@ -1777,10 +1776,10 @@ impl ManagePackagesScreen {
 
     fn reset_import_list_selection(&mut self) {
         let filtered = self.get_filtered_import_packages();
-        if !filtered.is_empty() {
-            self.state.import_list_state.select(Some(0));
-        } else {
+        if filtered.is_empty() {
             self.state.import_list_state.select(None);
+        } else {
+            self.state.import_list_state.select(Some(0));
         }
     }
 
@@ -1799,8 +1798,7 @@ impl ManagePackagesScreen {
                     || pkg
                         .binary_name
                         .as_ref()
-                        .map(|b| b.to_lowercase().contains(&filter))
-                        .unwrap_or(false)
+                        .is_some_and(|b| b.to_lowercase().contains(&filter))
             })
             .map(|(idx, _)| idx)
             .collect()
@@ -1977,7 +1975,7 @@ impl ManagePackagesScreen {
                         Span::styled(&package.name, style),
                         Span::raw(padding),
                         Span::styled(
-                            format!(" {}", manager_str),
+                            format!(" {manager_str}"),
                             Style::default().italic().fg(t.text_dimmed),
                         ),
                     ]);
@@ -2051,7 +2049,7 @@ impl ManagePackagesScreen {
         // Helper for labeled fields
         let add_field = |lines: &mut Vec<Line>, label: &str, value: &str| {
             lines.push(Line::from(vec![
-                Span::styled(format!("{}: ", label), t.title_style()),
+                Span::styled(format!("{label}: "), t.title_style()),
                 Span::styled(value.to_string(), t.text_style()),
             ]));
         };
@@ -2065,7 +2063,7 @@ impl ManagePackagesScreen {
                 t.title_style(),
             )]));
             lines.push(Line::from(vec![Span::styled(
-                desc.to_string(),
+                desc.clone(),
                 t.muted_style(),
             )]));
         }
@@ -2127,7 +2125,7 @@ impl ManagePackagesScreen {
                 lines.push(Line::from(vec![
                     Span::styled("Status: ", t.title_style()),
                     Span::styled(format!("{} Error: ", icons.warning()), t.warning_style()),
-                    Span::styled(msg.to_string(), t.text_style()),
+                    Span::styled(msg.clone(), t.text_style()),
                 ]));
             }
             _ => {
@@ -2173,7 +2171,7 @@ impl ManagePackagesScreen {
             if let Some(cmd) = &entry.check_command {
                 lines.push(Line::from(vec![
                     Span::styled("Command: ", t.title_style()),
-                    Span::styled(cmd.to_string(), t.emphasis_style()),
+                    Span::styled(cmd.clone(), t.emphasis_style()),
                 ]));
             }
 
@@ -2250,15 +2248,15 @@ impl ManagePackagesScreen {
             Constraint::Length(4), // Manager selection
         ];
 
-        if !self.state.add_is_custom {
-            // Managed packages: Package Name, Binary Name
-            constraints.push(Constraint::Length(3)); // Package name
-            constraints.push(Constraint::Length(3)); // Binary name
-        } else {
+        if self.state.add_is_custom {
             // Custom packages: Binary Name, Install Command, Existence Check
             constraints.push(Constraint::Length(3)); // Binary name
             constraints.push(Constraint::Length(3)); // Install command
             constraints.push(Constraint::Length(3)); // Existence check
+        } else {
+            // Managed packages: Package Name, Binary Name
+            constraints.push(Constraint::Length(3)); // Package name
+            constraints.push(Constraint::Length(3)); // Binary name
         }
 
         // Error message (if any)
@@ -2298,22 +2296,7 @@ impl ManagePackagesScreen {
 
         let mut current_chunk = 4; // Start after title, name, description, manager
 
-        if !self.state.add_is_custom {
-            // Managed packages: Package Name, Binary Name
-            let widget = TextInputWidget::new(&self.state.add_package_name_input)
-                .title("Package Name")
-                .placeholder("Package name in manager (e.g., 'eza')")
-                .focused(self.state.add_focused_field == AddPackageField::PackageName);
-            frame.render_text_input_widget(widget, chunks[current_chunk]);
-            current_chunk += 1;
-
-            let widget = TextInputWidget::new(&self.state.add_binary_name_input)
-                .title("Binary Name")
-                .placeholder("Binary name to check (e.g., 'eza')")
-                .focused(self.state.add_focused_field == AddPackageField::BinaryName);
-            frame.render_text_input_widget(widget, chunks[current_chunk]);
-            current_chunk += 1;
-        } else {
+        if self.state.add_is_custom {
             // Custom packages: Binary Name, Install Command, Existence Check
             let widget = TextInputWidget::new(&self.state.add_binary_name_input)
                 .title("Binary Name")
@@ -2342,6 +2325,21 @@ impl ManagePackagesScreen {
                 .title("Manager Check (optional)")
                 .placeholder("Custom manager check command (optional fallback)")
                 .focused(self.state.add_focused_field == AddPackageField::ManagerCheck);
+            frame.render_text_input_widget(widget, chunks[current_chunk]);
+            current_chunk += 1;
+        } else {
+            // Managed packages: Package Name, Binary Name
+            let widget = TextInputWidget::new(&self.state.add_package_name_input)
+                .title("Package Name")
+                .placeholder("Package name in manager (e.g., 'eza')")
+                .focused(self.state.add_focused_field == AddPackageField::PackageName);
+            frame.render_text_input_widget(widget, chunks[current_chunk]);
+            current_chunk += 1;
+
+            let widget = TextInputWidget::new(&self.state.add_binary_name_input)
+                .title("Binary Name")
+                .placeholder("Binary name to check (e.g., 'eza')")
+                .focused(self.state.add_focused_field == AddPackageField::BinaryName);
             frame.render_text_input_widget(widget, chunks[current_chunk]);
             current_chunk += 1;
         }
@@ -2386,7 +2384,7 @@ impl ManagePackagesScreen {
             .enumerate()
             .map(|(idx, manager)| {
                 let is_selected = self.state.add_manager_selected == idx;
-                let label = format!("{:?}", manager);
+                let label = format!("{manager:?}");
                 (label, is_selected)
             })
             .collect();
@@ -2417,7 +2415,7 @@ impl ManagePackagesScreen {
         for (idx, (label, is_selected)) in manager_labels.iter().enumerate() {
             // Checkbox format: "[x] Label " or "[ ] Label "
             let checkbox_marker = if *is_selected { "[x]" } else { "[ ]" };
-            let full_text = format!("{} {} ", checkbox_marker, label);
+            let full_text = format!("{checkbox_marker} {label} ");
             let checkbox_width = full_text.len();
 
             // Check if we need to wrap to next line
@@ -2481,17 +2479,15 @@ impl ManagePackagesScreen {
             self.state
                 .packages
                 .get(idx)
-                .map(|p| p.name.as_str())
-                .unwrap_or("Unknown")
+                .map_or("Unknown", |p| p.name.as_str())
         } else {
             "Unknown"
         };
 
         let content = format!(
             "⚠️  Delete Package\n\n\
-            Are you sure you want to delete '{}'?\n\n\
-            Type 'DELETE' below to confirm:",
-            package_name
+            Are you sure you want to delete '{package_name}'?\n\n\
+            Type 'DELETE' below to confirm:"
         );
 
         let k = |a| config.keymap.get_key_display_for_action(a);
@@ -2506,7 +2502,8 @@ impl ManagePackagesScreen {
 
         // Render confirmation input below the dialog
         // Calculate dialog position to match Dialog's internal calculation
-        let calculated_dialog_height = (area.height as f32 * (dialog_height as f32 / 100.0)) as u16;
+        let calculated_dialog_height =
+            (f32::from(area.height) * (f32::from(dialog_height) / 100.0)) as u16;
         let dialog_y = area.y + (area.height.saturating_sub(calculated_dialog_height)) / 2;
         let input_y = dialog_y + calculated_dialog_height + 2; // 2 lines spacing
 
@@ -2688,27 +2685,24 @@ impl ManagePackagesScreen {
         let message = if missing_count == 1 {
             "1 package is missing. Do you want to install it?".to_string()
         } else {
-            format!(
-                "{} packages are missing. Do you want to install them?",
-                missing_count
-            )
+            format!("{missing_count} packages are missing. Do you want to install them?")
         };
 
         // Format package list
-        let package_list_text = if !missing_packages.is_empty() {
+        let package_list_text = if missing_packages.is_empty() {
+            String::new()
+        } else {
             format!(
                 "\n\nPackages to install:\n{}",
                 missing_packages
                     .iter()
-                    .map(|name| format!("  • {}", name))
+                    .map(|name| format!("  • {name}"))
                     .collect::<Vec<_>>()
                     .join("\n")
             )
-        } else {
-            String::new()
         };
 
-        let content = format!("{}{}", message, package_list_text);
+        let content = format!("{message}{package_list_text}");
 
         let k = |a| config.keymap.get_key_display_for_action(a);
         let footer_text = format!(
@@ -2890,12 +2884,10 @@ impl ManagePackagesScreen {
             let source_name = self
                 .state
                 .import_active_source()
-                .map(|s| s.display_name())
-                .unwrap_or("packages");
+                .map_or("packages", |s| s.display_name());
 
             let loading_text = format!(
-                "{} Discovering {} packages...\n\nThis may take a moment",
-                spinner, source_name
+                "{spinner} Discovering {source_name} packages...\n\nThis may take a moment"
             );
             let loading = Paragraph::new(loading_text)
                 .alignment(Alignment::Center)
@@ -2954,7 +2946,7 @@ impl ManagePackagesScreen {
                     .binary_name
                     .as_ref()
                     .filter(|b| *b != &pkg.package_name)
-                    .map(|b| format!(" ({})", b))
+                    .map(|b| format!(" ({b})"))
                     .unwrap_or_default();
 
                 let text = format!("{} {}{}", checkbox, pkg.package_name, binary_info);

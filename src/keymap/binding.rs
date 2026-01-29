@@ -1,4 +1,4 @@
-//! KeyBinding struct for mapping keys to actions
+//! `KeyBinding` struct for mapping keys to actions
 //!
 //! Provides parsing of key strings like "ctrl+n", "shift+tab", "j"
 
@@ -29,6 +29,7 @@ pub struct ParsedKey {
 
 impl KeyBinding {
     /// Create a new key binding
+    #[must_use]
     pub fn new(key: &str, action: Action) -> Self {
         Self {
             key: key.to_string(),
@@ -38,6 +39,7 @@ impl KeyBinding {
     }
 
     /// Check if this binding matches the given key event
+    #[must_use]
     pub fn matches(&self, code: KeyCode, modifiers: KeyModifiers) -> bool {
         if let Ok(parsed) = self.parse() {
             // Normalize character keys with Shift: uppercase char with SHIFT -> lowercase char with SHIFT
@@ -48,17 +50,19 @@ impl KeyBinding {
         }
     }
 
-    /// Parse the key string into KeyCode and KeyModifiers
+    /// Parse the key string into `KeyCode` and `KeyModifiers`
     pub fn parse(&self) -> Result<ParsedKey, String> {
         parse_key_string(&self.key)
     }
 
     /// Get the display string for this binding (e.g., "Ctrl+N")
+    #[must_use]
     pub fn display(&self) -> String {
         format_key_display(&self.key)
     }
 
     /// Get the description (custom or from action)
+    #[must_use]
     pub fn get_description(&self) -> &str {
         self.description
             .as_deref()
@@ -86,7 +90,7 @@ fn normalize_shift_char(code: KeyCode, modifiers: KeyModifiers) -> (KeyCode, Key
     (code, modifiers)
 }
 
-/// Parse a key string like "ctrl+shift+n" into KeyCode and KeyModifiers
+/// Parse a key string like "ctrl+shift+n" into `KeyCode` and `KeyModifiers`
 pub fn parse_key_string(key: &str) -> Result<ParsedKey, String> {
     let key = key.trim().to_lowercase();
     let parts: Vec<&str> = key.split('+').collect();
@@ -106,7 +110,7 @@ pub fn parse_key_string(key: &str) -> Result<ParsedKey, String> {
                 "alt" | "option" => modifiers |= KeyModifiers::ALT,
                 "shift" => modifiers |= KeyModifiers::SHIFT,
                 "super" | "meta" | "cmd" | "command" => modifiers |= KeyModifiers::SUPER,
-                _ => return Err(format!("Unknown modifier: {}", part)),
+                _ => return Err(format!("Unknown modifier: {part}")),
             }
         }
     }
@@ -115,7 +119,7 @@ pub fn parse_key_string(key: &str) -> Result<ParsedKey, String> {
     Ok(ParsedKey { code, modifiers })
 }
 
-/// Parse a single key name into KeyCode
+/// Parse a single key name into `KeyCode`
 fn parse_key_code(key: &str) -> Result<KeyCode, String> {
     let key = key.trim().to_lowercase();
 
@@ -165,7 +169,7 @@ fn parse_key_code(key: &str) -> Result<KeyCode, String> {
         }
     }
 
-    Err(format!("Unknown key: {}", key))
+    Err(format!("Unknown key: {key}"))
 }
 
 /// Format a key string for display (e.g., "ctrl+n" -> "Ctrl+N")
@@ -197,7 +201,7 @@ pub fn format_key_display(key: &str) -> String {
                 "end" => "End".to_string(),
                 _ if part.len() == 1 => part.to_uppercase(),
                 _ if part.starts_with('f') && part.len() <= 3 => part.to_uppercase(),
-                _ => part.to_string(),
+                _ => part.clone(),
             }
         })
         .collect();
