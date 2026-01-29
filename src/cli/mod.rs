@@ -27,7 +27,7 @@ pub use common::*;
 pub use packages::PackagesCommand;
 
 use anyhow::Result;
-use clap::{CommandFactory, Parser, Subcommand};
+use clap::{Parser, Subcommand};
 use clap_complete::Shell;
 use std::path::PathBuf;
 
