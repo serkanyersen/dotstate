@@ -186,6 +186,15 @@ dotstate generate fish | source
 source <(dotstate completions zsh)
 ```
 
+Using oh-my-zsh, antigen, or prezto? These frameworks require the fpath approach:
+
+```
+  mkdir -p ~/.zsh/completions
+  dotstate completions zsh > ~/.zsh/completions/_dotstate
+```
+
+Then add `fpath=(~/.zsh/completions $fpath)` to your .zshrc before your framework loads.
+
 ## How It Works
 
 1. **Storage**: Your dotfiles are stored in a Git repository (default: `~/.config/dotstate/storage`)
@@ -215,14 +224,15 @@ Fine-grained tokens offer better security through granular permissions. Create o
 
 **Required permissions:**
 
-| Permission | Access Level | Purpose |
-|------------|--------------|---------|
+| Permission         | Access Level | Purpose                                   |
+| ------------------ | ------------ | ----------------------------------------- |
 | **Administration** | Read & write | Create your `dotstate-storage` repository |
-| **Contents** | Read & write | Sync your dotfiles to/from the repository |
+| **Contents**       | Read & write | Sync your dotfiles to/from the repository |
 
 > **Note:** Metadata (read-only) is automatically included by GitHub for all fine-grained tokens.
 
 **Repository access:**
+
 - For initial setup, select **"All repositories"** so DotState can create and find your storage repo
 - After setup, you can regenerate a token restricted to only your `dotstate-storage` repository
 
