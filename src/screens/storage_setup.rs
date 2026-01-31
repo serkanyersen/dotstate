@@ -726,9 +726,9 @@ impl StorageSetupScreen {
         let t = theme();
 
         // Center the progress box
-        // Height: 8 steps + 1 empty line + 2 status lines + 2 borders = 13 minimum, use 15 for safety
+        // Height: 8 steps + plus 1 unified padding = 10
         let popup_width = 50u16.min(area.width.saturating_sub(4));
-        let popup_height = 15u16.min(area.height.saturating_sub(2));
+        let popup_height = 30u16.min(area.height.saturating_sub(2));
         let popup_area = crate::utils::center_popup(area, popup_width, popup_height);
 
         // Clear the popup area
@@ -784,7 +784,7 @@ impl StorageSetupScreen {
             .title_alignment(Alignment::Center)
             .border_style(Style::default().fg(t.primary))
             .border_type(t.border_type(true))
-            .padding(Padding::horizontal(2))
+            .padding(Padding::proportional(1))
             .style(t.background_style());
 
         let para = Paragraph::new(lines)
@@ -1132,8 +1132,9 @@ impl Screen for StorageSetupScreen {
 
         // Check if we're in processing mode
         if let StorageSetupStep::Processing(step) = self.state.step {
-            // Render processing overlay
-            self.render_processing(frame, content_chunk, step);
+            // Render processing overlay using full area (not just content_chunk)
+            // so the popup has room to display all steps
+            self.render_processing(frame, area, step);
 
             // Footer with processing message
             Footer::render(frame, footer_chunk, "Setting up your repository...")?;

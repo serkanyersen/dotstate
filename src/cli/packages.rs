@@ -211,6 +211,8 @@ fn cmd_help(command: Option<String>) -> Result<()> {
 }
 
 fn cmd_list(profile: Option<String>, verbose: bool) -> Result<()> {
+    use crate::utils::package_cache::PackageCache;
+
     let ctx = CliContext::load()?;
     let profile_name = ctx.resolve_profile(profile.as_deref());
 
@@ -222,6 +224,9 @@ fn cmd_list(profile: Option<String>, verbose: bool) -> Result<()> {
 
     let is_active = ctx.is_active_profile(&profile_name);
     let packages = PackageService::get_packages(&ctx.config.repo_path, &profile_name)?;
+
+    // Initialize cache for updating status
+    let mut cache = PackageCache::new().unwrap_or_default();
 
     if packages.is_empty() {
         println!("No packages configured for profile '{profile_name}'");
@@ -240,20 +245,29 @@ fn cmd_list(profile: Option<String>, verbose: bool) -> Result<()> {
         if is_active {
             // Check installation status for active profile
             let check_result = PackageService::check_package(package);
-            let status_str = match check_result.status {
+            let (installed, status_str) = match check_result.status {
                 PackageCheckStatus::Installed => {
                     installed_count += 1;
-                    "\u{2713} installed".to_string()
+                    (Some(true), "\u{2713} installed".to_string())
                 }
                 PackageCheckStatus::NotInstalled => {
                     missing_count += 1;
-                    "\u{2717} not installed".to_string()
+                    (Some(false), "\u{2717} not installed".to_string())
                 }
-                PackageCheckStatus::Error(ref e) => {
-                    format!("? {e}")
-                }
-                PackageCheckStatus::Unknown => "? unknown".to_string(),
+                PackageCheckStatus::Error(ref e) => (None, format!("? {e}")),
+                PackageCheckStatus::Unknown => (None, "? unknown".to_string()),
             };
+
+            // Update cache with check result
+            if let Some(is_installed) = installed {
+                let _ = cache.update_status(
+                    &profile_name,
+                    &package.name,
+                    is_installed,
+                    None, // check_command not exposed by PackageService
+                    None, // output not exposed by PackageService
+                );
+            }
 
             if verbose {
                 println!("  {}", package.name);
@@ -524,6 +538,8 @@ fn cmd_remove(profile: Option<String>, yes: bool, name: Option<String>) -> Resul
 }
 
 fn cmd_check(profile: Option<String>) -> Result<()> {
+    use crate::utils::package_cache::PackageCache;
+
     let ctx = CliContext::load()?;
     let profile_name = ctx.resolve_profile(profile.as_deref());
 
@@ -549,6 +565,9 @@ fn cmd_check(profile: Option<String>) -> Result<()> {
         return Ok(());
     }
 
+    // Initialize cache for updating status
+    let mut cache = PackageCache::new().unwrap_or_default();
+
     println!("Checking packages for profile '{profile_name}'...\n");
 
     let mut installed = 0;
@@ -559,14 +578,14 @@ fn cmd_check(profile: Option<String>) -> Result<()> {
         let manager_str = format!("{:?}", package.manager).to_lowercase();
         let result = PackageService::check_package(package);
 
-        let status_str = match result.status {
+        let (is_installed, status_str) = match result.status {
             PackageCheckStatus::Installed => {
                 installed += 1;
-                "\u{2713} installed"
+                (Some(true), "\u{2713} installed")
             }
             PackageCheckStatus::NotInstalled => {
                 not_installed += 1;
-                "\u{2717} not installed"
+                (Some(false), "\u{2717} not installed")
             }
             PackageCheckStatus::Error(ref e) => {
                 errors += 1;
@@ -576,9 +595,20 @@ fn cmd_check(profile: Option<String>) -> Result<()> {
             }
             PackageCheckStatus::Unknown => {
                 errors += 1;
-                "? unknown"
+                (None, "? unknown")
             }
         };
+
+        // Update cache with check result
+        if let Some(installed_status) = is_installed {
+            let _ = cache.update_status(
+                &profile_name,
+                &package.name,
+                installed_status,
+                None, // check_command not exposed by PackageService
+                None, // output not exposed by PackageService
+            );
+        }
 
         println!("  {:<12} {:<8} {}", package.name, manager_str, status_str);
     }

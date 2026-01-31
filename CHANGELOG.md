@@ -13,7 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Package Installation**: Fixed CLI output delay - package manager output now streams in real-time instead of appearing only after completion
 - **Package Installation**: Fixed TUI appearing hung during installation by using faster poll timeout (50ms) during active operations
 - **Package Installation**: Fixed installation output auto-scroll stopping prematurely by disabling line wrapping in output area
-- **Storage Setup**: Fixed GitHub setup progress popup content being clipped due to insufficient height
+- **Storage Setup**: Fixed GitHub setup progress popup content being clipped - now renders in full screen area instead of constrained content chunk
+- **Packages CLI**: Fixed `packages list` and `packages check` commands not populating the package status cache
 - **Main Menu**: Fixed "requires setup" check using proper is_repo_configured() instead of just directory existence
 
 ---
