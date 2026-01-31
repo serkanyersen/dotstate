@@ -241,8 +241,12 @@ impl App {
             if let Some(handle) = &mut self.setup_step_handle {
                 match handle.receiver.try_recv() {
                     Ok(Ok(result)) => {
+                        // Note: handle_setup_step_result may set a NEW setup_step_handle
+                        // for the next step in the Continue case. We must NOT clear it here.
+                        // The old receiver is already consumed by try_recv() returning Ok.
                         self.handle_setup_step_result(result)?;
-                        self.setup_step_handle = None;
+                        // Don't set setup_step_handle = None here! handle_setup_step_result
+                        // manages it: sets new handle for Continue, leaves as-is for Complete/Failed
                     }
                     Ok(Err(e)) => {
                         error!("Setup step failed: {}", e);
@@ -1362,6 +1366,9 @@ impl App {
                 profiles,
                 is_new_repo,
             } => {
+                // Clear the step handle - setup is complete
+                self.setup_step_handle = None;
+
                 // Update config with GitHub info
                 self.config.github = Some(github_config.clone());
                 self.config.repo_name = github_config.repo;
@@ -1402,6 +1409,9 @@ impl App {
                 error_message,
                 cleanup_repo,
             } => {
+                // Clear the step handle - setup failed
+                self.setup_step_handle = None;
+
                 crate::services::StorageSetupService::cleanup_failed_setup(
                     &mut self.config,
                     &self.config_path,
