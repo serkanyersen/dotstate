@@ -1250,9 +1250,9 @@ impl Screen for StorageSetupScreen {
     }
 
     fn on_enter(&mut self, ctx: &ScreenContext) -> Result<()> {
-        // Check if already configured
-        let is_configured =
-            !ctx.config.repo_path.as_os_str().is_empty() && ctx.config.repo_path.exists();
+        // Check if already configured using the proper method
+        // This checks: GitHub mode with github config, OR Local mode with .git existing
+        let is_configured = ctx.config.is_repo_configured();
 
         if is_configured {
             // Reconfiguration mode - pre-fill with existing values
