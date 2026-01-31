@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.2.21] - 2025-01-30
+
+### Fixed
+
+- **Storage Setup**: Fixed setup flow issues affecting both GitHub and local repo modes - async step handling no longer hangs, and "already configured" check now works correctly
+
+---
+
 ## [0.2.20] - 2025-01-29
 
 ### Added
