@@ -168,7 +168,12 @@ fn github_setup_clones_existing_repo() -> Result<()> {
     let temp_repo = base.join("temp");
     fs::create_dir_all(&temp_repo)?;
     std::process::Command::new("git")
-        .args(["init", "-b", "main"])
+        .args(["init"])
+        .current_dir(&temp_repo)
+        .output()?;
+    // Set main as default branch (compatible with older git versions)
+    std::process::Command::new("git")
+        .args(["symbolic-ref", "HEAD", "refs/heads/main"])
         .current_dir(&temp_repo)
         .output()?;
 
@@ -267,7 +272,12 @@ fn github_clone_empty_repo() -> Result<()> {
     let temp_repo = base.join("temp");
     fs::create_dir_all(&temp_repo)?;
     std::process::Command::new("git")
-        .args(["init", "-b", "main"])
+        .args(["init"])
+        .current_dir(&temp_repo)
+        .output()?;
+    // Set main as default branch (compatible with older git versions)
+    std::process::Command::new("git")
+        .args(["symbolic-ref", "HEAD", "refs/heads/main"])
         .current_dir(&temp_repo)
         .output()?;
 
@@ -443,7 +453,12 @@ fn github_clone_existing_dotstate_repo() -> Result<()> {
     let temp_repo = base.join("temp");
     fs::create_dir_all(&temp_repo)?;
     std::process::Command::new("git")
-        .args(["init", "-b", "main"])
+        .args(["init"])
+        .current_dir(&temp_repo)
+        .output()?;
+    // Set main as default branch (compatible with older git versions)
+    std::process::Command::new("git")
+        .args(["symbolic-ref", "HEAD", "refs/heads/main"])
         .current_dir(&temp_repo)
         .output()?;
 
