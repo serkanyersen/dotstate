@@ -163,6 +163,11 @@ fn github_setup_clones_existing_repo() -> Result<()> {
         .args(["init", "--bare"])
         .current_dir(&remote_path)
         .output()?;
+    // Set default branch to main so clone checks out the right branch
+    std::process::Command::new("git")
+        .args(["symbolic-ref", "HEAD", "refs/heads/main"])
+        .current_dir(&remote_path)
+        .output()?;
 
     // Create a temp repo to push initial content
     let temp_repo = base.join("temp");
@@ -288,6 +293,11 @@ fn github_clone_empty_repo() -> Result<()> {
     fs::create_dir_all(&remote_path)?;
     std::process::Command::new("git")
         .args(["init", "--bare"])
+        .current_dir(&remote_path)
+        .output()?;
+    // Set default branch to main so clone checks out the right branch
+    std::process::Command::new("git")
+        .args(["symbolic-ref", "HEAD", "refs/heads/main"])
         .current_dir(&remote_path)
         .output()?;
 
@@ -469,6 +479,11 @@ fn github_clone_existing_dotstate_repo() -> Result<()> {
     fs::create_dir_all(&remote_path)?;
     std::process::Command::new("git")
         .args(["init", "--bare"])
+        .current_dir(&remote_path)
+        .output()?;
+    // Set default branch to main so clone checks out the right branch
+    std::process::Command::new("git")
+        .args(["symbolic-ref", "HEAD", "refs/heads/main"])
         .current_dir(&remote_path)
         .output()?;
 
