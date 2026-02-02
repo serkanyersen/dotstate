@@ -188,7 +188,14 @@ impl FileManager {
     }
 }
 
-/// Recursively copy a directory, preserving symlinks
+/// Recursively copy a directory, preserving symlinks.
+///
+/// NOTE: This function creates symlinks directly with `std::os::unix::fs::symlink()`
+/// instead of using `SymlinkManager`. This is intentional because:
+/// - These are **internal symlinks within dotfile content** (e.g., `~/.config/app/current -> versions/v1`)
+/// - They are part of the user's configuration, not DotState-managed infrastructure
+/// - `SymlinkManager` only tracks symlinks that link home files to the repo (e.g., `~/.zshrc -> repo/Profile/.zshrc`)
+/// - Internal content symlinks should be preserved as-is without tracking
 pub fn copy_dir_all(src: &Path, dst: &Path) -> Result<()> {
     debug!("Creating destination directory: {:?}", dst);
     fs::create_dir_all(dst)
