@@ -189,6 +189,16 @@ fn github_setup_clones_existing_repo() -> Result<()> {
 
     fs::write(temp_repo.join("default/.existing-file"), "existing content")?;
 
+    // Configure git user for CI environments
+    std::process::Command::new("git")
+        .args(["config", "user.name", "Test"])
+        .current_dir(&temp_repo)
+        .output()?;
+    std::process::Command::new("git")
+        .args(["config", "user.email", "test@test.com"])
+        .current_dir(&temp_repo)
+        .output()?;
+
     // Commit and push to "remote"
     std::process::Command::new("git")
         .args(["add", "."])
@@ -260,6 +270,17 @@ fn github_clone_empty_repo() -> Result<()> {
         .args(["init"])
         .current_dir(&temp_repo)
         .output()?;
+
+    // Configure git user for CI environments
+    std::process::Command::new("git")
+        .args(["config", "user.name", "Test"])
+        .current_dir(&temp_repo)
+        .output()?;
+    std::process::Command::new("git")
+        .args(["config", "user.email", "test@test.com"])
+        .current_dir(&temp_repo)
+        .output()?;
+
     fs::write(temp_repo.join(".gitkeep"), "")?;
     std::process::Command::new("git")
         .args(["add", "."])
@@ -456,6 +477,16 @@ fn github_clone_existing_dotstate_repo() -> Result<()> {
         ],
     };
     manifest.save(&temp_repo)?;
+
+    // Configure git user for CI environments
+    std::process::Command::new("git")
+        .args(["config", "user.name", "Test"])
+        .current_dir(&temp_repo)
+        .output()?;
+    std::process::Command::new("git")
+        .args(["config", "user.email", "test@test.com"])
+        .current_dir(&temp_repo)
+        .output()?;
 
     // Commit and push
     std::process::Command::new("git")
