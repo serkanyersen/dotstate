@@ -205,22 +205,45 @@ fn github_setup_clones_existing_repo() -> Result<()> {
         .output()?;
 
     // Commit and push to "remote"
-    std::process::Command::new("git")
+    let add_output = std::process::Command::new("git")
         .args(["add", "."])
         .current_dir(&temp_repo)
         .output()?;
-    std::process::Command::new("git")
+    assert!(
+        add_output.status.success(),
+        "git add failed: {:?}",
+        String::from_utf8_lossy(&add_output.stderr)
+    );
+
+    let commit_output = std::process::Command::new("git")
         .args(["commit", "-m", "initial"])
         .current_dir(&temp_repo)
         .output()?;
-    std::process::Command::new("git")
+    assert!(
+        commit_output.status.success(),
+        "git commit failed: {:?}",
+        String::from_utf8_lossy(&commit_output.stderr)
+    );
+
+    let remote_output = std::process::Command::new("git")
         .args(["remote", "add", "origin", remote_path.to_str().unwrap()])
         .current_dir(&temp_repo)
         .output()?;
-    std::process::Command::new("git")
+    assert!(
+        remote_output.status.success(),
+        "git remote add failed: {:?}",
+        String::from_utf8_lossy(&remote_output.stderr)
+    );
+
+    let push_output = std::process::Command::new("git")
         .args(["push", "-u", "origin", "HEAD:main"])
         .current_dir(&temp_repo)
         .output()?;
+    assert!(
+        push_output.status.success(),
+        "git push failed: {:?}",
+        String::from_utf8_lossy(&push_output.stderr)
+    );
 
     // When: clone the "remote" repo
     let clone_path = base.join("cloned");
@@ -504,32 +527,60 @@ fn github_clone_existing_dotstate_repo() -> Result<()> {
         .output()?;
 
     // Commit and push
-    std::process::Command::new("git")
+    let add_output = std::process::Command::new("git")
         .args(["add", "."])
         .current_dir(&temp_repo)
         .output()?;
-    std::process::Command::new("git")
+    assert!(
+        add_output.status.success(),
+        "git add failed: {:?}",
+        String::from_utf8_lossy(&add_output.stderr)
+    );
+
+    let commit_output = std::process::Command::new("git")
         .args(["commit", "-m", "initial dotstate setup"])
         .current_dir(&temp_repo)
         .output()?;
-    std::process::Command::new("git")
+    assert!(
+        commit_output.status.success(),
+        "git commit failed: {:?}",
+        String::from_utf8_lossy(&commit_output.stderr)
+    );
+
+    let remote_output = std::process::Command::new("git")
         .args(["remote", "add", "origin", remote_path.to_str().unwrap()])
         .current_dir(&temp_repo)
         .output()?;
-    std::process::Command::new("git")
+    assert!(
+        remote_output.status.success(),
+        "git remote add failed: {:?}",
+        String::from_utf8_lossy(&remote_output.stderr)
+    );
+
+    let push_output = std::process::Command::new("git")
         .args(["push", "-u", "origin", "HEAD:main"])
         .current_dir(&temp_repo)
         .output()?;
+    assert!(
+        push_output.status.success(),
+        "git push failed: {:?}",
+        String::from_utf8_lossy(&push_output.stderr)
+    );
 
     // When: clone
     let clone_path = base.join("cloned");
-    std::process::Command::new("git")
+    let clone_output = std::process::Command::new("git")
         .args([
             "clone",
             remote_path.to_str().unwrap(),
             clone_path.to_str().unwrap(),
         ])
         .output()?;
+    assert!(
+        clone_output.status.success(),
+        "git clone failed: {:?}",
+        String::from_utf8_lossy(&clone_output.stderr)
+    );
 
     // Then: recognizes existing setup
     let loaded_manifest = dotstate::utils::profile_manifest::ProfileManifest::load(&clone_path)?;
