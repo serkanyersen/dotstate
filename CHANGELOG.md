@@ -7,14 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+---
+
+## [0.2.24] - 2026-02-03
+
 ### Added
 
-- **Dialogs**: Scrollable dialogs with keyboard navigation (↑↓/jk, PageUp/PageDown, Home) for viewing long content like error messages
+- **Dialogs**: Scrollable dialogs with keyboard navigation (↑↓/jk, PageUp/PageDown, Home) for viewing long content
 
 ### Fixed
 
-- **Git Sync**: Improved recovery from failed sync operations - commit is automatically undone on push failure to preserve changes
-- **Git Sync**: Better error messages for push rejections - now captures and displays full hook output
+- **Git Sync**: Improved recovery from failed sync operations - commit is automatically undone on push failure to preserve staged changes
+- **Git Sync**: Better error messages for push rejections - now captures and displays full git hook output
 
 ---
 
