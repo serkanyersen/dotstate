@@ -69,6 +69,95 @@ pub fn url_has_credentials(url: &str) -> bool {
     false
 }
 
+/// Check if a URL is an SSH-based git URL.
+///
+/// Returns true for URLs like:
+/// - `git@github.com:user/repo.git`
+/// - `ssh://git@github.com/user/repo.git`
+#[must_use]
+pub fn is_ssh_url(url: &str) -> bool {
+    url.starts_with("git@") || url.starts_with("ssh://")
+}
+
+/// Fetch from remote using system git CLI.
+///
+/// This is used for SSH URLs where libssh2 (used by git2) has compatibility
+/// issues with certain SSH agent implementations (e.g., 1Password, `YubiKey`).
+/// System git uses OpenSSH which handles all agent types correctly.
+fn fetch_via_cli(repo_path: &Path, remote_name: &str, branch: &str) -> Result<()> {
+    info!("Using system git for SSH fetch: {} {}", remote_name, branch);
+    let output = Command::new("git")
+        .args(["fetch", remote_name, branch])
+        .current_dir(repo_path)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .output()
+        .context("Failed to run 'git fetch'. Is git installed?")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!(
+            "Failed to fetch from remote '{}': {}",
+            remote_name,
+            stderr.trim()
+        );
+    }
+    Ok(())
+}
+
+/// Push to remote using system git CLI.
+///
+/// Used for SSH URLs to ensure compatibility with all SSH agent implementations.
+fn push_via_cli(repo_path: &Path, remote_name: &str, refspec: &str) -> Result<()> {
+    info!("Using system git for SSH push: {} {}", remote_name, refspec);
+    let output = Command::new("git")
+        .args(["push", remote_name, refspec])
+        .current_dir(repo_path)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .output()
+        .context("Failed to run 'git push'. Is git installed?")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!(
+            "Failed to push to remote '{}': {}",
+            remote_name,
+            stderr.trim()
+        );
+    }
+    Ok(())
+}
+
+/// Clone a repository using system git CLI.
+///
+/// Used for SSH URLs to ensure compatibility with all SSH agent implementations.
+fn clone_via_cli(url: &str, path: &Path) -> Result<()> {
+    info!(
+        "Using system git for SSH clone: {}",
+        redact_credentials(url)
+    );
+    let output = Command::new("git")
+        .args(["clone", url, &path.to_string_lossy()])
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .output()
+        .context("Failed to run 'git clone'. Is git installed?")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!(
+            "Failed to clone repository from {}: {}",
+            redact_credentials(url),
+            stderr.trim()
+        );
+    }
+    Ok(())
+}
+
 /// Git operations for managing the dotfiles repository
 pub struct GitManager {
     repo: Repository,
@@ -109,6 +198,27 @@ impl GitManager {
         }
 
         Ok(Self { repo })
+    }
+
+    /// Get the working directory of the repository.
+    ///
+    /// Returns the repo workdir path, or an error if the repo is bare.
+    fn repo_workdir(&self) -> Result<&Path> {
+        self.repo
+            .workdir()
+            .ok_or_else(|| anyhow::anyhow!("Repository has no working directory (bare repo)"))
+    }
+
+    /// Get the remote URL for a given remote name.
+    fn get_remote_url(&self, remote_name: &str) -> Result<String> {
+        let remote = self
+            .repo
+            .find_remote(remote_name)
+            .with_context(|| format!("Remote '{remote_name}' not found"))?;
+        remote
+            .url()
+            .map(String::from)
+            .ok_or_else(|| anyhow::anyhow!("Remote '{remote_name}' has no URL"))
     }
 
     /// Ensure .gitignore exists with common patterns for frequently changing files
@@ -468,19 +578,39 @@ impl GitManager {
         use tracing::info;
         info!("Pushing to remote: {} (branch: {})", remote_name, branch);
 
+        let remote_url = self.get_remote_url(remote_name)?;
+
+        // Use system git for SSH URLs (libssh2 has compatibility issues with
+        // some SSH agents like 1Password, `YubiKey`, Secretive)
+        if is_ssh_url(&remote_url) {
+            let repo_path = self.repo_workdir()?;
+
+            // Handle branch that doesn't exist locally
+            let branch_ref = format!("refs/heads/{branch}");
+            let refspec = if self.repo.find_reference(&branch_ref).is_err() {
+                if let Some(current_branch) = self.get_current_branch() {
+                    format!("refs/heads/{current_branch}:refs/heads/{branch}")
+                } else {
+                    anyhow::bail!("No branch '{branch}' exists and no current branch found");
+                }
+            } else {
+                format!("refs/heads/{branch}:refs/heads/{branch}")
+            };
+
+            push_via_cli(repo_path, remote_name, &refspec)?;
+            info!("Successfully pushed to {}:{}", remote_name, branch);
+            return Ok(());
+        }
+
         let mut remote = self
             .repo
             .find_remote(remote_name)
             .with_context(|| format!("Remote '{remote_name}' not found"))?;
 
-        let remote_url = remote
-            .url()
-            .ok_or_else(|| anyhow::anyhow!("Remote '{remote_name}' has no URL"))?;
-
         let mut callbacks = RemoteCallbacks::new();
         let token_to_use = token
             .map(std::string::ToString::to_string)
-            .or_else(|| Self::extract_token_from_url(remote_url));
+            .or_else(|| Self::extract_token_from_url(&remote_url));
         Self::setup_credentials(&mut callbacks, token_to_use);
 
         // Capture push errors from server-side hooks/rejections
@@ -547,18 +677,15 @@ impl GitManager {
         remote
             .push(&[&refspec], Some(&mut push_options))
             .with_context(|| {
-                // Get more detailed error information - redact credentials for safety
-                let remote_url = remote
-                    .url()
-                    .map_or_else(|| "unknown".to_string(), redact_credentials);
                 format!(
-                    "Failed to push to remote '{remote_name}' (URL: {remote_url}).\n\n\
+                    "Failed to push to remote '{remote_name}' (URL: {}).\n\n\
                     Check token permissions:\n\
                     • Classic tokens (ghp_): needs 'repo' scope\n\
                     • Fine-grained tokens (github_pat_): needs 'Contents' set to 'Read and write'\n\n\
                     Also verify:\n\
                     • Remote branch exists\n\
-                    • You have push access to this repository"
+                    • You have push access to this repository",
+                    redact_credentials(&remote_url)
                 )
             })?;
 
@@ -720,26 +847,30 @@ impl GitManager {
         use tracing::info;
         info!("Pulling from remote: {} (branch: {})", remote_name, branch);
 
-        let mut remote = self
-            .repo
-            .find_remote(remote_name)
-            .with_context(|| format!("Remote '{remote_name}' not found"))?;
+        let remote_url = self.get_remote_url(remote_name)?;
 
-        let mut callbacks = RemoteCallbacks::new();
-        let remote_url = remote
-            .url()
-            .ok_or_else(|| anyhow::anyhow!("Remote '{remote_name}' has no URL"))?;
-        let token_to_use = token
-            .map(std::string::ToString::to_string)
-            .or_else(|| Self::extract_token_from_url(remote_url));
-        Self::setup_credentials(&mut callbacks, token_to_use);
+        // Fetch step: use system git for SSH URLs, git2 for HTTPS
+        if is_ssh_url(&remote_url) {
+            fetch_via_cli(self.repo_workdir()?, remote_name, branch)?;
+        } else {
+            let mut remote = self
+                .repo
+                .find_remote(remote_name)
+                .with_context(|| format!("Remote '{remote_name}' not found"))?;
 
-        let mut fetch_options = FetchOptions::new();
-        fetch_options.remote_callbacks(callbacks);
+            let mut callbacks = RemoteCallbacks::new();
+            let token_to_use = token
+                .map(std::string::ToString::to_string)
+                .or_else(|| Self::extract_token_from_url(&remote_url));
+            Self::setup_credentials(&mut callbacks, token_to_use);
 
-        remote
-            .fetch(&[branch], Some(&mut fetch_options), None)
-            .with_context(|| format!("Failed to fetch from remote '{remote_name}'"))?;
+            let mut fetch_options = FetchOptions::new();
+            fetch_options.remote_callbacks(callbacks);
+
+            remote
+                .fetch(&[branch], Some(&mut fetch_options), None)
+                .with_context(|| format!("Failed to fetch from remote '{remote_name}'"))?;
+        }
 
         // Check if FETCH_HEAD exists (remote might not have the branch yet)
         let fetch_head = match self.repo.find_reference("FETCH_HEAD") {
@@ -850,26 +981,30 @@ impl GitManager {
             remote_name, branch
         );
 
-        let mut remote = self
-            .repo
-            .find_remote(remote_name)
-            .with_context(|| format!("Remote '{remote_name}' not found"))?;
+        let remote_url = self.get_remote_url(remote_name)?;
 
-        let mut callbacks = RemoteCallbacks::new();
-        let remote_url = remote
-            .url()
-            .ok_or_else(|| anyhow::anyhow!("Remote '{remote_name}' has no URL"))?;
-        let token_to_use = token
-            .map(std::string::ToString::to_string)
-            .or_else(|| Self::extract_token_from_url(remote_url));
-        Self::setup_credentials(&mut callbacks, token_to_use);
+        // Fetch step: use system git for SSH URLs, git2 for HTTPS
+        if is_ssh_url(&remote_url) {
+            fetch_via_cli(self.repo_workdir()?, remote_name, branch)?;
+        } else {
+            let mut remote = self
+                .repo
+                .find_remote(remote_name)
+                .with_context(|| format!("Remote '{remote_name}' not found"))?;
 
-        let mut fetch_options = FetchOptions::new();
-        fetch_options.remote_callbacks(callbacks);
+            let mut callbacks = RemoteCallbacks::new();
+            let token_to_use = token
+                .map(std::string::ToString::to_string)
+                .or_else(|| Self::extract_token_from_url(&remote_url));
+            Self::setup_credentials(&mut callbacks, token_to_use);
 
-        remote
-            .fetch(&[branch], Some(&mut fetch_options), None)
-            .with_context(|| format!("Failed to fetch from remote '{remote_name}'"))?;
+            let mut fetch_options = FetchOptions::new();
+            fetch_options.remote_callbacks(callbacks);
+
+            remote
+                .fetch(&[branch], Some(&mut fetch_options), None)
+                .with_context(|| format!("Failed to fetch from remote '{remote_name}'"))?;
+        }
 
         // Check if FETCH_HEAD exists (remote might not have the branch yet)
         let fetch_head = if let Ok(ref_) = self.repo.find_reference("FETCH_HEAD") {
@@ -1088,18 +1223,23 @@ impl GitManager {
         use tracing::debug;
         debug!("Fetching from remote: {} (branch: {})", remote_name, branch);
 
+        let remote_url = self.get_remote_url(remote_name)?;
+
+        // Use system git for SSH URLs (libssh2 has compatibility issues with
+        // some SSH agents like 1Password, `YubiKey`, Secretive)
+        if is_ssh_url(&remote_url) {
+            return fetch_via_cli(self.repo_workdir()?, remote_name, branch);
+        }
+
         let mut remote = self
             .repo
             .find_remote(remote_name)
             .with_context(|| format!("Remote '{remote_name}' not found"))?;
 
         let mut callbacks = RemoteCallbacks::new();
-        let remote_url = remote
-            .url()
-            .ok_or_else(|| anyhow::anyhow!("Remote '{remote_name}' has no URL"))?;
         let token_to_use = token
             .map(std::string::ToString::to_string)
-            .or_else(|| Self::extract_token_from_url(remote_url));
+            .or_else(|| Self::extract_token_from_url(&remote_url));
         Self::setup_credentials(&mut callbacks, token_to_use);
 
         let mut fetch_options = FetchOptions::new();
@@ -1648,6 +1788,15 @@ impl GitManager {
         token: Option<&str>,
         embed_credentials: bool,
     ) -> Result<Self> {
+        // Use system git for SSH URLs (libssh2 has compatibility issues with
+        // some SSH agents like 1Password, `YubiKey`, Secretive)
+        if is_ssh_url(url) {
+            clone_via_cli(url, path)?;
+            let repo = Repository::open(path)
+                .with_context(|| format!("Failed to open cloned repository at {path:?}"))?;
+            return Ok(Self { repo });
+        }
+
         // Optionally embed token directly in URL to bypass gitconfig URL rewrites
         // This prevents issues when users have .gitconfig settings like:
         // [url "git@github.com:"]
@@ -1787,15 +1936,6 @@ impl GitManager {
         }
 
         Ok(Some(String::from_utf8_lossy(&diff_buf).to_string()))
-    }
-
-    /// Get the remote URL for a given remote name
-    #[allow(dead_code)]
-    pub fn get_remote_url(&self, remote_name: &str) -> Result<Option<String>> {
-        match self.repo.find_remote(remote_name) {
-            Ok(remote) => Ok(remote.url().map(std::string::ToString::to_string)),
-            Err(_) => Ok(None),
-        }
     }
 
     /// Check if a remote exists
