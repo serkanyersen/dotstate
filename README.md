@@ -308,9 +308,18 @@ DotState supports both light and dark themes that automatically adapt to your te
 Edit `~/.config/dotstate/config.toml` and set the `theme` option:
 
 ```toml
-theme = "dark"   # For dark terminal backgrounds (default)
-theme = "light"  # For light terminal backgrounds
-theme = "nocolor" # Disable all UI colors (same as NO_COLOR=1 / --no-colors)
+theme = "dark"              # Default dark theme
+theme = "light"             # For light terminal backgrounds
+theme = "midnight"          # Deep dark blue theme
+theme = "solarized-dark"    # Solarized Dark
+theme = "solarized-light"   # Solarized Light
+theme = "gruvbox-dark"      # Gruvbox Dark (warm, retro)
+theme = "gruvbox-light"     # Gruvbox Light
+theme = "catppuccin-mocha"  # Catppuccin Mocha (pastel dark)
+theme = "catppuccin-latte"  # Catppuccin Latte (pastel light)
+theme = "tokyonight-dark"   # Tokyo Night (city-lights dark)
+theme = "tokyonight-light"  # Tokyo Night Light
+theme = "nocolor"           # Disable all UI colors (same as NO_COLOR=1 / --no-colors)
 ```
 
 **Theme Features:**
