@@ -16,12 +16,13 @@ use crate::styles::{theme as ui_theme, LIST_HIGHLIGHT_SYMBOL};
 use crate::ui::Screen as ScreenId;
 use crate::utils::{
     create_split_layout, create_standard_layout, focused_border_style, unfocused_border_style,
-    TextInput,
+    MouseRegions, TextInput,
 };
 use crate::widgets::{Dialog, DialogVariant};
 use crate::widgets::{TextInputWidget, TextInputWidgetExt};
 use anyhow::Result;
-use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers};
+use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
+use ratatui::layout::Position;
 use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use ratatui::style::{Modifier, Style};
 use tracing::{debug, info, warn};
@@ -151,6 +152,12 @@ pub struct DotfileSelectionScreen {
     state: DotfileSelectionState,
     /// File browser component
     file_browser: FileBrowser,
+    /// Mouse regions for dotfile list items
+    mouse_regions: MouseRegions<usize>,
+    /// Stored list pane area for scroll hit-testing
+    list_pane_area: Option<Rect>,
+    /// Stored preview pane area for scroll hit-testing
+    preview_pane_area: Option<Rect>,
 }
 
 impl DotfileSelectionScreen {
@@ -160,6 +167,9 @@ impl DotfileSelectionScreen {
         Self {
             state: DotfileSelectionState::default(),
             file_browser: FileBrowser::new(),
+            mouse_regions: MouseRegions::new(),
+            list_pane_area: None,
+            preview_pane_area: None,
         }
     }
 
@@ -585,6 +595,109 @@ impl DotfileSelectionScreen {
         Ok(ScreenAction::None)
     }
 
+    /// Handle mouse events for the dotfile list screen.
+    fn handle_mouse_event(
+        &mut self,
+        mouse: crossterm::event::MouseEvent,
+        config: &Config,
+    ) -> Result<ScreenAction> {
+        let display_items = self.get_display_items(&config.active_profile);
+
+        match mouse.kind {
+            MouseEventKind::Down(MouseButton::Left) => {
+                // Click on list item
+                if let Some(&idx) = self.mouse_regions.hit_test(mouse.column, mouse.row) {
+                    if idx < display_items.len() {
+                        // Skip headers
+                        if !matches!(display_items[idx], DisplayItem::Header(_)) {
+                            self.state.dotfile_list_state.select(Some(idx));
+                            self.state.preview_scroll = 0;
+                            self.state.focus = DotfileSelectionFocus::FilesList;
+                        }
+                    }
+                    return Ok(ScreenAction::None);
+                }
+
+                // Click on preview pane -> focus it
+                if let Some(area) = self.preview_pane_area {
+                    if area.contains(Position::new(mouse.column, mouse.row)) {
+                        self.state.focus = DotfileSelectionFocus::Preview;
+                        return Ok(ScreenAction::None);
+                    }
+                }
+
+                // Click on list pane (but not on an item) -> focus it
+                if let Some(area) = self.list_pane_area {
+                    if area.contains(Position::new(mouse.column, mouse.row)) {
+                        self.state.focus = DotfileSelectionFocus::FilesList;
+                        return Ok(ScreenAction::None);
+                    }
+                }
+            }
+            MouseEventKind::ScrollDown => {
+                if let Some(area) = self.list_pane_area {
+                    if area.contains(Position::new(mouse.column, mouse.row)) {
+                        // Scroll down in list, skip headers
+                        let current = self.state.dotfile_list_state.selected().unwrap_or(0);
+                        let mut target = current;
+                        let mut moves = 0;
+                        let mut next = current + 1;
+                        while next < display_items.len() && moves < 3 {
+                            if !matches!(display_items[next], DisplayItem::Header(_)) {
+                                target = next;
+                                moves += 1;
+                            }
+                            next += 1;
+                        }
+                        if target != current {
+                            self.state.dotfile_list_state.select(Some(target));
+                            self.state.preview_scroll = 0;
+                        }
+                        return Ok(ScreenAction::None);
+                    }
+                }
+                if let Some(area) = self.preview_pane_area {
+                    if area.contains(Position::new(mouse.column, mouse.row)) {
+                        self.state.preview_scroll = self.state.preview_scroll.saturating_add(3);
+                        return Ok(ScreenAction::None);
+                    }
+                }
+            }
+            MouseEventKind::ScrollUp => {
+                if let Some(area) = self.list_pane_area {
+                    if area.contains(Position::new(mouse.column, mouse.row)) {
+                        // Scroll up in list, skip headers
+                        let current = self.state.dotfile_list_state.selected().unwrap_or(0);
+                        let mut target = current;
+                        let mut moves = 0;
+                        let mut prev = current;
+                        while prev > 0 && moves < 3 {
+                            prev -= 1;
+                            if !matches!(display_items[prev], DisplayItem::Header(_)) {
+                                target = prev;
+                                moves += 1;
+                            }
+                        }
+                        if target != current {
+                            self.state.dotfile_list_state.select(Some(target));
+                            self.state.preview_scroll = 0;
+                        }
+                        return Ok(ScreenAction::None);
+                    }
+                }
+                if let Some(area) = self.preview_pane_area {
+                    if area.contains(Position::new(mouse.column, mouse.row)) {
+                        self.state.preview_scroll = self.state.preview_scroll.saturating_sub(3);
+                        return Ok(ScreenAction::None);
+                    }
+                }
+            }
+            _ => {}
+        }
+
+        Ok(ScreenAction::None)
+    }
+
     /// Handle preview pane navigation.
     fn handle_preview(&mut self, key_code: KeyCode, config: &Config) -> Result<ScreenAction> {
         let action = config
@@ -836,6 +949,24 @@ impl DotfileSelectionScreen {
             frame.buffer_mut(),
             &mut self.state.dotfile_list_state,
         );
+
+        // Store areas and populate mouse regions
+        self.list_pane_area = Some(list_area);
+        self.preview_pane_area = Some(preview_area);
+        self.mouse_regions.clear();
+        let inner = Block::default().borders(Borders::ALL).inner(list_area);
+        let scroll_offset = self.state.dotfile_list_state.offset();
+        for (i, _item) in display_items.iter().enumerate() {
+            if i < scroll_offset {
+                continue;
+            }
+            let visible_row = (i - scroll_offset) as u16;
+            if visible_row >= inner.height {
+                break;
+            }
+            let row_area = Rect::new(inner.x, inner.y + visible_row, inner.width, 1);
+            self.mouse_regions.add(row_area, i);
+        }
 
         // Render scrollbar
         frame.render_stateful_widget(
@@ -2000,19 +2131,20 @@ impl Screen for DotfileSelectionScreen {
         }
 
         // 4. Normal navigation based on focus
-        if let Event::Key(key) = event {
-            if key.kind == KeyEventKind::Press {
-                // Normal mode navigation
-                match self.state.focus {
-                    DotfileSelectionFocus::FilesList => {
-                        return self.handle_dotfile_list(key.code, ctx.config);
-                    }
-                    DotfileSelectionFocus::Preview => {
-                        return self.handle_preview(key.code, ctx.config);
-                    }
-                    _ => {}
+        match event {
+            Event::Key(key) if key.kind == KeyEventKind::Press => match self.state.focus {
+                DotfileSelectionFocus::FilesList => {
+                    return self.handle_dotfile_list(key.code, ctx.config);
                 }
+                DotfileSelectionFocus::Preview => {
+                    return self.handle_preview(key.code, ctx.config);
+                }
+                _ => {}
+            },
+            Event::Mouse(mouse) => {
+                return self.handle_mouse_event(mouse, ctx.config);
             }
+            _ => {}
         }
 
         Ok(ScreenAction::None)

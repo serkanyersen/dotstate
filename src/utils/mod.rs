@@ -2,6 +2,7 @@ pub mod backup_manager;
 pub mod doctor;
 pub mod layout;
 pub mod list_navigation;
+pub mod mouse;
 pub mod move_to_common_validation;
 pub mod package_cache;
 pub mod package_discovery;
@@ -22,6 +23,7 @@ pub mod versioned;
 pub use backup_manager::BackupManager;
 pub use layout::{center_popup, create_split_layout, create_standard_layout};
 pub use list_navigation::{ListStateExt, DEFAULT_PAGE_SIZE};
+pub use mouse::MouseRegions;
 pub use move_to_common_validation::{
     validate_move_to_common, MoveToCommonConflict, MoveToCommonValidation,
 };

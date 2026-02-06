@@ -13,11 +13,11 @@ use crate::styles::theme;
 use crate::ui::{GitHubSetupData, GitHubSetupStep};
 use crate::utils::{
     create_split_layout, create_standard_layout, focused_border_style, unfocused_border_style,
-    TextInput,
+    MouseRegions, TextInput,
 };
 use crate::widgets::{Menu, MenuItem, MenuState, TextInputWidget, TextInputWidgetExt};
 use anyhow::Result;
-use crossterm::event::{Event, KeyEventKind};
+use crossterm::event::{Event, KeyEventKind, MouseButton, MouseEventKind};
 use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span, Text};
@@ -177,6 +177,12 @@ impl Default for StorageSetupState {
 /// Storage setup screen controller
 pub struct StorageSetupScreen {
     state: StorageSetupState,
+    /// Clickable regions for method menu items
+    method_regions: MouseRegions<usize>,
+    /// Area of the method list pane (for scroll hit-testing)
+    method_pane_area: Option<Rect>,
+    /// Clickable regions for form fields
+    form_field_regions: MouseRegions<usize>,
 }
 
 impl Default for StorageSetupScreen {
@@ -190,6 +196,9 @@ impl StorageSetupScreen {
     pub fn new() -> Self {
         Self {
             state: StorageSetupState::default(),
+            method_regions: MouseRegions::new(),
+            method_pane_area: None,
+            form_field_regions: MouseRegions::new(),
         }
     }
 
@@ -232,6 +241,9 @@ impl StorageSetupScreen {
         let icons = self.icons(ctx);
         let is_focused = self.state.focus == StorageSetupFocus::MethodList;
 
+        // Store pane area for mouse
+        self.method_pane_area = Some(area);
+
         // Build menu items
         let items: Vec<MenuItem> = StorageMethod::all()
             .iter()
@@ -262,8 +274,12 @@ impl StorageSetupScreen {
         let inner = block.inner(area);
         frame.render_widget(block, area);
 
-        // Render menu
+        // Render menu and store clickable areas
         let menu = Menu::new(items);
+        self.method_regions.clear();
+        for (rect, idx) in menu.clickable_areas(inner) {
+            self.method_regions.add(rect, idx);
+        }
         StatefulWidget::render(menu, inner, frame.buffer_mut(), &mut self.state.menu_state);
     }
 
@@ -276,6 +292,9 @@ impl StorageSetupScreen {
             .direction(Direction::Vertical)
             .constraints([Constraint::Percentage(60), Constraint::Percentage(40)])
             .split(area);
+
+        // Clear form field regions before rendering
+        self.form_field_regions.clear();
 
         match self.state.method {
             StorageMethod::GitHub => {
@@ -331,7 +350,7 @@ impl StorageSetupScreen {
             ])
             .split(inner);
 
-        // Token field
+        // Token field (field index 0)
         let token_focused = is_pane_focused && self.state.github_field == GitHubField::Token;
         let token_disabled = self.state.is_reconfiguring && !self.state.is_editing_token;
         let token_widget = TextInputWidget::new(&self.state.token_input)
@@ -341,8 +360,9 @@ impl StorageSetupScreen {
             .disabled(token_disabled)
             .masked(token_disabled);
         frame.render_text_input_widget(token_widget, fields[0]);
+        self.form_field_regions.add(fields[0], 0);
 
-        // Repo name field
+        // Repo name field (field index 1)
         let repo_name_focused = is_pane_focused && self.state.github_field == GitHubField::RepoName;
         let repo_name_widget = TextInputWidget::new(&self.state.repo_name_input)
             .title("Repository Name")
@@ -350,8 +370,9 @@ impl StorageSetupScreen {
             .focused(repo_name_focused)
             .disabled(self.state.is_reconfiguring);
         frame.render_text_input_widget(repo_name_widget, fields[1]);
+        self.form_field_regions.add(fields[1], 1);
 
-        // Repo path field
+        // Repo path field (field index 2)
         let repo_path_focused = is_pane_focused && self.state.github_field == GitHubField::RepoPath;
         let repo_path_widget = TextInputWidget::new(&self.state.repo_path_input)
             .title("Local Path")
@@ -359,6 +380,7 @@ impl StorageSetupScreen {
             .focused(repo_path_focused)
             .disabled(self.state.is_reconfiguring);
         frame.render_text_input_widget(repo_path_widget, fields[2]);
+        self.form_field_regions.add(fields[2], 2);
 
         // Visibility toggle
         let vis_focused = is_pane_focused && self.state.github_field == GitHubField::Visibility;
@@ -396,6 +418,7 @@ impl StorageSetupScreen {
                     t.text_style()
                 });
         frame.render_widget(vis_para, fields[3]);
+        self.form_field_regions.add(fields[3], 3);
     }
 
     /// Render Local form fields
@@ -459,13 +482,14 @@ impl StorageSetupScreen {
         let instructions_para = Paragraph::new(instructions).wrap(Wrap { trim: true });
         frame.render_widget(instructions_para, fields[0]);
 
-        // Path input
+        // Path input (field index 0 for local)
         let path_widget = TextInputWidget::new(&self.state.local_path_input)
             .title("Repository Path")
             .placeholder("~/.config/dotstate/storage")
             .focused(is_pane_focused)
             .disabled(self.state.is_reconfiguring);
         frame.render_text_input_widget(path_widget, fields[2]);
+        self.form_field_regions.add(fields[2], 0);
     }
 
     /// Render context-sensitive help panel
@@ -792,6 +816,83 @@ impl StorageSetupScreen {
             .wrap(Wrap { trim: true });
 
         frame.render_widget(para, popup_area);
+    }
+
+    /// Handle mouse events
+    fn handle_mouse_event(&mut self, mouse: crossterm::event::MouseEvent) -> Result<ScreenAction> {
+        // Don't handle mouse during processing
+        if matches!(self.state.step, StorageSetupStep::Processing(_)) {
+            return Ok(ScreenAction::None);
+        }
+
+        match mouse.kind {
+            MouseEventKind::Down(MouseButton::Left) => {
+                // Check method list click
+                if let Some(&idx) = self.method_regions.hit_test(mouse.column, mouse.row) {
+                    if let Some(method) = StorageMethod::from_index(idx) {
+                        self.state.method = method;
+                        self.state.menu_state.select(Some(idx));
+                        self.state.focus = StorageSetupFocus::MethodList;
+                        return Ok(ScreenAction::Refresh);
+                    }
+                }
+                // Check form field click
+                if let Some(&field_idx) = self.form_field_regions.hit_test(mouse.column, mouse.row)
+                {
+                    self.state.focus = StorageSetupFocus::Form;
+                    match self.state.method {
+                        StorageMethod::GitHub => {
+                            let field = match field_idx {
+                                0 => GitHubField::Token,
+                                1 => GitHubField::RepoName,
+                                2 => GitHubField::RepoPath,
+                                3 => GitHubField::Visibility,
+                                _ => return Ok(ScreenAction::None),
+                            };
+                            self.state.github_field = field;
+                        }
+                        StorageMethod::Local => {
+                            // Only one field in local mode
+                        }
+                    }
+                    return Ok(ScreenAction::Refresh);
+                }
+            }
+            MouseEventKind::ScrollUp => {
+                if let Some(area) = self.method_pane_area {
+                    if area.contains(ratatui::layout::Position::new(mouse.column, mouse.row)) {
+                        // Only 2 items, just move to previous
+                        if let Some(current) = self.state.menu_state.selected() {
+                            if current > 0 {
+                                self.state.menu_state.select(Some(current - 1));
+                                if let Some(m) = StorageMethod::from_index(current - 1) {
+                                    self.state.method = m;
+                                }
+                            }
+                        }
+                        return Ok(ScreenAction::Refresh);
+                    }
+                }
+            }
+            MouseEventKind::ScrollDown => {
+                if let Some(area) = self.method_pane_area {
+                    if area.contains(ratatui::layout::Position::new(mouse.column, mouse.row)) {
+                        if let Some(current) = self.state.menu_state.selected() {
+                            let max = StorageMethod::all().len().saturating_sub(1);
+                            if current < max {
+                                self.state.menu_state.select(Some(current + 1));
+                                if let Some(m) = StorageMethod::from_index(current + 1) {
+                                    self.state.method = m;
+                                }
+                            }
+                        }
+                        return Ok(ScreenAction::Refresh);
+                    }
+                }
+            }
+            _ => {}
+        }
+        Ok(ScreenAction::None)
     }
 
     /// Handle events when method list is focused
@@ -1206,19 +1307,17 @@ impl Screen for StorageSetupScreen {
     fn handle_event(&mut self, event: Event, ctx: &ScreenContext) -> Result<ScreenAction> {
         self.state.error_message = None;
 
-        if let Event::Key(key) = event {
-            if key.kind != KeyEventKind::Press {
-                return Ok(ScreenAction::None);
-            }
+        match event {
+            Event::Key(key) if key.kind == KeyEventKind::Press => {
+                let action = ctx.config.keymap.get_action(key.code, key.modifiers);
 
-            let action = ctx.config.keymap.get_action(key.code, key.modifiers);
-
-            match self.state.focus {
-                StorageSetupFocus::MethodList => self.handle_list_event(action),
-                StorageSetupFocus::Form => self.handle_form_event(key, ctx),
+                match self.state.focus {
+                    StorageSetupFocus::MethodList => self.handle_list_event(action),
+                    StorageSetupFocus::Form => self.handle_form_event(key, ctx),
+                }
             }
-        } else {
-            Ok(ScreenAction::None)
+            Event::Mouse(mouse) => self.handle_mouse_event(mouse),
+            _ => Ok(ScreenAction::None),
         }
     }
 

@@ -14,9 +14,10 @@ use crate::styles::{init_theme, theme, ThemeType};
 use crate::ui::Screen as ScreenId;
 use crate::utils::{
     create_split_layout, create_standard_layout, focused_border_style, unfocused_border_style,
+    MouseRegions,
 };
 use anyhow::Result;
-use crossterm::event::{Event, KeyEventKind};
+use crossterm::event::{Event, KeyEventKind, MouseButton, MouseEventKind};
 use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span, Text};
@@ -101,6 +102,14 @@ impl Default for SettingsState {
 /// Settings screen controller
 pub struct SettingsScreen {
     state: SettingsState,
+    /// Clickable regions for settings list items
+    settings_regions: MouseRegions<usize>,
+    /// Clickable regions for option items
+    option_regions: MouseRegions<usize>,
+    /// Area of the settings list pane (for scroll hit-testing)
+    list_pane_area: Option<Rect>,
+    /// Area of the options pane (for scroll hit-testing)
+    options_pane_area: Option<Rect>,
 }
 
 impl Default for SettingsScreen {
@@ -114,6 +123,10 @@ impl SettingsScreen {
     pub fn new() -> Self {
         Self {
             state: SettingsState::default(),
+            settings_regions: MouseRegions::new(),
+            option_regions: MouseRegions::new(),
+            list_pane_area: None,
+            options_pane_area: None,
         }
     }
 
@@ -432,6 +445,20 @@ impl SettingsScreen {
         let icons = Icons::from_config(config);
         let is_focused = self.state.focus == SettingsFocus::List;
 
+        // Store pane area and populate mouse regions
+        self.list_pane_area = Some(area);
+        self.settings_regions.clear();
+        let inner = Block::default().borders(Borders::ALL).inner(area);
+        let item_count = SettingItem::all(config.repo_mode).len();
+        let scroll_offset = self.state.list_state.offset();
+        for i in 0..item_count {
+            let visible_idx = i.saturating_sub(scroll_offset);
+            if i >= scroll_offset && (visible_idx as u16) < inner.height {
+                let row = Rect::new(inner.x, inner.y + visible_idx as u16, inner.width, 1);
+                self.settings_regions.add(row, i);
+            }
+        }
+
         let items: Vec<ListItem> = SettingItem::all(config.repo_mode)
             .iter()
             .map(|item| {
@@ -496,7 +523,7 @@ impl SettingsScreen {
         StatefulWidget::render(list, area, frame.buffer_mut(), &mut self.state.list_state);
     }
 
-    fn render_options_pane(&self, frame: &mut Frame, area: Rect, config: &Config) {
+    fn render_options_pane(&mut self, frame: &mut Frame, area: Rect, config: &Config) {
         let t = theme();
         let is_focused = self.state.focus == SettingsFocus::Options;
 
@@ -506,9 +533,27 @@ impl SettingsScreen {
             .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
             .split(area);
 
+        // Store pane area and populate option regions
+        self.options_pane_area = Some(chunks[0]);
+        self.option_regions.clear();
+
         // Render options
         let options = self.get_options(config);
         let icons = Icons::from_config(config);
+
+        // Populate option click regions (each option is 1 line inside the block)
+        let options_inner = Block::default().borders(Borders::ALL).inner(chunks[0]);
+        for i in 0..options.len() {
+            if (i as u16) < options_inner.height {
+                let row = Rect::new(
+                    options_inner.x,
+                    options_inner.y + i as u16,
+                    options_inner.width,
+                    1,
+                );
+                self.option_regions.add(row, i);
+            }
+        }
 
         let option_lines: Vec<Line> = options
             .iter()
@@ -607,68 +652,68 @@ impl Screen for SettingsScreen {
     }
 
     fn handle_event(&mut self, event: Event, ctx: &ScreenContext) -> Result<ScreenAction> {
-        if let Event::Key(key) = event {
-            if key.kind != KeyEventKind::Press {
-                return Ok(ScreenAction::None);
-            }
+        match event {
+            Event::Key(key) if key.kind == KeyEventKind::Press => {
+                let action = ctx.config.keymap.get_action(key.code, key.modifiers);
 
-            let action = ctx.config.keymap.get_action(key.code, key.modifiers);
-
-            if let Some(action) = action {
-                match self.state.focus {
-                    SettingsFocus::List => match action {
-                        Action::MoveUp => {
-                            self.state.list_state.select_previous();
-                            // Update option index to current selection
-                            self.state.option_index = self.current_option_index(ctx.config);
-                        }
-                        Action::MoveDown => {
-                            self.state.list_state.select_next();
-                            self.state.option_index = self.current_option_index(ctx.config);
-                        }
-                        Action::Confirm | Action::NextTab | Action::MoveRight => {
-                            self.state.focus = SettingsFocus::Options;
-                            self.state.option_index = self.current_option_index(ctx.config);
-                        }
-                        Action::Cancel | Action::Quit => {
-                            return Ok(ScreenAction::Navigate(ScreenId::MainMenu));
-                        }
-                        _ => {}
-                    },
-                    SettingsFocus::Options => {
-                        let options = self.get_options(ctx.config);
-                        match action {
+                if let Some(action) = action {
+                    match self.state.focus {
+                        SettingsFocus::List => match action {
                             Action::MoveUp => {
-                                if self.state.option_index > 0 {
-                                    self.state.option_index -= 1;
-                                }
+                                self.state.list_state.select_previous();
+                                self.state.option_index = self.current_option_index(ctx.config);
                             }
                             Action::MoveDown => {
-                                if self.state.option_index < options.len().saturating_sub(1) {
-                                    self.state.option_index += 1;
-                                }
+                                self.state.list_state.select_next();
+                                self.state.option_index = self.current_option_index(ctx.config);
                             }
-                            Action::Confirm => {
-                                // Apply the selected option
-                                return Ok(ScreenAction::UpdateSetting {
-                                    setting: self
-                                        .selected_setting(ctx.config.repo_mode)
-                                        .map(|s| s.name().to_string())
-                                        .unwrap_or_default(),
-                                    option_index: self.state.option_index,
-                                });
+                            Action::Confirm | Action::NextTab | Action::MoveRight => {
+                                self.state.focus = SettingsFocus::Options;
+                                self.state.option_index = self.current_option_index(ctx.config);
                             }
-                            Action::NextTab | Action::MoveLeft | Action::Cancel => {
-                                self.state.focus = SettingsFocus::List;
-                            }
-                            Action::Quit => {
+                            Action::Cancel | Action::Quit => {
                                 return Ok(ScreenAction::Navigate(ScreenId::MainMenu));
                             }
                             _ => {}
+                        },
+                        SettingsFocus::Options => {
+                            let options = self.get_options(ctx.config);
+                            match action {
+                                Action::MoveUp => {
+                                    if self.state.option_index > 0 {
+                                        self.state.option_index -= 1;
+                                    }
+                                }
+                                Action::MoveDown => {
+                                    if self.state.option_index < options.len().saturating_sub(1) {
+                                        self.state.option_index += 1;
+                                    }
+                                }
+                                Action::Confirm => {
+                                    return Ok(ScreenAction::UpdateSetting {
+                                        setting: self
+                                            .selected_setting(ctx.config.repo_mode)
+                                            .map(|s| s.name().to_string())
+                                            .unwrap_or_default(),
+                                        option_index: self.state.option_index,
+                                    });
+                                }
+                                Action::NextTab | Action::MoveLeft | Action::Cancel => {
+                                    self.state.focus = SettingsFocus::List;
+                                }
+                                Action::Quit => {
+                                    return Ok(ScreenAction::Navigate(ScreenId::MainMenu));
+                                }
+                                _ => {}
+                            }
                         }
                     }
                 }
             }
+            Event::Mouse(mouse) => {
+                return self.handle_mouse_event(mouse, ctx);
+            }
+            _ => {}
         }
 
         Ok(ScreenAction::None)
@@ -684,5 +729,77 @@ impl Screen for SettingsScreen {
         self.state.focus = SettingsFocus::List;
         self.state.option_index = 0;
         Ok(())
+    }
+}
+
+impl SettingsScreen {
+    fn handle_mouse_event(
+        &mut self,
+        mouse: crossterm::event::MouseEvent,
+        ctx: &ScreenContext,
+    ) -> Result<ScreenAction> {
+        match mouse.kind {
+            MouseEventKind::Down(MouseButton::Left) => {
+                // Check settings list click
+                if let Some(&idx) = self.settings_regions.hit_test(mouse.column, mouse.row) {
+                    self.state.list_state.select(Some(idx));
+                    self.state.focus = SettingsFocus::List;
+                    self.state.option_index = self.current_option_index(ctx.config);
+                    return Ok(ScreenAction::Refresh);
+                }
+                // Check options click
+                if let Some(&idx) = self.option_regions.hit_test(mouse.column, mouse.row) {
+                    self.state.focus = SettingsFocus::Options;
+                    self.state.option_index = idx;
+                    // Apply immediately on click
+                    return Ok(ScreenAction::UpdateSetting {
+                        setting: self
+                            .selected_setting(ctx.config.repo_mode)
+                            .map(|s| s.name().to_string())
+                            .unwrap_or_default(),
+                        option_index: idx,
+                    });
+                }
+            }
+            MouseEventKind::ScrollUp => {
+                if let Some(area) = self.list_pane_area {
+                    if area.contains(ratatui::layout::Position::new(mouse.column, mouse.row)) {
+                        for _ in 0..3 {
+                            self.state.list_state.select_previous();
+                        }
+                        self.state.option_index = self.current_option_index(ctx.config);
+                        return Ok(ScreenAction::Refresh);
+                    }
+                }
+                if let Some(area) = self.options_pane_area {
+                    if area.contains(ratatui::layout::Position::new(mouse.column, mouse.row)) {
+                        self.state.focus = SettingsFocus::Options;
+                        self.state.option_index = self.state.option_index.saturating_sub(3);
+                        return Ok(ScreenAction::Refresh);
+                    }
+                }
+            }
+            MouseEventKind::ScrollDown => {
+                if let Some(area) = self.list_pane_area {
+                    if area.contains(ratatui::layout::Position::new(mouse.column, mouse.row)) {
+                        for _ in 0..3 {
+                            self.state.list_state.select_next();
+                        }
+                        self.state.option_index = self.current_option_index(ctx.config);
+                        return Ok(ScreenAction::Refresh);
+                    }
+                }
+                if let Some(area) = self.options_pane_area {
+                    if area.contains(ratatui::layout::Position::new(mouse.column, mouse.row)) {
+                        self.state.focus = SettingsFocus::Options;
+                        let max = self.get_options(ctx.config).len().saturating_sub(1);
+                        self.state.option_index = (self.state.option_index + 3).min(max);
+                        return Ok(ScreenAction::Refresh);
+                    }
+                }
+            }
+            _ => {}
+        }
+        Ok(ScreenAction::None)
     }
 }

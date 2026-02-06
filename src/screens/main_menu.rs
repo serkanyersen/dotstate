@@ -10,7 +10,7 @@ use crate::icons::Icons;
 use crate::screens::screen_trait::{RenderContext, Screen, ScreenAction, ScreenContext};
 use crate::styles::theme;
 use crate::ui::Screen as ScreenId;
-use crate::utils::create_standard_layout;
+use crate::utils::{create_standard_layout, MouseRegions};
 use crate::version_check::UpdateInfo;
 use crate::widgets::{Menu, MenuItem as MenuWidgetItem, MenuState};
 use anyhow::Result;
@@ -426,8 +426,8 @@ use crate::services::git_service::GitStatus;
 pub struct MainMenuScreen {
     selected_item: MenuItem,
     menu_state: MenuState,
-    /// Clickable areas: (rect, `MenuItem`)
-    clickable_areas: Vec<(Rect, MenuItem)>,
+    /// Clickable areas for menu items
+    clickable_areas: MouseRegions<MenuItem>,
     /// Clickable area for update notification (shown as last menu item)
     update_clickable_area: Option<Rect>,
     /// Config for displaying stats
@@ -454,7 +454,7 @@ impl MainMenuScreen {
         Self {
             selected_item: default_item,
             menu_state,
-            clickable_areas: Vec::new(),
+            clickable_areas: MouseRegions::new(),
             update_clickable_area: None,
             config: None,
             git_status: GitStatus::default(),
@@ -484,7 +484,7 @@ impl MainMenuScreen {
         Self {
             selected_item: default_item,
             menu_state,
-            clickable_areas: Vec::new(),
+            clickable_areas: MouseRegions::new(),
             update_clickable_area: None,
             config: Some(config.clone()),
             git_status,
@@ -873,10 +873,10 @@ impl MainMenuScreen {
 
         // Store clickable areas (3 lines per item)
         self.clickable_areas.clear();
-        let clickable_areas = menu.clickable_areas(menu_inner);
-        for (rect, index) in clickable_areas {
+        let raw_clickable_areas = menu.clickable_areas(menu_inner);
+        for (rect, index) in raw_clickable_areas {
             if index < menu_items.len() {
-                self.clickable_areas.push((rect, menu_items[index]));
+                self.clickable_areas.add(rect, menu_items[index]);
             } else {
                 // This is the update item
                 self.update_clickable_area = Some(rect);
@@ -1115,18 +1115,8 @@ impl MainMenuScreen {
                     }
 
                     // Check if click is in any menu clickable area
-                    let clicked_menu_item = self
-                        .clickable_areas
-                        .iter()
-                        .find(|(rect, _)| {
-                            mouse.column >= rect.x
-                                && mouse.column < rect.x + rect.width
-                                && mouse.row >= rect.y
-                                && mouse.row < rect.y + rect.height
-                        })
-                        .map(|(_, menu_item)| *menu_item);
-
-                    if let Some(menu_item) = clicked_menu_item {
+                    if let Some(&menu_item) = self.clickable_areas.hit_test(mouse.column, mouse.row)
+                    {
                         self.set_selected_item(menu_item);
                         // Only trigger action if item is enabled
                         if menu_item.is_enabled(is_setup) {

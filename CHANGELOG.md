@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Mouse**: Comprehensive mouse support across all screens — click to select items, click to focus panes, scroll wheel navigates lists and previews
+- **Mouse**: `MouseRegions<T>` utility for consistent hit-testing of clickable areas
+- **Mouse**: File browser component supports click-to-focus path input, file list, and preview panes
+- **Mouse**: Popup dialogs support click-to-focus fields — Profile Create (Name/Description/CopyFrom), Package Add/Edit (all fields), Package Import (tabs/filter/list with scroll)
 - **Themes**: Gruvbox Dark and Light themes - warm, retro colors popular with Vim/Neovim users
 - **Themes**: Catppuccin Mocha (dark) and Latte (light) themes - pastel aesthetic
 - **Themes**: Tokyo Night (dark) and Light themes - modern city-lights inspired palette

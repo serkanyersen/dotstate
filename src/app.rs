@@ -678,6 +678,19 @@ impl App {
         }
 
         // Handle help overlay interactions
+        if self.ui_state.show_help_overlay && matches!(event, Event::Mouse(_)) {
+            // Any mouse click closes the help overlay
+            if let Event::Mouse(mouse) = event {
+                if matches!(
+                    mouse.kind,
+                    crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left)
+                ) {
+                    self.ui_state.show_help_overlay = false;
+                }
+            }
+            return Ok(());
+        }
+
         if self.ui_state.show_help_overlay
             && matches!(event, Event::Key(k) if k.kind == KeyEventKind::Press)
         {
@@ -717,8 +730,8 @@ impl App {
 
         // Handle dialog events - scroll with up/down, dismiss with Enter/Esc
         if let Some(ref mut dialog) = self.dialog_state {
-            if let Event::Key(key) = event {
-                if key.kind == KeyEventKind::Press {
+            match event {
+                Event::Key(key) if key.kind == KeyEventKind::Press => {
                     match key.code {
                         KeyCode::Up | KeyCode::Char('k') => {
                             dialog.scroll_offset = dialog.scroll_offset.saturating_sub(1);
@@ -742,14 +755,30 @@ impl App {
                         _ => {}
                     }
                 }
+                Event::Mouse(mouse) => {
+                    use crossterm::event::{MouseButton, MouseEventKind};
+                    match mouse.kind {
+                        MouseEventKind::ScrollUp => {
+                            dialog.scroll_offset = dialog.scroll_offset.saturating_sub(3);
+                        }
+                        MouseEventKind::ScrollDown => {
+                            dialog.scroll_offset = dialog.scroll_offset.saturating_add(3);
+                        }
+                        MouseEventKind::Down(MouseButton::Left) => {
+                            self.dialog_state = None;
+                        }
+                        _ => {}
+                    }
+                }
+                _ => {}
             }
             return Ok(());
         }
 
         // Handle profile selection popup events
         if self.profile_selection_popup.is_visible() {
-            if let Event::Key(key) = event {
-                if key.kind == KeyEventKind::Press {
+            match event {
+                Event::Key(key) if key.kind == KeyEventKind::Press => {
                     if let Some(result) = self.profile_selection_popup.handle_key(
                         key.code,
                         key.modifiers,
@@ -758,6 +787,12 @@ impl App {
                         self.handle_profile_selection_result(result)?;
                     }
                 }
+                Event::Mouse(mouse) => {
+                    if let Some(result) = self.profile_selection_popup.handle_mouse(mouse) {
+                        self.handle_profile_selection_result(result)?;
+                    }
+                }
+                _ => {}
             }
             return Ok(());
         }

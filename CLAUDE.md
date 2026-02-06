@@ -43,6 +43,7 @@ src/
 5. **Guard text input focus** - At the top of `handle_event`, check `is_text_input_focused()` before matching actions, or 'q' will quit instead of typing
 6. **After modifying common files** in manifest, always call `ProfileService::ensure_common_symlinks()`
 7. **Validate before syncing directories** - `validate_before_sync()` must run before `copy_dir_all()` (circular symlinks cause crashes)
+8. **Mouse support is required** - All new screens, popups, and interactive components must support mouse click-to-focus/select and scroll. Store `Rect` areas during `render()`, hit-test in `handle_event()`. Block background interactions when popups are open.
 
 ## Post-Task Checklist
 

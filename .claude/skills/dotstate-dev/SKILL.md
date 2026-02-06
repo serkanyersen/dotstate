@@ -278,6 +278,121 @@ fn tick(&mut self) -> Result<ScreenAction> {
 }
 ```
 
+## Mouse Support
+
+All screens, popups, and interactive components **must** support mouse interactions. The pattern: store `Rect` areas during `render()`, hit-test them in `handle_event()` on `Event::Mouse`.
+
+### MouseRegions Utility
+
+```rust
+use crate::utils::MouseRegions;
+
+// In your screen struct:
+mouse_regions: MouseRegions<usize>,  // value type = what a click resolves to
+
+// In render():
+self.mouse_regions.clear();
+for (i, item) in items.iter().enumerate() {
+    let row_area = Rect::new(inner.x, inner.y + i as u16, inner.width, 1);
+    self.mouse_regions.add(row_area, i);
+}
+
+// In handle_event():
+Event::Mouse(mouse) => {
+    if let MouseEventKind::Down(MouseButton::Left) = mouse.kind {
+        if let Some(&idx) = self.mouse_regions.hit_test(mouse.column, mouse.row) {
+            self.state.list_state.select(Some(idx));
+            return Ok(ScreenAction::Refresh);
+        }
+    }
+}
+```
+
+### Popup Field Click-to-Focus
+
+For popups with multiple input fields, store each field's `Rect` during render and set focus on click:
+
+```rust
+// In render (store areas):
+self.field_areas.clear();
+self.field_areas.push((chunks[1], MyField::Name));
+self.field_areas.push((chunks[2], MyField::Description));
+
+// In handle_event (hit-test):
+let pos = Position::new(mouse.column, mouse.row);
+for &(area, field) in &self.field_areas {
+    if area.contains(pos) {
+        self.state.focused_field = field;
+        return Ok(ScreenAction::Refresh);
+    }
+}
+```
+
+### Critical: Block Background When Popups Are Open
+
+When a popup/overlay is active, **all mouse events on the background must be blocked** — no clicks on background lists, no scroll on background content:
+
+```rust
+fn handle_mouse_event(&mut self, mouse: MouseEvent) -> ScreenAction {
+    let popup_open = self.state.popup_type != PopupType::None;
+
+    match mouse.kind {
+        MouseEventKind::Down(MouseButton::Left) => {
+            // Handle popup clicks FIRST
+            if popup_open {
+                // ... popup field hit-testing ...
+                return ScreenAction::None; // consume click, don't fall through
+            }
+            // Background list clicks only when no popup
+            if let Some(&idx) = self.mouse_regions.hit_test(mouse.column, mouse.row) { ... }
+        }
+        MouseEventKind::ScrollUp if !popup_open => { /* background scroll */ }
+        MouseEventKind::ScrollDown if !popup_open => { /* background scroll */ }
+        _ => {}
+    }
+}
+```
+
+### Scroll Support
+
+For scrollable areas, handle `ScrollUp`/`ScrollDown` with area hit-testing:
+
+```rust
+MouseEventKind::ScrollDown => {
+    if let Some(area) = self.list_area {
+        let pos = Position::new(mouse.column, mouse.row);
+        if area.contains(pos) {
+            // Scroll 3 items per tick for comfortable speed
+            let current = self.state.list_state.selected().unwrap_or(0);
+            let new_idx = (current + 3).min(total.saturating_sub(1));
+            self.state.list_state.select(Some(new_idx));
+        }
+    }
+}
+```
+
+### Mouse Event Routing in handle_event
+
+Ensure `Event::Mouse` is routed for both main screen and popup states:
+
+```rust
+fn handle_event(&mut self, event: Event, ctx: &ScreenContext) -> Result<ScreenAction> {
+    if self.state.popup_type != PopupType::None {
+        match event {
+            Event::Key(key) => { /* popup key handling */ }
+            Event::Mouse(mouse) => { /* popup mouse handling */ }
+            _ => {}
+        }
+        return Ok(ScreenAction::None);
+    }
+    match event {
+        Event::Key(key) => { /* main key handling */ }
+        Event::Mouse(mouse) => { /* main mouse handling */ }
+        _ => {}
+    }
+}
+```
+
 ## Error Handling
 
 ```rust
@@ -301,3 +416,6 @@ return Ok(ScreenAction::ShowMessage {
 5. Syncing directories without validation (circular symlinks crash)
 6. Forgetting CHANGELOG updates for user-visible changes
 7. Skipping `cargo fmt && cargo clippy` before committing
+8. Missing mouse support on new screens/popups (all interactive elements need click + scroll)
+9. Not blocking background mouse events when a popup is open (scroll/click bleeds through)
+10. Not routing `Event::Mouse` in popup event handlers (only handling `Event::Key`)

@@ -12,11 +12,12 @@ use crate::config::Config;
 use crate::keymap::Action;
 use crate::styles::{theme as ui_theme, LIST_HIGHLIGHT_SYMBOL};
 use crate::utils::list_navigation::ListStateExt;
+use crate::utils::mouse::MouseRegions;
 use crate::utils::style::{focused_border_style, unfocused_border_style};
 use crate::utils::text_input::TextInput;
 use crate::widgets::text_input::{TextInputWidget, TextInputWidgetExt};
 use anyhow::Result;
-use crossterm::event::{Event, KeyCode, KeyEventKind};
+use crossterm::event::{Event, KeyCode, KeyEventKind, MouseButton, MouseEventKind};
 use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use ratatui::widgets::{
     Block, Borders, List, ListItem, ListState, Paragraph, Scrollbar, ScrollbarOrientation,
@@ -74,6 +75,14 @@ pub struct FileBrowser {
     pub preview_scroll: usize,
     /// Which pane currently has focus
     pub focus: FileBrowserFocus,
+    /// Mouse regions for file list items (value = entry index)
+    mouse_regions: MouseRegions<usize>,
+    /// Stored list pane area for scroll hit-testing
+    list_pane_area: Option<Rect>,
+    /// Stored preview pane area for scroll hit-testing
+    preview_pane_area: Option<Rect>,
+    /// Stored path input area for click-to-focus
+    path_input_area: Option<Rect>,
 }
 
 impl Default for FileBrowser {
@@ -95,6 +104,10 @@ impl FileBrowser {
             path_input: TextInput::new(),
             preview_scroll: 0,
             focus: FileBrowserFocus::List,
+            mouse_regions: MouseRegions::new(),
+            list_pane_area: None,
+            preview_pane_area: None,
+            path_input_area: None,
         }
     }
 
@@ -184,22 +197,28 @@ impl FileBrowser {
             return Ok(FileBrowserResult::None);
         }
 
-        if let Event::Key(key) = event {
-            if key.kind != KeyEventKind::Press {
-                return Ok(FileBrowserResult::None);
-            }
+        match event {
+            Event::Key(key) => {
+                if key.kind != KeyEventKind::Press {
+                    return Ok(FileBrowserResult::None);
+                }
 
-            match self.focus {
-                FileBrowserFocus::PathInput => {
-                    return self.handle_path_input(key.code, config);
-                }
-                FileBrowserFocus::List => {
-                    return self.handle_list_navigation(key.code, config);
-                }
-                FileBrowserFocus::Preview => {
-                    return self.handle_preview_navigation(key.code, config);
+                match self.focus {
+                    FileBrowserFocus::PathInput => {
+                        return self.handle_path_input(key.code, config);
+                    }
+                    FileBrowserFocus::List => {
+                        return self.handle_list_navigation(key.code, config);
+                    }
+                    FileBrowserFocus::Preview => {
+                        return self.handle_preview_navigation(key.code, config);
+                    }
                 }
             }
+            Event::Mouse(mouse) => {
+                return self.handle_mouse_event(mouse, config);
+            }
+            _ => {}
         }
 
         Ok(FileBrowserResult::None)
@@ -449,6 +468,96 @@ impl FileBrowser {
         Ok(FileBrowserResult::None)
     }
 
+    /// Handle mouse events for the file browser
+    fn handle_mouse_event(
+        &mut self,
+        mouse: crossterm::event::MouseEvent,
+        _config: &Config,
+    ) -> Result<FileBrowserResult> {
+        let pos = ratatui::layout::Position::new(mouse.column, mouse.row);
+
+        match mouse.kind {
+            MouseEventKind::Down(MouseButton::Left) => {
+                // Click on file list item
+                if let Some(&idx) = self.mouse_regions.hit_test(mouse.column, mouse.row) {
+                    self.list_state.select(Some(idx));
+                    self.preview_scroll = 0;
+                    self.focus = FileBrowserFocus::List;
+                    // Update scrollbar
+                    self.scrollbar_state = self.scrollbar_state.position(idx);
+                    return Ok(FileBrowserResult::None);
+                }
+
+                // Click on path input
+                if let Some(area) = self.path_input_area {
+                    if area.contains(pos) {
+                        self.focus = FileBrowserFocus::PathInput;
+                        return Ok(FileBrowserResult::None);
+                    }
+                }
+
+                // Click on preview
+                if let Some(area) = self.preview_pane_area {
+                    if area.contains(pos) {
+                        self.focus = FileBrowserFocus::Preview;
+                        return Ok(FileBrowserResult::None);
+                    }
+                }
+
+                // Click on list pane (but not item)
+                if let Some(area) = self.list_pane_area {
+                    if area.contains(pos) {
+                        self.focus = FileBrowserFocus::List;
+                        return Ok(FileBrowserResult::None);
+                    }
+                }
+            }
+            MouseEventKind::ScrollDown => {
+                if let Some(area) = self.list_pane_area {
+                    if area.contains(pos) {
+                        for _ in 0..3 {
+                            self.list_state.select_next();
+                        }
+                        self.preview_scroll = 0;
+                        if let Some(selected) = self.list_state.selected() {
+                            self.scrollbar_state = self.scrollbar_state.position(selected);
+                        }
+                        return Ok(FileBrowserResult::None);
+                    }
+                }
+                if let Some(area) = self.preview_pane_area {
+                    if area.contains(pos) {
+                        self.preview_scroll = self.preview_scroll.saturating_add(3);
+                        return Ok(FileBrowserResult::None);
+                    }
+                }
+            }
+            MouseEventKind::ScrollUp => {
+                if let Some(area) = self.list_pane_area {
+                    if area.contains(pos) {
+                        for _ in 0..3 {
+                            self.list_state.select_previous();
+                        }
+                        self.preview_scroll = 0;
+                        if let Some(selected) = self.list_state.selected() {
+                            self.scrollbar_state = self.scrollbar_state.position(selected);
+                        }
+                        return Ok(FileBrowserResult::None);
+                    }
+                }
+                if let Some(area) = self.preview_pane_area {
+                    if area.contains(pos) {
+                        self.preview_scroll = self.preview_scroll.saturating_sub(3);
+                        return Ok(FileBrowserResult::None);
+                    }
+                }
+            }
+            _ => {}
+        }
+
+        Ok(FileBrowserResult::None)
+    }
+
     /// Render the file browser
     #[allow(clippy::too_many_arguments)]
     pub fn render(
@@ -505,6 +614,7 @@ impl FileBrowser {
         frame.render_widget(path_display, chunks[0]);
 
         // Path input field
+        self.path_input_area = Some(chunks[1]);
         let widget = TextInputWidget::new(&self.path_input)
             .title("Path Input")
             .focused(self.focus == FileBrowserFocus::PathInput);
@@ -518,6 +628,9 @@ impl FileBrowser {
 
         // Render file list
         self.render_list(frame, list_preview_chunks[0], config);
+
+        // Store preview area
+        self.preview_pane_area = Some(list_preview_chunks[1]);
 
         // Render preview
         self.render_preview(frame, list_preview_chunks[1], syntax_set, theme, config)?;
@@ -582,6 +695,23 @@ impl FileBrowser {
             .highlight_symbol(LIST_HIGHLIGHT_SYMBOL);
 
         StatefulWidget::render(list, area, frame.buffer_mut(), &mut self.list_state);
+
+        // Populate mouse regions
+        self.list_pane_area = Some(area);
+        self.mouse_regions.clear();
+        let inner = Block::default().borders(Borders::ALL).inner(area);
+        let scroll_offset = self.list_state.offset();
+        for i in 0..self.entries.len() {
+            if i < scroll_offset {
+                continue;
+            }
+            let visible_row = (i - scroll_offset) as u16;
+            if visible_row >= inner.height {
+                break;
+            }
+            let row_area = Rect::new(inner.x, inner.y + visible_row, inner.width, 1);
+            self.mouse_regions.add(row_area, i);
+        }
 
         // Render scrollbar
         frame.render_stateful_widget(

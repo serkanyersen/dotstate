@@ -12,10 +12,12 @@ use crate::ui::{
 use crate::utils::package_installer::PackageInstaller;
 use crate::utils::package_manager::PackageManagerImpl;
 use crate::utils::profile_manifest::{Package, PackageManager};
-use crate::utils::{create_standard_layout, focused_border_style, unfocused_border_style};
+use crate::utils::{
+    create_standard_layout, focused_border_style, unfocused_border_style, MouseRegions,
+};
 use crate::widgets::{TextInputWidget, TextInputWidgetExt};
 use anyhow::Result;
-use crossterm::event::{Event, KeyCode, KeyModifiers};
+use crossterm::event::{Event, KeyCode, KeyModifiers, MouseButton, MouseEventKind};
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, List, ListItem, Padding, Paragraph, Tabs, Wrap};
 use std::time::Duration;
@@ -23,6 +25,20 @@ use tracing::{debug, error, info, warn};
 
 pub struct ManagePackagesScreen {
     pub state: PackageManagerState,
+    /// Mouse regions for package list items (value = package index)
+    mouse_regions: MouseRegions<usize>,
+    /// Stored list pane area for scroll hit-testing
+    list_pane_area: Option<Rect>,
+    /// Add/Edit popup: clickable field areas (area, field) for click-to-focus
+    add_field_areas: Vec<(Rect, AddPackageField)>,
+    /// Import popup: tabs area for click-to-switch-tab
+    import_tabs_area: Option<Rect>,
+    /// Import popup: filter input area for click-to-focus
+    import_filter_area: Option<Rect>,
+    /// Import popup: list area for click/scroll
+    import_list_area: Option<Rect>,
+    /// Import popup: clickable list item regions (value = filtered index)
+    import_list_regions: MouseRegions<usize>,
 }
 
 impl Default for ManagePackagesScreen {
@@ -36,6 +52,13 @@ impl ManagePackagesScreen {
     pub fn new() -> Self {
         Self {
             state: PackageManagerState::default(),
+            mouse_regions: MouseRegions::new(),
+            list_pane_area: None,
+            add_field_areas: Vec::new(),
+            import_tabs_area: None,
+            import_filter_area: None,
+            import_list_area: None,
+            import_list_regions: MouseRegions::new(),
         }
     }
 
@@ -555,47 +578,57 @@ impl Screen for ManagePackagesScreen {
             return Ok(ScreenAction::None);
         }
 
-        if let Event::Key(key) = event {
-            // Handle Popups
-            match self.state.popup_type {
-                PackagePopupType::Add | PackagePopupType::Edit => {
-                    return self.handle_add_edit_popup_event(key, config);
-                }
-                PackagePopupType::Delete => {
-                    return self.handle_delete_popup_event(key, config);
-                }
-                PackagePopupType::InstallMissing => {
-                    // Just a list/info popup usually?
-                    // In app.rs "Install Missing" wasn't a popup type with input, it was an Action that triggered logic.
-                    // But `PackagePopupType::InstallMissing` exists in enum. Let's see if it's used.
-                    // It is rendered in component.
-                    // If it's a confirmation popup for install missing:
-                    if let Some(action) = self.get_action(key.code, key.modifiers, &config.keymap) {
-                        match action {
-                            Action::Confirm => {
-                                // Start installation
-                                self.state.popup_type = PackagePopupType::None;
-                                return Ok(ScreenAction::InstallMissingPackages);
+        // Popups consume all events
+        if self.state.popup_type != PackagePopupType::None {
+            match event {
+                Event::Key(key) => match self.state.popup_type {
+                    PackagePopupType::Add | PackagePopupType::Edit => {
+                        return self.handle_add_edit_popup_event(key, config);
+                    }
+                    PackagePopupType::Delete => {
+                        return self.handle_delete_popup_event(key, config);
+                    }
+                    PackagePopupType::InstallMissing => {
+                        if let Some(action) =
+                            self.get_action(key.code, key.modifiers, &config.keymap)
+                        {
+                            match action {
+                                Action::Confirm => {
+                                    self.state.popup_type = PackagePopupType::None;
+                                    return Ok(ScreenAction::InstallMissingPackages);
+                                }
+                                Action::Cancel | Action::Quit => {
+                                    self.state.popup_type = PackagePopupType::None;
+                                    return Ok(ScreenAction::Refresh);
+                                }
+                                _ => {}
                             }
-                            Action::Cancel | Action::Quit => {
-                                self.state.popup_type = PackagePopupType::None;
-                                return Ok(ScreenAction::Refresh);
-                            }
-                            _ => {}
                         }
+                        return Ok(ScreenAction::None);
                     }
-                    return Ok(ScreenAction::None);
-                }
-                PackagePopupType::Import => {
-                    return self.handle_import_popup_event(key, config);
-                }
-                PackagePopupType::None => {
-                    // Normal list navigation
-                    if let Some(action) = self.get_action(key.code, key.modifiers, &config.keymap) {
-                        return self.handle_main_list_action(action);
+                    PackagePopupType::Import => {
+                        return self.handle_import_popup_event(key, config);
                     }
+                    PackagePopupType::None => unreachable!(),
+                },
+                Event::Mouse(mouse) => {
+                    return self.handle_popup_mouse_event(mouse);
+                }
+                _ => {}
+            }
+            return Ok(ScreenAction::None);
+        }
+
+        match event {
+            Event::Key(key) => {
+                if let Some(action) = self.get_action(key.code, key.modifiers, &config.keymap) {
+                    return self.handle_main_list_action(action);
                 }
             }
+            Event::Mouse(mouse) => {
+                return self.handle_mouse_event(mouse);
+            }
+            _ => {}
         }
         Ok(ScreenAction::None)
     }
@@ -612,6 +645,145 @@ impl Screen for ManagePackagesScreen {
 }
 
 impl ManagePackagesScreen {
+    fn handle_mouse_event(&mut self, mouse: crossterm::event::MouseEvent) -> Result<ScreenAction> {
+        match mouse.kind {
+            MouseEventKind::Down(MouseButton::Left) => {
+                if let Some(&idx) = self.mouse_regions.hit_test(mouse.column, mouse.row) {
+                    if !self.state.is_checking {
+                        self.state.list_state.select(Some(idx));
+                        return Ok(ScreenAction::Refresh);
+                    }
+                }
+            }
+            MouseEventKind::ScrollDown => {
+                if let Some(area) = self.list_pane_area {
+                    let pos = ratatui::layout::Position::new(mouse.column, mouse.row);
+                    if area.contains(pos) && !self.state.is_checking {
+                        for _ in 0..3 {
+                            self.state.list_state.select_next();
+                        }
+                        return Ok(ScreenAction::Refresh);
+                    }
+                }
+            }
+            MouseEventKind::ScrollUp => {
+                if let Some(area) = self.list_pane_area {
+                    let pos = ratatui::layout::Position::new(mouse.column, mouse.row);
+                    if area.contains(pos) && !self.state.is_checking {
+                        for _ in 0..3 {
+                            self.state.list_state.select_previous();
+                        }
+                        return Ok(ScreenAction::Refresh);
+                    }
+                }
+            }
+            _ => {}
+        }
+        Ok(ScreenAction::None)
+    }
+
+    fn handle_popup_mouse_event(
+        &mut self,
+        mouse: crossterm::event::MouseEvent,
+    ) -> Result<ScreenAction> {
+        use crate::ui::ImportFocus;
+
+        let pos = ratatui::layout::Position::new(mouse.column, mouse.row);
+
+        match self.state.popup_type {
+            PackagePopupType::Add | PackagePopupType::Edit => {
+                if let MouseEventKind::Down(MouseButton::Left) = mouse.kind {
+                    for &(area, field) in &self.add_field_areas {
+                        if area.contains(pos) {
+                            self.state.add_focused_field = field;
+                            return Ok(ScreenAction::Refresh);
+                        }
+                    }
+                }
+            }
+            PackagePopupType::Import => match mouse.kind {
+                MouseEventKind::Down(MouseButton::Left) => {
+                    // Click on tabs area → focus tabs and select tab by x-position
+                    if let Some(area) = self.import_tabs_area {
+                        if area.contains(pos) {
+                            self.state.import_focus = ImportFocus::Tabs;
+                            // Calculate which tab was clicked based on x-position
+                            // Each tab label is "  {name}  " with " " divider
+                            let mut x_offset = area.x;
+                            for (i, source) in
+                                self.state.import_available_sources.iter().enumerate()
+                            {
+                                let tab_width = (source.display_name().len() + 4) as u16; // "  name  "
+                                let divider_width = if i > 0 { 1 } else { 0 }; // " " divider
+                                let start = x_offset + divider_width;
+                                let end = start + tab_width;
+                                if mouse.column >= start && mouse.column < end {
+                                    if i != self.state.import_active_tab {
+                                        self.switch_import_tab(i);
+                                    }
+                                    return Ok(ScreenAction::Refresh);
+                                }
+                                x_offset = end;
+                            }
+                            return Ok(ScreenAction::Refresh);
+                        }
+                    }
+                    // Click on filter area → focus filter
+                    if let Some(area) = self.import_filter_area {
+                        if area.contains(pos) {
+                            self.state.import_focus = ImportFocus::Filter;
+                            return Ok(ScreenAction::Refresh);
+                        }
+                    }
+                    // Click on list item → focus list and select item
+                    if let Some(&filtered_idx) =
+                        self.import_list_regions.hit_test(mouse.column, mouse.row)
+                    {
+                        self.state.import_focus = ImportFocus::List;
+                        self.state.import_list_state.select(Some(filtered_idx));
+                        return Ok(ScreenAction::Refresh);
+                    }
+                    // Click anywhere in list area → focus list
+                    if let Some(area) = self.import_list_area {
+                        if area.contains(pos) {
+                            self.state.import_focus = ImportFocus::List;
+                            return Ok(ScreenAction::Refresh);
+                        }
+                    }
+                }
+                MouseEventKind::ScrollDown => {
+                    if let Some(area) = self.import_list_area {
+                        if area.contains(pos) {
+                            self.state.import_focus = ImportFocus::List;
+                            let filtered = self.get_filtered_import_packages();
+                            if !filtered.is_empty() {
+                                let current = self.state.import_list_state.selected().unwrap_or(0);
+                                let new_idx = (current + 3).min(filtered.len().saturating_sub(1));
+                                self.state.import_list_state.select(Some(new_idx));
+                            }
+                            return Ok(ScreenAction::Refresh);
+                        }
+                    }
+                }
+                MouseEventKind::ScrollUp => {
+                    if let Some(area) = self.import_list_area {
+                        if area.contains(pos) {
+                            self.state.import_focus = ImportFocus::List;
+                            let current = self.state.import_list_state.selected().unwrap_or(0);
+                            let new_idx = current.saturating_sub(3);
+                            self.state.import_list_state.select(Some(new_idx));
+                            return Ok(ScreenAction::Refresh);
+                        }
+                    }
+                }
+                _ => {}
+            },
+            _ => {}
+        }
+
+        Ok(ScreenAction::None)
+    }
+
     fn handle_main_list_action(&mut self, action: Action) -> Result<ScreenAction> {
         let state = &mut self.state;
         match action {
@@ -1996,6 +2168,23 @@ impl ManagePackagesScreen {
                 .highlight_symbol(LIST_HIGHLIGHT_SYMBOL);
 
             frame.render_stateful_widget(list, area, &mut self.state.list_state);
+
+            // Populate mouse regions
+            self.list_pane_area = Some(area);
+            self.mouse_regions.clear();
+            let inner = Block::default().borders(Borders::ALL).inner(area);
+            let scroll_offset = self.state.list_state.offset();
+            for i in 0..self.state.packages.len() {
+                if i < scroll_offset {
+                    continue;
+                }
+                let visible_row = (i - scroll_offset) as u16;
+                if visible_row >= inner.height {
+                    break;
+                }
+                let row_area = Rect::new(inner.x, inner.y + visible_row, inner.width, 1);
+                self.mouse_regions.add(row_area, i);
+            }
         }
 
         Ok(())
@@ -2271,6 +2460,9 @@ impl ManagePackagesScreen {
             .constraints(constraints)
             .split(popup_area);
 
+        // Store clickable field areas for mouse support
+        self.add_field_areas.clear();
+
         // Title (no border, just text)
         let title_para = Paragraph::new(title)
             .alignment(Alignment::Center)
@@ -2278,6 +2470,8 @@ impl ManagePackagesScreen {
         frame.render_widget(title_para, chunks[0]);
 
         // Name field
+        self.add_field_areas
+            .push((chunks[1], AddPackageField::Name));
         let widget = TextInputWidget::new(&self.state.add_name_input)
             .title("Name")
             .placeholder("Package display name")
@@ -2285,6 +2479,8 @@ impl ManagePackagesScreen {
         frame.render_text_input_widget(widget, chunks[1]);
 
         // Description field
+        self.add_field_areas
+            .push((chunks[2], AddPackageField::Description));
         let widget = TextInputWidget::new(&self.state.add_description_input)
             .title("Description (optional)")
             .placeholder("Package description")
@@ -2292,12 +2488,16 @@ impl ManagePackagesScreen {
         frame.render_text_input_widget(widget, chunks[2]);
 
         // Manager selection
+        self.add_field_areas
+            .push((chunks[3], AddPackageField::Manager));
         self.render_manager_selection(frame, chunks[3])?;
 
         let mut current_chunk = 4; // Start after title, name, description, manager
 
         if self.state.add_is_custom {
             // Custom packages: Binary Name, Install Command, Existence Check
+            self.add_field_areas
+                .push((chunks[current_chunk], AddPackageField::BinaryName));
             let widget = TextInputWidget::new(&self.state.add_binary_name_input)
                 .title("Binary Name")
                 .placeholder("Binary name to check (e.g., 'mytool')")
@@ -2305,6 +2505,8 @@ impl ManagePackagesScreen {
             frame.render_text_input_widget(widget, chunks[current_chunk]);
             current_chunk += 1;
 
+            self.add_field_areas
+                .push((chunks[current_chunk], AddPackageField::InstallCommand));
             let widget = TextInputWidget::new(&self.state.add_install_command_input)
                 .title("Install Command")
                 .placeholder("Install command (e.g., './install.sh')")
@@ -2312,6 +2514,8 @@ impl ManagePackagesScreen {
             frame.render_text_input_widget(widget, chunks[current_chunk]);
             current_chunk += 1;
 
+            self.add_field_areas
+                .push((chunks[current_chunk], AddPackageField::ExistenceCheck));
             let widget = TextInputWidget::new(&self.state.add_existence_check_input)
                 .title("Existence Check (optional)")
                 .placeholder(
@@ -2321,6 +2525,8 @@ impl ManagePackagesScreen {
             frame.render_text_input_widget(widget, chunks[current_chunk]);
             current_chunk += 1;
 
+            self.add_field_areas
+                .push((chunks[current_chunk], AddPackageField::ManagerCheck));
             let widget = TextInputWidget::new(&self.state.add_manager_check_input)
                 .title("Manager Check (optional)")
                 .placeholder("Custom manager check command (optional fallback)")
@@ -2329,6 +2535,8 @@ impl ManagePackagesScreen {
             current_chunk += 1;
         } else {
             // Managed packages: Package Name, Binary Name
+            self.add_field_areas
+                .push((chunks[current_chunk], AddPackageField::PackageName));
             let widget = TextInputWidget::new(&self.state.add_package_name_input)
                 .title("Package Name")
                 .placeholder("Package name in manager (e.g., 'eza')")
@@ -2336,6 +2544,8 @@ impl ManagePackagesScreen {
             frame.render_text_input_widget(widget, chunks[current_chunk]);
             current_chunk += 1;
 
+            self.add_field_areas
+                .push((chunks[current_chunk], AddPackageField::BinaryName));
             let widget = TextInputWidget::new(&self.state.add_binary_name_input)
                 .title("Binary Name")
                 .placeholder("Binary name to check (e.g., 'eza')")
@@ -2773,6 +2983,13 @@ impl ManagePackagesScreen {
             .style(t.title_style());
         frame.render_widget(title, outer_chunks[0]);
 
+        // Store tab area for mouse click-to-switch
+        self.import_tabs_area = if show_tabs {
+            Some(outer_chunks[1])
+        } else {
+            None
+        };
+
         // Tabs (only if we have multiple sources)
         if show_tabs {
             self.render_import_tabs(frame, outer_chunks[1]);
@@ -2796,6 +3013,10 @@ impl ManagePackagesScreen {
                 Constraint::Min(5),    // List
             ])
             .split(content_inner);
+
+        // Store filter and list areas for mouse support
+        self.import_filter_area = Some(content_chunks[0]);
+        self.import_list_area = Some(content_chunks[1]);
 
         // Filter input
         let filter_focused = self.state.import_focus == ImportFocus::Filter;
@@ -2981,6 +3202,22 @@ impl ManagePackagesScreen {
             .highlight_symbol(crate::styles::LIST_HIGHLIGHT_SYMBOL);
 
         frame.render_stateful_widget(list, area, &mut self.state.import_list_state);
+
+        // Populate mouse regions for clickable list items
+        self.import_list_regions.clear();
+        let inner = Block::default().borders(Borders::ALL).inner(area);
+        let scroll_offset = self.state.import_list_state.offset();
+        for (visible_i, &_filtered_idx) in filtered.iter().enumerate() {
+            if visible_i < scroll_offset {
+                continue;
+            }
+            let visible_row = (visible_i - scroll_offset) as u16;
+            if visible_row >= inner.height {
+                break;
+            }
+            let row_area = Rect::new(inner.x, inner.y + visible_row, inner.width, 1);
+            self.import_list_regions.add(row_area, visible_i);
+        }
     }
 
     fn render_import_footer(&self, frame: &mut Frame, area: Rect, config: &Config) -> Result<()> {

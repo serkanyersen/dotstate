@@ -9,9 +9,10 @@ use crate::screens::ActionResult;
 use crate::services::ProfileService;
 use crate::styles::theme;
 use crate::ui::{ProfileSelectionState, Screen as ScreenId};
+use crate::utils::MouseRegions;
 use crate::widgets::{DialogVariant, TextInputWidget, TextInputWidgetExt};
 use anyhow::Result;
-use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers};
+use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
 use ratatui::layout::Rect;
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, List, ListItem};
@@ -31,6 +32,10 @@ pub enum ProfileSelectionAction {
 /// Profile selection screen controller.
 pub struct ProfileSelectionScreen {
     state: ProfileSelectionState,
+    /// Clickable regions for list items
+    mouse_regions: MouseRegions<usize>,
+    /// List pane area for scroll hit-testing
+    list_area: Option<Rect>,
 }
 
 impl ProfileSelectionScreen {
@@ -39,6 +44,8 @@ impl ProfileSelectionScreen {
     pub fn new() -> Self {
         Self {
             state: ProfileSelectionState::default(),
+            mouse_regions: MouseRegions::new(),
+            list_area: None,
         }
     }
 
@@ -134,6 +141,20 @@ impl ProfileSelectionScreen {
 
         let icons = crate::icons::Icons::from_config(config);
         let (header_area, content_area, footer_area) = create_standard_layout(area, 5, 3);
+
+        // Track mouse regions
+        self.list_area = Some(content_area);
+        self.mouse_regions.clear();
+        let inner = Block::default().borders(Borders::ALL).inner(content_area);
+        let total_items = self.state.profiles.len() + 1; // +1 for "Create New"
+        let scroll_offset = self.state.list_state.offset();
+        for i in 0..total_items {
+            let visible_idx = i.saturating_sub(scroll_offset);
+            if i >= scroll_offset && (visible_idx as u16) < inner.height {
+                let row = Rect::new(inner.x, inner.y + visible_idx as u16, inner.width, 1);
+                self.mouse_regions.add(row, i);
+            }
+        }
 
         // Header
         let _ = Header::render(
@@ -340,6 +361,53 @@ impl Screen for ProfileSelectionScreen {
                     self.state.show_exit_warning = false;
                     self.reset();
                     return Ok(ScreenAction::Navigate(ScreenId::MainMenu));
+                }
+            }
+            return Ok(ScreenAction::None);
+        }
+
+        // Handle mouse events (only on main list, not popup)
+        if let Event::Mouse(mouse) = event {
+            if !self.state.show_create_popup {
+                match mouse.kind {
+                    MouseEventKind::Down(MouseButton::Left) => {
+                        if let Some(&idx) = self.mouse_regions.hit_test(mouse.column, mouse.row) {
+                            self.state.list_state.select(Some(idx));
+                            if idx == self.state.profiles.len() {
+                                self.state.show_create_popup = true;
+                                self.state.create_name_input.clear();
+                            } else if let Some(name) = self.state.profiles.get(idx) {
+                                let name = name.clone();
+                                return Ok(ScreenAction::ActivateProfile { name });
+                            }
+                        }
+                    }
+                    MouseEventKind::ScrollUp => {
+                        if let Some(area) = self.list_area {
+                            if area
+                                .contains(ratatui::layout::Position::new(mouse.column, mouse.row))
+                            {
+                                if let Some(current) = self.state.list_state.selected() {
+                                    let new = current.saturating_sub(3);
+                                    self.state.list_state.select(Some(new));
+                                }
+                            }
+                        }
+                    }
+                    MouseEventKind::ScrollDown => {
+                        if let Some(area) = self.list_area {
+                            if area
+                                .contains(ratatui::layout::Position::new(mouse.column, mouse.row))
+                            {
+                                if let Some(current) = self.state.list_state.selected() {
+                                    let max = self.state.profiles.len(); // includes "Create New"
+                                    let new = (current + 3).min(max);
+                                    self.state.list_state.select(Some(new));
+                                }
+                            }
+                        }
+                    }
+                    _ => {}
                 }
             }
             return Ok(ScreenAction::None);

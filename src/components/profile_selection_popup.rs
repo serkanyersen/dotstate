@@ -7,9 +7,11 @@ use crate::components::{Popup, PopupRenderResult};
 use crate::config::Config;
 use crate::keymap::Action;
 use crate::styles::theme;
-use crate::utils::{focused_border_style, unfocused_border_style, ProfileManifest, TextInput};
+use crate::utils::{
+    focused_border_style, unfocused_border_style, MouseRegions, ProfileManifest, TextInput,
+};
 use anyhow::Result;
-use crossterm::event::{KeyCode, KeyModifiers};
+use crossterm::event::{KeyCode, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, List, ListItem, ListState, Padding, Paragraph, Wrap};
@@ -35,6 +37,10 @@ pub struct ProfileSelectionPopup {
     create_input: TextInput,
     /// Whether the popup is visible
     visible: bool,
+    /// Clickable regions for list items
+    mouse_regions: MouseRegions<usize>,
+    /// Stored list area for scroll hit-testing
+    list_area: Option<Rect>,
 }
 
 /// Information about a profile for display
@@ -55,6 +61,8 @@ impl ProfileSelectionPopup {
             list_state: ListState::default(),
             create_input: TextInput::new(),
             visible: false,
+            mouse_regions: MouseRegions::new(),
+            list_area: None,
         }
     }
 
@@ -221,6 +229,48 @@ impl ProfileSelectionPopup {
         None
     }
 
+    /// Handle mouse events.
+    ///
+    /// Returns `Some(result)` if the popup should close with a result,
+    /// or `None` if the popup should stay open.
+    pub fn handle_mouse(&mut self, mouse: MouseEvent) -> Option<ProfileSelectionResult> {
+        match mouse.kind {
+            MouseEventKind::Down(MouseButton::Left) => {
+                if let Some(&idx) = self.mouse_regions.hit_test(mouse.column, mouse.row) {
+                    self.list_state.select(Some(idx));
+                    if idx < self.profiles.len() {
+                        let name = self.profiles[idx].name.clone();
+                        return Some(ProfileSelectionResult::SelectExisting(name));
+                    }
+                    // Clicked "Create New" — just select it, don't act
+                }
+            }
+            MouseEventKind::ScrollUp => {
+                if let Some(area) = self.list_area {
+                    if area.contains(ratatui::layout::Position::new(mouse.column, mouse.row)) {
+                        if let Some(current) = self.list_state.selected() {
+                            let new = current.saturating_sub(3);
+                            self.list_state.select(Some(new));
+                        }
+                    }
+                }
+            }
+            MouseEventKind::ScrollDown => {
+                if let Some(area) = self.list_area {
+                    if area.contains(ratatui::layout::Position::new(mouse.column, mouse.row)) {
+                        if let Some(current) = self.list_state.selected() {
+                            let max = self.item_count().saturating_sub(1);
+                            let new = (current + 3).min(max);
+                            self.list_state.select(Some(new));
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+        None
+    }
+
     /// Render the popup
     pub fn render(&mut self, frame: &mut Frame, area: Rect, config: &Config) {
         if !self.visible {
@@ -269,6 +319,22 @@ impl ProfileSelectionPopup {
         icons: &crate::icons::Icons,
         t: &crate::styles::Theme,
     ) {
+        // Store list area for mouse scroll hit-testing
+        self.list_area = Some(area);
+        self.mouse_regions.clear();
+
+        // Calculate inner area (inside borders) for click regions
+        let inner = Block::default().borders(Borders::ALL).inner(area);
+        let item_count = self.item_count();
+        let scroll_offset = self.list_state.offset();
+        for i in 0..item_count {
+            let visible_idx = i.saturating_sub(scroll_offset);
+            if i >= scroll_offset && (visible_idx as u16) < inner.height {
+                let row_rect = Rect::new(inner.x, inner.y + visible_idx as u16, inner.width, 1);
+                self.mouse_regions.add(row_rect, i);
+            }
+        }
+
         let mut items: Vec<ListItem> = Vec::new();
 
         // Add existing profiles

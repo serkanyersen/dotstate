@@ -6,7 +6,9 @@ use crate::screens::{ActionResult, RenderContext, Screen, ScreenAction, ScreenCo
 use crate::services::ProfileService;
 use crate::styles::{theme, LIST_HIGHLIGHT_SYMBOL};
 use crate::ui::Screen as ScreenId;
-use crate::utils::{create_standard_layout, focused_border_style, unfocused_border_style};
+use crate::utils::{
+    create_standard_layout, focused_border_style, unfocused_border_style, MouseRegions,
+};
 use crate::widgets::{DialogVariant, TextInputWidget, TextInputWidgetExt};
 use anyhow::Result;
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
@@ -57,7 +59,7 @@ pub enum ProfileAction {
 #[derive(Debug, Clone)]
 pub struct ProfileManagerState {
     pub list_state: ListState,
-    pub clickable_areas: Vec<(Rect, usize)>, // (area, profile_index)
+    pub clickable_areas: MouseRegions<usize>,
     pub popup_type: ProfilePopupType,
     // Create popup state
     pub create_name_input: crate::utils::TextInput,
@@ -71,6 +73,7 @@ pub struct ProfileManagerState {
     // Clickable areas for form fields (for mouse support)
     pub create_name_area: Option<Rect>,
     pub create_description_area: Option<Rect>,
+    pub create_copy_from_area: Option<Rect>,
     // Cached profiles to reduce disk I/O
     pub profiles: Vec<crate::utils::ProfileInfo>,
     // Validation error message
@@ -81,7 +84,7 @@ impl Default for ProfileManagerState {
     fn default() -> Self {
         Self {
             list_state: ListState::default(),
-            clickable_areas: Vec::new(),
+            clickable_areas: MouseRegions::new(),
             popup_type: ProfilePopupType::None,
             create_name_input: crate::utils::TextInput::new(),
             create_description_input: crate::utils::TextInput::new(),
@@ -91,6 +94,7 @@ impl Default for ProfileManagerState {
             delete_confirm_input: crate::utils::TextInput::new(),
             create_name_area: None,
             create_description_area: None,
+            create_copy_from_area: None,
             profiles: Vec::new(),
             error_message: None,
         }
@@ -365,22 +369,12 @@ impl ManageProfilesScreen {
         mouse: crossterm::event::MouseEvent,
         _config: &Config,
     ) -> ScreenAction {
+        let popup_open = self.state.popup_type != ProfilePopupType::None;
+
         match mouse.kind {
             MouseEventKind::Down(MouseButton::Left) => {
                 let x = mouse.column;
                 let y = mouse.row;
-
-                // Handle clicks in list
-                for (area, idx) in &self.state.clickable_areas {
-                    if x >= area.x
-                        && x < area.x + area.width
-                        && y >= area.y
-                        && y < area.y + area.height
-                    {
-                        self.state.list_state.select(Some(*idx));
-                        return ScreenAction::Refresh;
-                    }
-                }
 
                 // Handle clicks in create popup fields
                 if self.state.popup_type == ProfilePopupType::Create {
@@ -404,34 +398,52 @@ impl ManageProfilesScreen {
                             return ScreenAction::Refresh;
                         }
                     }
+                    if let Some(area) = self.state.create_copy_from_area {
+                        if x >= area.x
+                            && x < area.x + area.width
+                            && y >= area.y
+                            && y < area.y + area.height
+                        {
+                            self.state.create_focused_field = CreateField::CopyFrom;
+                            return ScreenAction::Refresh;
+                        }
+                    }
+                }
+
+                // Handle clicks in background list (only when no popup is open)
+                if !popup_open {
+                    if let Some(&idx) = self.state.clickable_areas.hit_test(x, y) {
+                        self.state.list_state.select(Some(idx));
+                        return ScreenAction::Refresh;
+                    }
                 }
             }
-            MouseEventKind::ScrollUp => {
+            MouseEventKind::ScrollUp if !popup_open => {
                 let selected = self.state.list_state.selected().unwrap_or(0);
                 if selected > 0 {
                     self.state.list_state.select(Some(selected - 1));
                     return ScreenAction::Refresh;
                 }
             }
-            MouseEventKind::ScrollDown => {
-                // We don't know the max count here easily without passing it in,
-                // but we can rely on the list to handle out of bounds or just be conservative.
-                // For now, let's just increment and let the UI handle bounds if possible,
-                // or just rely on keyboard navigation which is safer.
-                // Better yet, we can't properly implement scroll down without knowing the list size.
-                // We'll leave it for now or implement if we pass profiles to handle_event.
-                // Actually, handle_event takes ScreenContext which doesn't have profiles.
-                // We might need to change ScreenContext or accept profiles in state.
-                // The original app.rs logic had access to profiles.
-                // For now, let's skip scroll down logic or make it best-effort?
-                // Wait, we can add `profiles_count` to state if needed, but for now let's just use keyboard.
+            MouseEventKind::ScrollDown if !popup_open => {
+                let selected = self.state.list_state.selected().unwrap_or(0);
+                let max = self.state.profiles.len().saturating_sub(1);
+                if selected < max {
+                    self.state.list_state.select(Some((selected + 1).min(max)));
+                    return ScreenAction::Refresh;
+                }
             }
             _ => {}
         }
         ScreenAction::None
     }
     /// Render the profiles list on the left
-    fn render_profiles_list(&self, frame: &mut Frame, area: Rect, config: &Config) -> Result<()> {
+    fn render_profiles_list(
+        &mut self,
+        frame: &mut Frame,
+        area: Rect,
+        config: &Config,
+    ) -> Result<()> {
         let t = theme();
         let icons = crate::icons::Icons::from_config(config);
         let active_profile = &config.active_profile;
@@ -479,7 +491,23 @@ impl ManageProfilesScreen {
             .highlight_symbol(LIST_HIGHLIGHT_SYMBOL);
 
         // Render with state
-        frame.render_stateful_widget(list, area, &mut self.state.list_state.clone());
+        frame.render_stateful_widget(list, area, &mut self.state.list_state);
+
+        // Populate mouse regions for clickable list items
+        self.state.clickable_areas.clear();
+        let inner = Block::default().borders(Borders::ALL).inner(area);
+        let scroll_offset = self.state.list_state.offset();
+        for i in 0..self.state.profiles.len() {
+            if i < scroll_offset {
+                continue;
+            }
+            let visible_row = (i - scroll_offset) as u16;
+            if visible_row >= inner.height {
+                break;
+            }
+            let row_area = Rect::new(inner.x, inner.y + visible_row, inner.width, 1);
+            self.state.clickable_areas.add(row_area, i);
+        }
 
         Ok(())
     }
@@ -621,7 +649,7 @@ impl ManageProfilesScreen {
     }
 
     /// Render the active popup
-    fn render_popup(&self, frame: &mut Frame, area: Rect, config: &Config) -> Result<()> {
+    fn render_popup(&mut self, frame: &mut Frame, area: Rect, config: &Config) -> Result<()> {
         match self.state.popup_type {
             ProfilePopupType::Create => self.render_create_popup(frame, area, config),
             ProfilePopupType::Switch => self.render_switch_popup(frame, area, config),
@@ -632,7 +660,12 @@ impl ManageProfilesScreen {
     }
 
     /// Render create profile popup
-    fn render_create_popup(&self, frame: &mut Frame, area: Rect, config: &Config) -> Result<()> {
+    fn render_create_popup(
+        &mut self,
+        frame: &mut Frame,
+        area: Rect,
+        config: &Config,
+    ) -> Result<()> {
         use crate::components::Popup;
 
         let icons = crate::icons::Icons::from_config(config);
@@ -666,6 +699,11 @@ impl ManageProfilesScreen {
             .split(result.content_area);
 
         let t = theme();
+        // Store field areas for mouse click-to-focus
+        self.state.create_name_area = Some(chunks[0]);
+        self.state.create_description_area = Some(chunks[2]);
+        self.state.create_copy_from_area = Some(chunks[3]);
+
         // Name input
         let widget = TextInputWidget::new(&self.state.create_name_input)
             .title("Profile Name")
@@ -1486,6 +1524,9 @@ impl Screen for ManageProfilesScreen {
                         ProfilePopupType::None => {} // Should not be reachable inside this match
                     }
                     return Ok(ScreenAction::None);
+                }
+                Event::Mouse(mouse) => {
+                    return Ok(self.handle_mouse_event(mouse, ctx.config));
                 }
                 _ => return Ok(ScreenAction::None),
             }
