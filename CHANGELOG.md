@@ -7,29 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+---
+
+## [0.3.0] - 2026-02-05
+
 ### Added
 
-- **Mouse**: Comprehensive mouse support across all screens — click to select items, click to focus panes, scroll wheel navigates lists and previews
-- **Mouse**: `MouseRegions<T>` utility for consistent hit-testing of clickable areas
-- **Mouse**: File browser component supports click-to-focus path input, file list, and preview panes
-- **Mouse**: Popup dialogs support click-to-focus fields — Profile Create (Name/Description/CopyFrom), Package Add/Edit (all fields), Package Import (tabs/filter/list with scroll)
-- **Themes**: Gruvbox Dark and Light themes - warm, retro colors popular with Vim/Neovim users
-- **Themes**: Catppuccin Mocha (dark) and Latte (light) themes - pastel aesthetic
-- **Themes**: Tokyo Night (dark) and Light themes - modern city-lights inspired palette
+- **Mouse Support**: Comprehensive mouse interactions across all screens — click to select, focus panes, scroll lists/previews, and interact with popup dialogs (Profile Create, Package Add/Edit, Package Import)
+- **Themes**: Six new themes — Gruvbox Dark/Light, Catppuccin Mocha/Latte, and Tokyo Night Dark/Light
 
 ### Fixed
 
-- **Sync Screen**: Add focus-based pane switching (Tab key) between file list and diff preview, matching the manage files screen behavior
-- **Sync Screen**: Mouse scroll now targets the pane under the cursor (list or preview) instead of always scrolling the list
-- **Sync Screen**: Click on preview pane to focus it, click on list pane to focus it
-- **Sync Screen**: Visual border styling reflects which pane is focused
-- **Scrolling**: All preview panes and dialogs now clamp scroll offset at the bottom, preventing infinite scrolling past content
+- **Sync Screen**: Focus-based pane switching (Tab key) and mouse-targeted scrolling between file list and diff preview
+- **Scrolling**: Preview panes and dialogs now clamp scroll offset to prevent infinite scrolling past content
 
 ### Changed
 
-- **Settings**: Renamed "Embed Credentials in URL" to "Token in Remote URL" with clearer description explaining the two authentication modes
-- **Settings**: Hide "Token in Remote URL" option when repository is in local mode (tokens are only relevant for GitHub repos)
-- **Themes**: Simplified theme cycling and config string logic to use `ThemeType::all()` and `to_config_string()`
+- **Settings**: Renamed "Embed Credentials in URL" to "Token in Remote URL" with clearer description; hidden in local repo mode
+- **Themes**: Simplified theme cycling logic
 
 ---
 
