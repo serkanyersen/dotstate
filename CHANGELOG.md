@@ -17,6 +17,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Themes**: Catppuccin Mocha (dark) and Latte (light) themes - pastel aesthetic
 - **Themes**: Tokyo Night (dark) and Light themes - modern city-lights inspired palette
 
+### Fixed
+
+- **Sync Screen**: Add focus-based pane switching (Tab key) between file list and diff preview, matching the manage files screen behavior
+- **Sync Screen**: Mouse scroll now targets the pane under the cursor (list or preview) instead of always scrolling the list
+- **Sync Screen**: Click on preview pane to focus it, click on list pane to focus it
+- **Sync Screen**: Visual border styling reflects which pane is focused
+
 ### Changed
 
 - **Settings**: Renamed "Embed Credentials in URL" to "Token in Remote URL" with clearer description explaining the two authentication modes

@@ -8,16 +8,25 @@ use crate::components::header::Header;
 use crate::screens::screen_trait::{RenderContext, Screen, ScreenAction, ScreenContext};
 use crate::styles::{theme as ui_theme, LIST_HIGHLIGHT_SYMBOL};
 use crate::ui::{Screen as ScreenId, SyncWithRemoteState};
-use crate::utils::{create_split_layout, create_standard_layout, focused_border_style};
+use crate::utils::{
+    create_split_layout, create_standard_layout, focused_border_style, unfocused_border_style,
+};
 use anyhow::Result;
 use crossterm::event::Event;
-use ratatui::layout::{Alignment, Rect};
+use ratatui::layout::{Alignment, Position, Rect};
 use ratatui::prelude::*;
 use ratatui::widgets::{
     Block, Borders, Clear, List, ListItem, Paragraph, Scrollbar, ScrollbarOrientation,
     StatefulWidget, Wrap,
 };
 use ratatui::Frame;
+
+/// Focus area in sync with remote screen
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SyncFocus {
+    FilesList,
+    Preview,
+}
 
 /// Sync with remote screen controller.
 ///
@@ -26,6 +35,12 @@ use ratatui::Frame;
 pub struct SyncWithRemoteScreen {
     /// Screen state
     pub state: SyncWithRemoteState,
+    /// Which pane currently has focus
+    focus: SyncFocus,
+    /// Stored list pane area for mouse hit-testing
+    list_pane_area: Option<Rect>,
+    /// Stored preview pane area for mouse hit-testing
+    preview_pane_area: Option<Rect>,
 }
 
 impl SyncWithRemoteScreen {
@@ -34,6 +49,9 @@ impl SyncWithRemoteScreen {
     pub fn new() -> Self {
         Self {
             state: SyncWithRemoteState::default(),
+            focus: SyncFocus::FilesList,
+            list_pane_area: None,
+            preview_pane_area: None,
         }
     }
 
@@ -51,6 +69,9 @@ impl SyncWithRemoteScreen {
     /// Reset state to default.
     pub fn reset_state(&mut self) {
         self.state = SyncWithRemoteState::default();
+        self.focus = SyncFocus::FilesList;
+        self.list_pane_area = None;
+        self.preview_pane_area = None;
     }
 
     /// Load changed files from git repository
@@ -249,6 +270,18 @@ impl SyncWithRemoteScreen {
         let list_area = chunks[0];
         let preview_area = chunks[1];
 
+        // Store areas for mouse hit-testing
+        self.list_pane_area = Some(list_area);
+        self.preview_pane_area = Some(preview_area);
+
+        let list_focused = self.focus == SyncFocus::FilesList;
+        let preview_focused = self.focus == SyncFocus::Preview;
+        let list_border_style = if list_focused {
+            focused_border_style()
+        } else {
+            unfocused_border_style()
+        };
+
         // Update scrollbar state
         let total_items = self.state.changed_files.len();
         let selected_index = self.state.list_state.selected().unwrap_or(0);
@@ -280,8 +313,8 @@ impl SyncWithRemoteScreen {
             .block(
                 Block::default()
                     .borders(Borders::ALL)
-                    .border_style(focused_border_style())
-                    .border_type(ui_theme().border_type(false))
+                    .border_style(list_border_style)
+                    .border_type(ui_theme().border_type(list_focused))
                     .title(format!(
                         " Changed Files ({}) ",
                         self.state.changed_files.len()
@@ -324,7 +357,7 @@ impl SyncWithRemoteScreen {
                         preview_area,
                         &path,
                         self.state.preview_scroll,
-                        false, // Not focused for now
+                        preview_focused,
                         Some(&preview_title),
                         self.state.diff_content.as_deref(),
                         ctx.syntax_set,
@@ -404,9 +437,10 @@ impl Screen for SyncWithRemoteScreen {
             format!("{}: Back to Main Menu", k(crate::keymap::Action::Cancel))
         } else {
             format!(
-                "{}: Sync with Remote | {}: Navigate | {}: Back",
+                "{}: Sync with Remote | {}: Navigate | {}: Switch Pane | {}: Back",
                 k(crate::keymap::Action::Confirm),
                 ctx.config.keymap.navigation_display(),
+                k(crate::keymap::Action::NextTab),
                 k(crate::keymap::Action::Cancel)
             )
         };
@@ -419,28 +453,81 @@ impl Screen for SyncWithRemoteScreen {
         use crate::keymap::Action;
         use crossterm::event::{KeyEventKind, MouseButton, MouseEventKind};
 
-        // Handle keyboard events
-        if let Event::Key(key) = &event {
-            if key.kind == KeyEventKind::Press {
-                if let Some(action) = ctx.config.keymap.get_action(key.code, key.modifiers) {
-                    match action {
-                        Action::Confirm => {
-                            // Close result popup if showing
-                            if self.state.show_result_popup {
+        // Result popup captures all events
+        if self.state.show_result_popup {
+            match event {
+                Event::Key(key) if key.kind == KeyEventKind::Press => {
+                    if let Some(action) = ctx.config.keymap.get_action(key.code, key.modifiers) {
+                        match action {
+                            Action::Confirm | Action::Quit | Action::Cancel => {
                                 self.state.show_result_popup = false;
                                 self.state.sync_result = None;
                                 self.state.pulled_changes_count = None;
                                 self.state.result_scroll = 0;
                                 return Ok(ScreenAction::Navigate(ScreenId::MainMenu));
                             }
+                            Action::MoveUp | Action::ScrollUp => {
+                                self.state.result_scroll =
+                                    self.state.result_scroll.saturating_sub(1);
+                            }
+                            Action::MoveDown | Action::ScrollDown => {
+                                self.state.result_scroll =
+                                    self.state.result_scroll.saturating_add(1);
+                            }
+                            Action::PageUp => {
+                                self.state.result_scroll =
+                                    self.state.result_scroll.saturating_sub(10);
+                            }
+                            Action::PageDown => {
+                                self.state.result_scroll =
+                                    self.state.result_scroll.saturating_add(10);
+                            }
+                            Action::GoToTop => {
+                                self.state.result_scroll = 0;
+                            }
+                            _ => {}
+                        }
+                    }
+                    return Ok(ScreenAction::None);
+                }
+                Event::Mouse(mouse) => {
+                    match mouse.kind {
+                        MouseEventKind::ScrollUp => {
+                            self.state.result_scroll = self.state.result_scroll.saturating_sub(3);
+                        }
+                        MouseEventKind::ScrollDown => {
+                            self.state.result_scroll = self.state.result_scroll.saturating_add(3);
+                        }
+                        MouseEventKind::Down(MouseButton::Left) => {
+                            self.state.show_result_popup = false;
+                            self.state.sync_result = None;
+                            self.state.pulled_changes_count = None;
+                            self.state.result_scroll = 0;
+                            return Ok(ScreenAction::Navigate(ScreenId::MainMenu));
+                        }
+                        _ => {}
+                    }
+                    return Ok(ScreenAction::None);
+                }
+                _ => return Ok(ScreenAction::None),
+            }
+        }
 
-                            // Start pushing if not already pushing and we have changes (local or remote)
+        // Normal mode: handle based on focus
+        match event {
+            Event::Key(key) if key.kind == KeyEventKind::Press => {
+                if let Some(action) = ctx.config.keymap.get_action(key.code, key.modifiers) {
+                    // Global actions (work in both panes)
+                    match action {
+                        Action::Quit | Action::Cancel => {
+                            return Ok(ScreenAction::Navigate(ScreenId::MainMenu));
+                        }
+                        Action::Confirm => {
                             let has_remote_changes = if let Some(status) = &self.state.git_status {
                                 status.ahead > 0 || status.behind > 0
                             } else {
                                 false
                             };
-
                             if !self.state.is_syncing
                                 && (!self.state.changed_files.is_empty() || has_remote_changes)
                             {
@@ -448,137 +535,150 @@ impl Screen for SyncWithRemoteScreen {
                             }
                             return Ok(ScreenAction::None);
                         }
-                        Action::Quit | Action::Cancel => {
-                            // Close result popup or go back
-                            if self.state.show_result_popup {
-                                self.state.show_result_popup = false;
-                                self.state.sync_result = None;
-                                self.state.pulled_changes_count = None;
-                                self.state.result_scroll = 0;
-                                return Ok(ScreenAction::Navigate(ScreenId::MainMenu));
-                            }
-                            return Ok(ScreenAction::Navigate(ScreenId::MainMenu));
-                        }
-                        Action::MoveUp => {
-                            if self.state.show_result_popup {
-                                // Scroll result popup up
-                                self.state.result_scroll =
-                                    self.state.result_scroll.saturating_sub(1);
-                            } else {
-                                self.state.list_state.select_previous();
-                                self.update_diff_preview(ctx);
-                            }
-                            return Ok(ScreenAction::None);
-                        }
-                        Action::MoveDown => {
-                            if self.state.show_result_popup {
-                                // Scroll result popup down
-                                self.state.result_scroll =
-                                    self.state.result_scroll.saturating_add(1);
-                            } else {
-                                self.state.list_state.select_next();
-                                self.update_diff_preview(ctx);
-                            }
-                            return Ok(ScreenAction::None);
-                        }
-                        Action::ScrollUp => {
-                            if self.state.show_result_popup {
-                                self.state.result_scroll =
-                                    self.state.result_scroll.saturating_sub(1);
-                            } else {
-                                self.state.preview_scroll =
-                                    self.state.preview_scroll.saturating_sub(1);
-                            }
-                            return Ok(ScreenAction::None);
-                        }
-                        Action::ScrollDown => {
-                            if self.state.show_result_popup {
-                                self.state.result_scroll =
-                                    self.state.result_scroll.saturating_add(1);
-                            } else {
-                                self.state.preview_scroll += 1;
-                            }
-                            return Ok(ScreenAction::None);
-                        }
-                        Action::PageUp => {
-                            if self.state.show_result_popup {
-                                self.state.result_scroll =
-                                    self.state.result_scroll.saturating_sub(10);
-                            } else if let Some(current) = self.state.list_state.selected() {
-                                let new_index = current.saturating_sub(10);
-                                self.state.list_state.select(Some(new_index));
-                                self.update_diff_preview(ctx);
-                            }
-                            return Ok(ScreenAction::None);
-                        }
-                        Action::PageDown => {
-                            if self.state.show_result_popup {
-                                self.state.result_scroll =
-                                    self.state.result_scroll.saturating_add(10);
-                            } else if let Some(current) = self.state.list_state.selected() {
-                                let new_index = (current + 10)
-                                    .min(self.state.changed_files.len().saturating_sub(1));
-                                self.state.list_state.select(Some(new_index));
-                                self.update_diff_preview(ctx);
-                            }
-                            return Ok(ScreenAction::None);
-                        }
-                        Action::GoToTop => {
-                            if self.state.show_result_popup {
-                                self.state.result_scroll = 0;
-                            } else {
-                                self.state.list_state.select_first();
-                                self.update_diff_preview(ctx);
-                            }
-                            return Ok(ScreenAction::None);
-                        }
-                        Action::GoToEnd => {
-                            if !self.state.show_result_popup {
-                                self.state.list_state.select_last();
-                                self.update_diff_preview(ctx);
-                            }
+                        Action::NextTab => {
+                            self.focus = match self.focus {
+                                SyncFocus::FilesList => SyncFocus::Preview,
+                                SyncFocus::Preview => SyncFocus::FilesList,
+                            };
                             return Ok(ScreenAction::None);
                         }
                         _ => {}
                     }
+
+                    // Focus-specific actions
+                    match self.focus {
+                        SyncFocus::FilesList => match action {
+                            Action::MoveUp => {
+                                self.state.list_state.select_previous();
+                                self.update_diff_preview(ctx);
+                            }
+                            Action::MoveDown => {
+                                self.state.list_state.select_next();
+                                self.update_diff_preview(ctx);
+                            }
+                            Action::ScrollUp => {
+                                self.state.list_state.select_previous();
+                                self.update_diff_preview(ctx);
+                            }
+                            Action::ScrollDown => {
+                                self.state.list_state.select_next();
+                                self.update_diff_preview(ctx);
+                            }
+                            Action::PageUp => {
+                                if let Some(current) = self.state.list_state.selected() {
+                                    let new_index = current.saturating_sub(10);
+                                    self.state.list_state.select(Some(new_index));
+                                    self.update_diff_preview(ctx);
+                                }
+                            }
+                            Action::PageDown => {
+                                if let Some(current) = self.state.list_state.selected() {
+                                    let new_index = (current + 10)
+                                        .min(self.state.changed_files.len().saturating_sub(1));
+                                    self.state.list_state.select(Some(new_index));
+                                    self.update_diff_preview(ctx);
+                                }
+                            }
+                            Action::GoToTop => {
+                                self.state.list_state.select_first();
+                                self.update_diff_preview(ctx);
+                            }
+                            Action::GoToEnd => {
+                                self.state.list_state.select_last();
+                                self.update_diff_preview(ctx);
+                            }
+                            _ => {}
+                        },
+                        SyncFocus::Preview => match action {
+                            Action::MoveUp | Action::ScrollUp => {
+                                self.state.preview_scroll =
+                                    self.state.preview_scroll.saturating_sub(1);
+                            }
+                            Action::MoveDown | Action::ScrollDown => {
+                                self.state.preview_scroll =
+                                    self.state.preview_scroll.saturating_add(1);
+                            }
+                            Action::PageUp => {
+                                self.state.preview_scroll =
+                                    self.state.preview_scroll.saturating_sub(20);
+                            }
+                            Action::PageDown => {
+                                self.state.preview_scroll =
+                                    self.state.preview_scroll.saturating_add(20);
+                            }
+                            Action::GoToTop => {
+                                self.state.preview_scroll = 0;
+                            }
+                            Action::GoToEnd => {
+                                if let Some(content) = &self.state.diff_content {
+                                    let total_lines = content.lines().count();
+                                    let estimated_visible = 20;
+                                    self.state.preview_scroll =
+                                        total_lines.saturating_sub(estimated_visible);
+                                } else {
+                                    self.state.preview_scroll = 10000;
+                                }
+                            }
+                            _ => {}
+                        },
+                    }
                 }
             }
-        } else if let Event::Mouse(mouse) = event {
-            // Handle mouse events
-            match mouse.kind {
-                MouseEventKind::ScrollUp => {
-                    if self.state.show_result_popup {
-                        // Scroll popup up
-                        self.state.result_scroll = self.state.result_scroll.saturating_sub(3);
-                    } else {
-                        self.state.list_state.select_previous();
-                        self.update_diff_preview(ctx);
+            Event::Mouse(mouse) => {
+                let pos = Position::new(mouse.column, mouse.row);
+                match mouse.kind {
+                    MouseEventKind::Down(MouseButton::Left) => {
+                        // Click to focus pane
+                        if let Some(area) = self.preview_pane_area {
+                            if area.contains(pos) {
+                                self.focus = SyncFocus::Preview;
+                                return Ok(ScreenAction::None);
+                            }
+                        }
+                        if let Some(area) = self.list_pane_area {
+                            if area.contains(pos) {
+                                self.focus = SyncFocus::FilesList;
+                                return Ok(ScreenAction::None);
+                            }
+                        }
                     }
-                    return Ok(ScreenAction::None);
-                }
-                MouseEventKind::ScrollDown => {
-                    if self.state.show_result_popup {
-                        // Scroll popup down
-                        self.state.result_scroll = self.state.result_scroll.saturating_add(3);
-                    } else {
-                        self.state.list_state.select_next();
-                        self.update_diff_preview(ctx);
+                    MouseEventKind::ScrollDown => {
+                        // Scroll within the pane the mouse is over
+                        if let Some(area) = self.list_pane_area {
+                            if area.contains(pos) {
+                                self.state.list_state.select_next();
+                                self.update_diff_preview(ctx);
+                                return Ok(ScreenAction::None);
+                            }
+                        }
+                        if let Some(area) = self.preview_pane_area {
+                            if area.contains(pos) {
+                                self.state.preview_scroll =
+                                    self.state.preview_scroll.saturating_add(3);
+                                return Ok(ScreenAction::None);
+                            }
+                        }
                     }
-                    return Ok(ScreenAction::None);
-                }
-                MouseEventKind::Down(MouseButton::Left) => {
-                    // Click to sync or close popup
-                    if self.state.show_result_popup {
-                        // After sync, go directly to main menu
-                        self.state.show_result_popup = false;
-                        self.state.sync_result = None;
-                        self.state.pulled_changes_count = None;
-                        self.state.result_scroll = 0;
-                        return Ok(ScreenAction::Navigate(ScreenId::MainMenu));
+                    MouseEventKind::ScrollUp => {
+                        if let Some(area) = self.list_pane_area {
+                            if area.contains(pos) {
+                                self.state.list_state.select_previous();
+                                self.update_diff_preview(ctx);
+                                return Ok(ScreenAction::None);
+                            }
+                        }
+                        if let Some(area) = self.preview_pane_area {
+                            if area.contains(pos) {
+                                self.state.preview_scroll =
+                                    self.state.preview_scroll.saturating_sub(3);
+                                return Ok(ScreenAction::None);
+                            }
+                        }
                     }
+                    _ => {}
                 }
-                _ => {}
             }
+            _ => {}
         }
 
         Ok(ScreenAction::None)
