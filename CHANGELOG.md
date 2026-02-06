@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Sync Screen**: Mouse scroll now targets the pane under the cursor (list or preview) instead of always scrolling the list
 - **Sync Screen**: Click on preview pane to focus it, click on list pane to focus it
 - **Sync Screen**: Visual border styling reflects which pane is focused
+- **Scrolling**: All preview panes and dialogs now clamp scroll offset at the bottom, preventing infinite scrolling past content
 
 ### Changed
 

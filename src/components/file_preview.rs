@@ -32,7 +32,7 @@ impl FilePreview {
         frame: &mut Frame,
         area: Rect,
         file_path: &PathBuf,
-        scroll_offset: usize,
+        scroll_offset: &mut usize,
         focused: bool,
         title: Option<&str>,
         content_override: Option<&str>,
@@ -59,7 +59,29 @@ impl FilePreview {
 
             if let Ok(content) = content_result {
                 let total_lines = content.lines().count().max(1);
-                let visible_height = area.height.saturating_sub(4) as usize; // Account for borders
+                // borders(2) + padding(2) = 4 vertical, same horizontal
+                let visible_height = area.height.saturating_sub(4) as usize;
+                let inner_width = area.width.saturating_sub(4) as usize;
+
+                // Clamp scroll offset: count backwards from end to find how many
+                // content lines fit, accounting for long lines that wrap
+                let content_lines: Vec<&str> = content.lines().collect();
+                let mut visual_rows = 0;
+                let mut fitting_from_end = 0;
+                for line in content_lines.iter().rev() {
+                    let rows = if inner_width > 0 && !line.is_empty() {
+                        line.len().div_ceil(inner_width)
+                    } else {
+                        1
+                    };
+                    if visual_rows + rows > visible_height && fitting_from_end > 0 {
+                        break;
+                    }
+                    visual_rows += rows;
+                    fitting_from_end += 1;
+                }
+                let max_scroll = total_lines.saturating_sub(fitting_from_end);
+                *scroll_offset = (*scroll_offset).min(max_scroll);
 
                 // Determine syntax
                 let syntax = if let Some(content_str) = content_override {
@@ -123,7 +145,7 @@ impl FilePreview {
 
                 // Skip lines up to scroll_offset efficiently
                 let mut lines_iter = LinesWithEndings::from(&content);
-                for _ in 0..scroll_offset {
+                for _ in 0..*scroll_offset {
                     lines_iter.next();
                 }
 
@@ -159,7 +181,7 @@ impl FilePreview {
                 let mut preview_text = Text::from(preview_lines);
 
                 // Add footer info if there are more lines
-                let end_line = (scroll_offset + visible_height).min(total_lines);
+                let end_line = (*scroll_offset + visible_height).min(total_lines);
                 if total_lines > end_line {
                     preview_text.extend([
                         Line::from(""),
@@ -167,7 +189,7 @@ impl FilePreview {
                         Line::from(format!(
                             "... ({} total lines, showing lines {}-{})",
                             total_lines,
-                            scroll_offset + 1,
+                            *scroll_offset + 1,
                             end_line
                         )),
                     ]);
@@ -189,7 +211,7 @@ impl FilePreview {
                 frame.render_widget(preview, area);
 
                 // === SCROLLBAR IMPLEMENTATION ===
-                let mut scrollbar_state = ScrollbarState::new(total_lines).position(scroll_offset);
+                let mut scrollbar_state = ScrollbarState::new(max_scroll).position(*scroll_offset);
 
                 let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
                     .begin_symbol(Some("↑"))
@@ -225,6 +247,7 @@ impl FilePreview {
 
             let mut total_entries = 0;
             let visible_height = area.height.saturating_sub(4) as usize;
+            let mut dir_max_scroll = 0;
 
             match std::fs::read_dir(file_path) {
                 Ok(read_dir) => {
@@ -248,13 +271,18 @@ impl FilePreview {
 
                     total_entries = entries.len();
 
+                    // Clamp scroll offset for directory listing
+                    dir_max_scroll =
+                        total_entries.saturating_sub(visible_height.min(total_entries));
+                    *scroll_offset = (*scroll_offset).min(dir_max_scroll);
+
                     if entries.is_empty() {
                         preview_lines.push(Line::from(Span::styled(
                             "  (Empty directory)",
                             theme.muted_style(),
                         )));
                     } else {
-                        for entry in entries.iter().skip(scroll_offset).take(visible_height) {
+                        for entry in entries.iter().skip(*scroll_offset).take(visible_height) {
                             let path = entry.path();
                             let name = entry.file_name().to_string_lossy().to_string();
                             let is_dir = path.is_dir();
@@ -295,7 +323,7 @@ impl FilePreview {
 
             if total_entries > visible_height {
                 let mut scrollbar_state =
-                    ScrollbarState::new(total_entries).position(scroll_offset);
+                    ScrollbarState::new(dir_max_scroll).position(*scroll_offset);
                 let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
                     .begin_symbol(Some("↑"))
                     .end_symbol(Some("↓"))

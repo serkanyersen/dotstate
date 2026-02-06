@@ -356,7 +356,7 @@ impl SyncWithRemoteScreen {
                         frame,
                         preview_area,
                         &path,
-                        self.state.preview_scroll,
+                        &mut self.state.preview_scroll,
                         preview_focused,
                         Some(&preview_title),
                         self.state.diff_content.as_deref(),

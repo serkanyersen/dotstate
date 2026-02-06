@@ -255,12 +255,34 @@ impl<'a> Dialog<'a> {
         let content_inner = content_block.inner(layout[1]);
         Widget::render(content_block, layout[1], buf);
 
+        // Clamp scroll offset to prevent scrolling past content
+        // Estimate total wrapped lines based on content and available width
+        let content_width = content_inner.width.saturating_sub(1) as usize;
+        let total_wrapped_lines = if content_width > 0 {
+            self.content
+                .lines()
+                .map(|line| {
+                    let len = line.len();
+                    if len == 0 {
+                        1
+                    } else {
+                        len.div_ceil(content_width)
+                    }
+                })
+                .sum::<usize>()
+        } else {
+            self.content.lines().count()
+        };
+        let visible_lines = content_inner.height as usize;
+        let max_scroll = total_wrapped_lines.saturating_sub(visible_lines);
+        let clamped_scroll = (self.scroll_offset as usize).min(max_scroll) as u16;
+
         // Render content text (left-aligned, wrapped, with scrolling)
         let content_para = Paragraph::new(self.content)
             .wrap(Wrap { trim: true })
             .alignment(Alignment::Left)
             .style(t.text_style())
-            .scroll((self.scroll_offset, 0));
+            .scroll((clamped_scroll, 0));
         Widget::render(content_para, content_inner, buf);
 
         // Footer block (bottom) - optional

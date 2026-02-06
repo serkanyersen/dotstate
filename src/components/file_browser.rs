@@ -755,7 +755,7 @@ impl FileBrowser {
                     frame,
                     area,
                     &full_path,
-                    self.preview_scroll,
+                    &mut self.preview_scroll,
                     is_focused,
                     Some("Preview"),
                     None,

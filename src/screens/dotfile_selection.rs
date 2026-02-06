@@ -1036,7 +1036,7 @@ impl DotfileSelectionScreen {
                 frame,
                 preview_area,
                 &dotfile.original_path,
-                self.state.preview_scroll,
+                &mut self.state.preview_scroll,
                 is_focused,
                 Some(&preview_title),
                 None,
