@@ -1021,14 +1021,7 @@ impl MainMenuScreen {
             .as_ref()
             .map(|c| {
                 let t = theme();
-                let theme_name = match t.theme_type {
-                    crate::styles::ThemeType::Dark => "dark",
-                    crate::styles::ThemeType::Light => "light",
-                    crate::styles::ThemeType::SolarizedDark => "solarized-dark",
-                    crate::styles::ThemeType::SolarizedLight => "solarized-light",
-                    crate::styles::ThemeType::NoColor => "nocolor",
-                    crate::styles::ThemeType::Midnight => "midnight",
-                };
+                let theme_name = t.theme_type.to_config_string();
                 c.keymap.footer_navigation(theme_name)
             })
             .unwrap_or_else(|| {

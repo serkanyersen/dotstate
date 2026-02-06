@@ -67,6 +67,18 @@ pub enum ThemeType {
     SolarizedDark,
     /// Solarized Light theme
     SolarizedLight,
+    /// Gruvbox Dark theme
+    GruvboxDark,
+    /// Gruvbox Light theme
+    GruvboxLight,
+    /// Catppuccin Mocha (dark) theme
+    CatppuccinMocha,
+    /// Catppuccin Latte (light) theme
+    CatppuccinLatte,
+    /// Tokyo Night (dark) theme
+    TokyoNightDark,
+    /// Tokyo Night (light) theme
+    TokyoNightLight,
 }
 
 impl ThemeType {
@@ -80,6 +92,12 @@ impl ThemeType {
             ThemeType::Midnight => "Midnight",
             ThemeType::SolarizedDark => "Solarized Dark",
             ThemeType::SolarizedLight => "Solarized Light",
+            ThemeType::GruvboxDark => "Gruvbox Dark",
+            ThemeType::GruvboxLight => "Gruvbox Light",
+            ThemeType::CatppuccinMocha => "Catppuccin Mocha",
+            ThemeType::CatppuccinLatte => "Catppuccin Latte",
+            ThemeType::TokyoNightDark => "Tokyo Night",
+            ThemeType::TokyoNightLight => "Tokyo Night Light",
         }
     }
 
@@ -93,6 +111,12 @@ impl ThemeType {
             ThemeType::Midnight => "midnight",
             ThemeType::SolarizedDark => "solarized-dark",
             ThemeType::SolarizedLight => "solarized-light",
+            ThemeType::GruvboxDark => "gruvbox-dark",
+            ThemeType::GruvboxLight => "gruvbox-light",
+            ThemeType::CatppuccinMocha => "catppuccin-mocha",
+            ThemeType::CatppuccinLatte => "catppuccin-latte",
+            ThemeType::TokyoNightDark => "tokyonight-dark",
+            ThemeType::TokyoNightLight => "tokyonight-light",
         }
     }
 
@@ -105,6 +129,12 @@ impl ThemeType {
             ThemeType::Midnight,
             ThemeType::SolarizedDark,
             ThemeType::SolarizedLight,
+            ThemeType::GruvboxDark,
+            ThemeType::GruvboxLight,
+            ThemeType::CatppuccinMocha,
+            ThemeType::CatppuccinLatte,
+            ThemeType::TokyoNightDark,
+            ThemeType::TokyoNightLight,
             ThemeType::NoColor,
         ]
     }
@@ -119,6 +149,15 @@ impl FromStr for ThemeType {
             "midnight" => ThemeType::Midnight,
             "solarized-dark" | "solarized_dark" | "solarized" => ThemeType::SolarizedDark,
             "solarized-light" | "solarized_light" => ThemeType::SolarizedLight,
+            "gruvbox-dark" | "gruvbox_dark" | "gruvbox" => ThemeType::GruvboxDark,
+            "gruvbox-light" | "gruvbox_light" => ThemeType::GruvboxLight,
+            "catppuccin-mocha" | "catppuccin_mocha" | "catppuccin" => ThemeType::CatppuccinMocha,
+            "catppuccin-latte" | "catppuccin_latte" => ThemeType::CatppuccinLatte,
+            "tokyonight-dark" | "tokyonight_dark" | "tokyonight" | "tokyo-night"
+            | "tokyo_night" => ThemeType::TokyoNightDark,
+            "tokyonight-light" | "tokyonight_light" | "tokyo-night-light" | "tokyo_night_light" => {
+                ThemeType::TokyoNightLight
+            }
             "nocolor" | "no-color" | "no_color" => ThemeType::NoColor,
             _ => ThemeType::Dark,
         })
@@ -188,6 +227,12 @@ impl Theme {
             ThemeType::Midnight => Self::midnight(),
             ThemeType::SolarizedDark => Self::solarized_dark(),
             ThemeType::SolarizedLight => Self::solarized_light(),
+            ThemeType::GruvboxDark => Self::gruvbox_dark(),
+            ThemeType::GruvboxLight => Self::gruvbox_light(),
+            ThemeType::CatppuccinMocha => Self::catppuccin_mocha(),
+            ThemeType::CatppuccinLatte => Self::catppuccin_latte(),
+            ThemeType::TokyoNightDark => Self::tokyonight_dark(),
+            ThemeType::TokyoNightLight => Self::tokyonight_light(),
         }
     }
 
@@ -317,6 +362,227 @@ impl Theme {
             highlight_bg: Color::Rgb(238, 232, 213),  // Base2
             background: Color::Rgb(253, 246, 227),    // Base3
             dim_bg: Color::Rgb(238, 232, 213),        // Base2
+
+            border_type: BorderType::Rounded,
+            border_focused_type: BorderType::Thick,
+            dialog_border_type: BorderType::Double,
+        }
+    }
+
+    /// Gruvbox Dark theme - warm, retro colors
+    #[must_use]
+    pub fn gruvbox_dark() -> Self {
+        Self {
+            theme_type: ThemeType::GruvboxDark,
+
+            // Gruvbox Palette (Dark)
+            // bg0:  #282828  bg1: #3c3836  bg2: #504945  bg3: #665c54
+            // fg0:  #fbf1c7  fg1: #ebdbb2  fg4: #a89984
+            // Bright: red #fb4934  green #b8bb26  yellow #fabd2f
+            //         blue #83a598  purple #d3869b  aqua #8ec07c  orange #fe8019
+            primary: Color::Rgb(215, 153, 33),   // yellow #d79921
+            secondary: Color::Rgb(177, 98, 134), // purple #b16286
+            tertiary: Color::Rgb(69, 133, 136),  // blue #458588
+
+            success: Color::Rgb(152, 151, 26), // green #98971a
+            warning: Color::Rgb(214, 93, 14),  // orange #d65d0e
+            error: Color::Rgb(204, 36, 29),    // red #cc241d
+
+            text: Color::Rgb(235, 219, 178),         // fg1 #ebdbb2
+            text_muted: Color::Rgb(168, 153, 132),   // fg4 #a89984
+            text_dimmed: Color::Rgb(102, 92, 84),    // bg3 #665c54
+            text_emphasis: Color::Rgb(250, 189, 47), // bright yellow #fabd2f
+
+            border: Color::Rgb(102, 92, 84),          // bg3 #665c54
+            border_focused: Color::Rgb(215, 153, 33), // yellow #d79921
+            highlight_bg: Color::Rgb(60, 56, 54),     // bg1 #3c3836
+            background: Color::Rgb(40, 40, 40),       // bg0 #282828
+            dim_bg: Color::Rgb(50, 48, 47),           // bg0_s #32302f
+
+            border_type: BorderType::Rounded,
+            border_focused_type: BorderType::Thick,
+            dialog_border_type: BorderType::Double,
+        }
+    }
+
+    /// Gruvbox Light theme - warm, retro colors on light background
+    #[must_use]
+    pub fn gruvbox_light() -> Self {
+        Self {
+            theme_type: ThemeType::GruvboxLight,
+
+            // Gruvbox Palette (Light)
+            // bg0:  #fbf1c7  bg1: #ebdbb2  bg2: #d5c4a1  bg3: #bdae93
+            // fg0:  #282828  fg1: #3c3836  fg4: #7c6f64
+            primary: Color::Rgb(175, 58, 3), // orange-dark #af3a03
+            secondary: Color::Rgb(143, 63, 113), // purple-dark #8f3f71
+            tertiary: Color::Rgb(7, 102, 120), // blue-dark #076678
+
+            success: Color::Rgb(121, 116, 14), // green-dark #79740e
+            warning: Color::Rgb(181, 118, 20), // yellow-dark #b57614
+            error: Color::Rgb(157, 0, 6),      // red-dark #9d0006
+
+            text: Color::Rgb(60, 56, 54),           // fg1 #3c3836
+            text_muted: Color::Rgb(124, 111, 100),  // fg4 #7c6f64
+            text_dimmed: Color::Rgb(189, 174, 147), // bg3 #bdae93
+            text_emphasis: Color::Rgb(175, 58, 3),  // orange-dark #af3a03
+
+            border: Color::Rgb(189, 174, 147),       // bg3 #bdae93
+            border_focused: Color::Rgb(175, 58, 3),  // orange-dark #af3a03
+            highlight_bg: Color::Rgb(235, 219, 178), // bg1 #ebdbb2
+            background: Color::Rgb(251, 241, 199),   // bg0 #fbf1c7
+            dim_bg: Color::Rgb(242, 229, 188),       // bg0_s #f2e5bc
+
+            border_type: BorderType::Rounded,
+            border_focused_type: BorderType::Thick,
+            dialog_border_type: BorderType::Double,
+        }
+    }
+
+    /// Catppuccin Mocha theme - pastel dark theme
+    #[must_use]
+    pub fn catppuccin_mocha() -> Self {
+        Self {
+            theme_type: ThemeType::CatppuccinMocha,
+
+            // Catppuccin Mocha Palette
+            // Base: #1e1e2e  Mantle: #181825  Crust: #11111b
+            // Surface0: #313244  Surface1: #45475a  Surface2: #585b70
+            // Overlay0: #6c7086  Subtext0: #a6adc8  Subtext1: #bac2de
+            // Text: #cdd6f4
+            // Blue: #89b4fa  Lavender: #b4befe  Mauve: #cba6f7
+            // Red: #f38ba8  Peach: #fab387  Yellow: #f9e2af
+            // Green: #a6e3a1  Teal: #94e2d5  Sky: #89dceb
+            primary: Color::Rgb(137, 180, 250),   // Blue #89b4fa
+            secondary: Color::Rgb(203, 166, 247), // Mauve #cba6f7
+            tertiary: Color::Rgb(180, 190, 254),  // Lavender #b4befe
+
+            success: Color::Rgb(166, 227, 161), // Green #a6e3a1
+            warning: Color::Rgb(249, 226, 175), // Yellow #f9e2af
+            error: Color::Rgb(243, 139, 168),   // Red #f38ba8
+
+            text: Color::Rgb(205, 214, 244),          // Text #cdd6f4
+            text_muted: Color::Rgb(108, 112, 134),    // Overlay0 #6c7086
+            text_dimmed: Color::Rgb(88, 91, 112),     // Surface2 #585b70
+            text_emphasis: Color::Rgb(250, 179, 135), // Peach #fab387
+
+            border: Color::Rgb(69, 71, 90), // Surface1 #45475a
+            border_focused: Color::Rgb(137, 180, 250), // Blue #89b4fa
+            highlight_bg: Color::Rgb(49, 50, 68), // Surface0 #313244
+            background: Color::Rgb(30, 30, 46), // Base #1e1e2e
+            dim_bg: Color::Rgb(24, 24, 37), // Mantle #181825
+
+            border_type: BorderType::Rounded,
+            border_focused_type: BorderType::Thick,
+            dialog_border_type: BorderType::Double,
+        }
+    }
+
+    /// Catppuccin Latte theme - pastel light theme
+    #[must_use]
+    pub fn catppuccin_latte() -> Self {
+        Self {
+            theme_type: ThemeType::CatppuccinLatte,
+
+            // Catppuccin Latte Palette
+            // Base: #eff1f5  Mantle: #e6e9ef  Crust: #dce0e8
+            // Surface0: #ccd0da  Surface1: #bcc0cc  Surface2: #acb0be
+            // Overlay0: #9ca0b0  Subtext0: #6c6f85  Subtext1: #5c5f77
+            // Text: #4c4f69
+            // Blue: #1e66f5  Lavender: #7287fd  Mauve: #8839ef
+            // Red: #d20f39  Peach: #fe640b  Yellow: #df8e1d
+            // Green: #40a02b  Teal: #179299  Sky: #04a5e5
+            primary: Color::Rgb(30, 102, 245),   // Blue #1e66f5
+            secondary: Color::Rgb(136, 57, 239), // Mauve #8839ef
+            tertiary: Color::Rgb(114, 135, 253), // Lavender #7287fd
+
+            success: Color::Rgb(64, 160, 43),  // Green #40a02b
+            warning: Color::Rgb(223, 142, 29), // Yellow #df8e1d
+            error: Color::Rgb(210, 15, 57),    // Red #d20f39
+
+            text: Color::Rgb(76, 79, 105),           // Text #4c4f69
+            text_muted: Color::Rgb(156, 160, 176),   // Overlay0 #9ca0b0
+            text_dimmed: Color::Rgb(188, 192, 204),  // Surface1 #bcc0cc
+            text_emphasis: Color::Rgb(254, 100, 11), // Peach #fe640b
+
+            border: Color::Rgb(188, 192, 204), // Surface1 #bcc0cc
+            border_focused: Color::Rgb(30, 102, 245), // Blue #1e66f5
+            highlight_bg: Color::Rgb(204, 208, 218), // Surface0 #ccd0da
+            background: Color::Rgb(239, 241, 245), // Base #eff1f5
+            dim_bg: Color::Rgb(230, 233, 239), // Mantle #e6e9ef
+
+            border_type: BorderType::Rounded,
+            border_focused_type: BorderType::Thick,
+            dialog_border_type: BorderType::Double,
+        }
+    }
+
+    /// Tokyo Night (Storm) theme - dark, inspired by Tokyo city lights
+    #[must_use]
+    pub fn tokyonight_dark() -> Self {
+        Self {
+            theme_type: ThemeType::TokyoNightDark,
+
+            // Tokyo Night Storm Palette
+            // bg: #24283b  bg_dark: #1f2335  bg_highlight: #292e42
+            // terminal_black: #414868  fg: #c0caf5  fg_dark: #a9b1d6
+            // comment: #565f89
+            // blue: #7aa2f7  cyan: #7dcfff  magenta: #bb9af7  orange: #ff9e64
+            // red: #f7768e  yellow: #e0af68  green: #9ece6a  teal: #73daca
+            primary: Color::Rgb(122, 162, 247),   // blue #7aa2f7
+            secondary: Color::Rgb(187, 154, 247), // magenta #bb9af7
+            tertiary: Color::Rgb(125, 207, 255),  // cyan #7dcfff
+
+            success: Color::Rgb(158, 206, 106), // green #9ece6a
+            warning: Color::Rgb(224, 175, 104), // yellow #e0af68
+            error: Color::Rgb(247, 118, 142),   // red #f7768e
+
+            text: Color::Rgb(192, 202, 245),          // fg #c0caf5
+            text_muted: Color::Rgb(86, 95, 137),      // comment #565f89
+            text_dimmed: Color::Rgb(65, 72, 104),     // terminal_black #414868
+            text_emphasis: Color::Rgb(255, 158, 100), // orange #ff9e64
+
+            border: Color::Rgb(65, 72, 104), // terminal_black #414868
+            border_focused: Color::Rgb(122, 162, 247), // blue #7aa2f7
+            highlight_bg: Color::Rgb(41, 46, 66), // bg_highlight #292e42
+            background: Color::Rgb(36, 40, 59), // bg #24283b
+            dim_bg: Color::Rgb(31, 35, 53),  // bg_dark #1f2335
+
+            border_type: BorderType::Rounded,
+            border_focused_type: BorderType::Thick,
+            dialog_border_type: BorderType::Double,
+        }
+    }
+
+    /// Tokyo Night Day theme - light variant
+    #[must_use]
+    pub fn tokyonight_light() -> Self {
+        Self {
+            theme_type: ThemeType::TokyoNightLight,
+
+            // Tokyo Night Day Palette
+            // bg: #e1e2e7  bg_dark: #d5d6db  bg_highlight: #c4c8da
+            // fg: #3760bf  fg_dark: #6172b0  comment: #848cb5
+            // blue: #2e7de9  cyan: #007197  magenta: #9854f1  orange: #b15c00
+            // red: #f52a65  yellow: #8c6c3e  green: #587539  teal: #118c74
+            primary: Color::Rgb(46, 125, 233),   // blue #2e7de9
+            secondary: Color::Rgb(152, 84, 241), // magenta #9854f1
+            tertiary: Color::Rgb(0, 113, 151),   // cyan #007197
+
+            success: Color::Rgb(88, 117, 57),  // green #587539
+            warning: Color::Rgb(140, 108, 62), // yellow #8c6c3e
+            error: Color::Rgb(245, 42, 101),   // red #f52a65
+
+            text: Color::Rgb(55, 96, 191),          // fg #3760bf
+            text_muted: Color::Rgb(132, 140, 181),  // comment #848cb5
+            text_dimmed: Color::Rgb(196, 200, 218), // bg_highlight #c4c8da
+            text_emphasis: Color::Rgb(177, 92, 0),  // orange #b15c00
+
+            border: Color::Rgb(196, 200, 218), // bg_highlight #c4c8da
+            border_focused: Color::Rgb(46, 125, 233), // blue #2e7de9
+            highlight_bg: Color::Rgb(196, 200, 218), // bg_highlight #c4c8da
+            background: Color::Rgb(225, 226, 231), // bg #e1e2e7
+            dim_bg: Color::Rgb(213, 214, 219), // bg_dark #d5d6db
 
             border_type: BorderType::Rounded,
             border_focused_type: BorderType::Thick,
@@ -600,6 +866,46 @@ mod tests {
         assert_eq!(
             "solarized_light".parse::<ThemeType>().unwrap(),
             ThemeType::SolarizedLight
+        );
+        assert_eq!(
+            "gruvbox-dark".parse::<ThemeType>().unwrap(),
+            ThemeType::GruvboxDark
+        );
+        assert_eq!(
+            "gruvbox".parse::<ThemeType>().unwrap(),
+            ThemeType::GruvboxDark
+        );
+        assert_eq!(
+            "gruvbox-light".parse::<ThemeType>().unwrap(),
+            ThemeType::GruvboxLight
+        );
+        assert_eq!(
+            "catppuccin-mocha".parse::<ThemeType>().unwrap(),
+            ThemeType::CatppuccinMocha
+        );
+        assert_eq!(
+            "catppuccin".parse::<ThemeType>().unwrap(),
+            ThemeType::CatppuccinMocha
+        );
+        assert_eq!(
+            "catppuccin-latte".parse::<ThemeType>().unwrap(),
+            ThemeType::CatppuccinLatte
+        );
+        assert_eq!(
+            "tokyonight-dark".parse::<ThemeType>().unwrap(),
+            ThemeType::TokyoNightDark
+        );
+        assert_eq!(
+            "tokyonight".parse::<ThemeType>().unwrap(),
+            ThemeType::TokyoNightDark
+        );
+        assert_eq!(
+            "tokyo-night".parse::<ThemeType>().unwrap(),
+            ThemeType::TokyoNightDark
+        );
+        assert_eq!(
+            "tokyonight-light".parse::<ThemeType>().unwrap(),
+            ThemeType::TokyoNightLight
         );
     }
 

@@ -328,44 +328,22 @@ impl App {
             .parse::<ThemeType>()
             .unwrap_or(ThemeType::Dark);
 
-        // Cycle through themes: dark -> light -> solarized-dark -> solarized-light -> nocolor -> midnight -> dark
-        let next_theme = match current_theme {
-            ThemeType::Dark => ThemeType::Light,
-            ThemeType::Light => ThemeType::SolarizedDark,
-            ThemeType::SolarizedDark => ThemeType::SolarizedLight,
-            ThemeType::SolarizedLight => ThemeType::NoColor,
-            ThemeType::NoColor => ThemeType::Midnight,
-            ThemeType::Midnight => ThemeType::Dark,
-        };
+        // Cycle through all themes using ThemeType::all()
+        let all = ThemeType::all();
+        let current_idx = all.iter().position(|t| *t == current_theme).unwrap_or(0);
+        let next_theme = all[(current_idx + 1) % all.len()];
 
         // Update config
-        self.config.theme = match next_theme {
-            ThemeType::Dark => "dark".to_string(),
-            ThemeType::Light => "light".to_string(),
-            ThemeType::SolarizedDark => "solarized-dark".to_string(),
-            ThemeType::SolarizedLight => "solarized-light".to_string(),
-            ThemeType::NoColor => "nocolor".to_string(),
-            ThemeType::Midnight => "midnight".to_string(),
-        };
+        self.config.theme = next_theme.to_config_string().to_string();
 
         // Update NO_COLOR environment variable based on theme
         // This allows colors to be restored when cycling from nocolor to a color theme
-        match next_theme {
-            ThemeType::NoColor => {
-                std::env::set_var("NO_COLOR", "1");
-                info!("NO_COLOR environment variable set");
-            }
-            ThemeType::Dark
-            | ThemeType::Light
-            | ThemeType::SolarizedDark
-            | ThemeType::SolarizedLight
-            | ThemeType::Midnight => {
-                // Unset NO_COLOR to allow colors
-                // Note: Some libraries may have already checked NO_COLOR at startup,
-                // but unsetting it allows future checks to see colors are enabled
-                std::env::remove_var("NO_COLOR");
-                info!("NO_COLOR environment variable removed");
-            }
+        if next_theme == ThemeType::NoColor {
+            std::env::set_var("NO_COLOR", "1");
+            info!("NO_COLOR environment variable set");
+        } else {
+            std::env::remove_var("NO_COLOR");
+            info!("NO_COLOR environment variable removed");
         }
 
         // Re-initialize theme

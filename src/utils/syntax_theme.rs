@@ -28,9 +28,17 @@ use syntect::highlighting::{Theme, ThemeSet};
 #[must_use]
 pub fn get_syntax_theme(theme_set: &ThemeSet, theme_type: ThemeType) -> &Theme {
     let preferred_names = match theme_type {
-        ThemeType::Light => vec!["base16-ocean.light", "Solarized (light)", "GitHub"],
+        ThemeType::Light
+        | ThemeType::SolarizedLight
+        | ThemeType::GruvboxLight
+        | ThemeType::CatppuccinLatte
+        | ThemeType::TokyoNightLight => {
+            vec!["base16-ocean.light", "Solarized (light)", "GitHub"]
+        }
         ThemeType::SolarizedDark => vec!["Solarized (dark)", "base16-ocean.dark"],
-        ThemeType::SolarizedLight => vec!["Solarized (light)", "base16-ocean.light"],
+        ThemeType::GruvboxDark => vec!["base16-eighties.dark", "base16-ocean.dark"],
+        ThemeType::CatppuccinMocha => vec!["base16-mocha.dark", "base16-ocean.dark"],
+        ThemeType::TokyoNightDark => vec!["base16-ocean.dark", "base16-eighties.dark"],
         ThemeType::Dark | ThemeType::NoColor | ThemeType::Midnight => vec![
             "base16-ocean.dark",
             "base16-eighties.dark",
