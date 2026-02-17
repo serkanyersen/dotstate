@@ -420,6 +420,7 @@ impl SyncService {
                 synced: is_synced,
                 description: None,
                 is_common: false,
+                is_custom: true,
             });
         }
 
@@ -446,6 +447,7 @@ impl SyncService {
                 synced: true, // It's in the manifest, so it's synced
                 description: None,
                 is_common: false,
+                is_custom: false,
             });
         }
 
@@ -478,6 +480,7 @@ impl SyncService {
                     synced: true, // Common files are always synced
                     description: None,
                     is_common: true,
+                    is_custom: false,
                 });
             }
         }

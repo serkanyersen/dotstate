@@ -24,6 +24,8 @@ pub struct Dotfile {
     pub description: Option<String>,
     /// Whether this file is a common file (shared across all profiles)
     pub is_common: bool,
+    /// Whether this file was manually added via `config.custom_files` (not auto-detected)
+    pub is_custom: bool,
 }
 
 impl FileManager {
@@ -57,6 +59,7 @@ impl FileManager {
                     synced: false,
                     description,
                     is_common: false,
+                    is_custom: false,
                 });
             }
         }

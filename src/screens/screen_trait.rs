@@ -171,6 +171,11 @@ pub enum ScreenAction {
         /// Whether backups are enabled.
         enabled: bool,
     },
+    /// Remove a custom file entry from the config (not synced, user-added).
+    RemoveCustomFile {
+        /// Index of the file in the dotfiles list.
+        file_index: usize,
+    },
     /// Move a file to/from common (shared across all profiles).
     MoveToCommon {
         /// Index of the file in the dotfiles list.

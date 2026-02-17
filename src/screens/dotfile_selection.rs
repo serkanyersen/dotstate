@@ -65,6 +65,8 @@ pub enum DotfileAction {
         is_common: bool,
         profiles_to_cleanup: Vec<String>,
     },
+    /// Remove a custom file entry from `config.custom_files`
+    RemoveCustomFile { file_index: usize },
 }
 
 /// Focus area in dotfile selection screen
@@ -111,6 +113,8 @@ pub struct DotfileSelectionState {
     pub move_validation: Option<crate::utils::MoveToCommonValidation>, // Validation result when conflicts detected
     // Unsync common file confirmation
     pub confirm_unsync_common: Option<usize>, // Index of common file to unsync
+    // Remove custom file confirmation
+    pub confirm_remove_custom: Option<usize>, // Index of custom file to remove
 }
 
 impl Default for DotfileSelectionState {
@@ -143,6 +147,7 @@ impl Default for DotfileSelectionState {
             confirm_move: None,
             move_validation: None,
             confirm_unsync_common: None,
+            confirm_remove_custom: None,
         }
     }
 }
@@ -543,6 +548,31 @@ impl DotfileSelectionScreen {
                         enabled: self.state.backup_enabled,
                     });
                 }
+                Action::Delete => {
+                    if let Some(idx) = self.state.dotfile_list_state.selected() {
+                        if idx < display_items.len() {
+                            if let DisplayItem::File(file_idx) = &display_items[idx] {
+                                let dotfile = &self.state.dotfiles[*file_idx];
+                                if dotfile.synced {
+                                    return Ok(ScreenAction::ShowToast {
+                                        message: "Unsync the file first before removing it".into(),
+                                        variant: crate::widgets::ToastVariant::Info,
+                                    });
+                                }
+                                if !dotfile.is_custom {
+                                    return Ok(ScreenAction::ShowToast {
+                                        message:
+                                            "Only custom-added files can be removed from the list"
+                                                .into(),
+                                        variant: crate::widgets::ToastVariant::Info,
+                                    });
+                                }
+                                self.state.confirm_remove_custom = Some(*file_idx);
+                                return Ok(ScreenAction::Refresh);
+                            }
+                        }
+                    }
+                }
                 Action::Cancel | Action::Quit => {
                     return Ok(ScreenAction::Navigate(ScreenId::MainMenu));
                 }
@@ -891,18 +921,27 @@ impl DotfileSelectionScreen {
 
                     let style = if is_selected {
                         Style::default().fg(t.success)
+                    } else if dotfile.is_custom {
+                        Style::default().fg(t.secondary)
                     } else {
                         t.text_style()
                     };
 
                     let path_str = dotfile.relative_path.to_string_lossy();
-                    let content = ratatui::text::Line::from(vec![
+                    let mut spans = vec![
                         ratatui::text::Span::styled(prefix.to_string(), Style::default()),
                         ratatui::text::Span::styled(
                             format!(" {sync_marker}\u{2009}{path_str}"),
                             style,
                         ),
-                    ]);
+                    ];
+                    if dotfile.is_custom {
+                        spans.push(ratatui::text::Span::styled(
+                            " [custom]",
+                            Style::default().fg(t.text_muted),
+                        ));
+                    }
+                    let content = ratatui::text::Line::from(spans);
                     ListItem::new(content)
                 }
             })
@@ -1063,9 +1102,9 @@ impl DotfileSelectionScreen {
         };
         let k = |a| config.keymap.get_key_display_for_action(a);
 
-        // Determine move action text based on selected file
+        // Determine move action text and custom status based on selected file
         let display_items = self.get_display_items(&config.active_profile);
-        let move_text = self
+        let selected_dotfile = self
             .state
             .dotfile_list_state
             .selected()
@@ -1073,17 +1112,27 @@ impl DotfileSelectionScreen {
             .and_then(|item| match item {
                 DisplayItem::File(file_idx) => self.state.dotfiles.get(*file_idx),
                 _ => None,
-            })
-            .map_or("Move", |dotfile| {
-                if dotfile.is_common {
-                    "Move to Profile"
-                } else {
-                    "Move to Common"
-                }
             });
 
+        let move_text = selected_dotfile.map_or("Move", |dotfile| {
+            if dotfile.is_common {
+                "Move to Profile"
+            } else {
+                "Move to Common"
+            }
+        });
+
+        let is_custom_selected =
+            selected_dotfile.is_some_and(|dotfile| dotfile.is_custom && !dotfile.synced);
+
+        let remove_part = if is_custom_selected {
+            format!(" | {}: Remove", k(crate::keymap::Action::Delete))
+        } else {
+            String::new()
+        };
+
         let footer_text = format!(
-            "Tab: Focus | {}: Navigate | Space/{}: Toggle | {}: {} | {}: Add Custom | {}: Backup ({}) | {}: Back",
+            "Tab: Focus | {}: Navigate | Space/{}: Toggle | {}: {} | {}: Add Custom | {}: Backup ({}){} | {}: Back",
              config.keymap.navigation_display(),
              k(crate::keymap::Action::Confirm),
              k(crate::keymap::Action::Move),
@@ -1091,6 +1140,7 @@ impl DotfileSelectionScreen {
              k(crate::keymap::Action::Create),
              k(crate::keymap::Action::ToggleBackup),
              backup_status,
+             remove_part,
              k(crate::keymap::Action::Quit)
         );
 
@@ -1322,6 +1372,50 @@ impl DotfileSelectionScreen {
             }
             KeyCode::Char('n') => {
                 self.state.confirm_unsync_common = None;
+                Ok(ScreenAction::Refresh)
+            }
+            _ => Ok(ScreenAction::None),
+        }
+    }
+
+    fn handle_remove_custom_confirm(
+        &mut self,
+        key_code: KeyCode,
+        config: &Config,
+    ) -> Result<ScreenAction> {
+        let action = config
+            .keymap
+            .get_action(key_code, crossterm::event::KeyModifiers::NONE);
+
+        if let Some(action) = action {
+            match action {
+                crate::keymap::Action::Confirm => {
+                    if let Some(idx) = self.state.confirm_remove_custom {
+                        self.state.confirm_remove_custom = None;
+                        return Ok(ScreenAction::RemoveCustomFile { file_index: idx });
+                    }
+                    self.state.confirm_remove_custom = None;
+                    return Ok(ScreenAction::Refresh);
+                }
+                crate::keymap::Action::Quit | crate::keymap::Action::Cancel => {
+                    self.state.confirm_remove_custom = None;
+                    return Ok(ScreenAction::Refresh);
+                }
+                _ => {}
+            }
+        }
+
+        match key_code {
+            KeyCode::Char('y') => {
+                if let Some(idx) = self.state.confirm_remove_custom {
+                    self.state.confirm_remove_custom = None;
+                    return Ok(ScreenAction::RemoveCustomFile { file_index: idx });
+                }
+                self.state.confirm_remove_custom = None;
+                Ok(ScreenAction::Refresh)
+            }
+            KeyCode::Char('n') => {
+                self.state.confirm_remove_custom = None;
                 Ok(ScreenAction::Refresh)
             }
             _ => Ok(ScreenAction::None),
@@ -1569,6 +1663,43 @@ impl DotfileSelectionScreen {
         Ok(())
     }
 
+    fn render_remove_custom_confirm(
+        &self,
+        frame: &mut Frame,
+        area: Rect,
+        config: &Config,
+    ) -> Result<()> {
+        let dotfile_name = if let Some(idx) = self.state.confirm_remove_custom {
+            if idx < self.state.dotfiles.len() {
+                self.state.dotfiles[idx].relative_path.display().to_string()
+            } else {
+                "Unknown".to_string()
+            }
+        } else {
+            "Unknown".to_string()
+        };
+
+        let msg = format!(
+            "Remove '{dotfile_name}' from the file list?\n\n\
+            This will permanently remove this custom file entry.\n\
+            The file itself will NOT be deleted from your system."
+        );
+
+        let k = |a| config.keymap.get_key_display_for_action(a);
+        let footer_text = format!(
+            "{}/y: Confirm | {}/n: Cancel",
+            k(crate::keymap::Action::Confirm),
+            k(crate::keymap::Action::Cancel)
+        );
+
+        let dialog = Dialog::new("Remove Custom File", &msg)
+            .variant(DialogVariant::Warning)
+            .footer(&footer_text);
+        frame.render_widget(dialog, area);
+
+        Ok(())
+    }
+
     // ============================================================================
     // Action Processing Methods
     // ============================================================================
@@ -1610,6 +1741,9 @@ impl DotfileSelectionScreen {
                 is_common,
                 profiles_to_cleanup,
             } => self.move_to_common(config, file_index, is_common, profiles_to_cleanup),
+            DotfileAction::RemoveCustomFile { file_index } => {
+                self.remove_custom_file(config, config_path, file_index)
+            }
         }
     }
 
@@ -1899,6 +2033,56 @@ impl DotfileSelectionScreen {
         }
     }
 
+    /// Remove a custom file entry from `config.custom_files`.
+    fn remove_custom_file(
+        &mut self,
+        config: &mut Config,
+        config_path: &Path,
+        file_index: usize,
+    ) -> Result<ActionResult> {
+        if file_index >= self.state.dotfiles.len() {
+            return Ok(ActionResult::ShowToast {
+                message: "Invalid file index".into(),
+                variant: crate::widgets::ToastVariant::Error,
+            });
+        }
+
+        let dotfile = &self.state.dotfiles[file_index];
+        if dotfile.synced {
+            return Ok(ActionResult::ShowToast {
+                message: "Unsync the file first before removing it".into(),
+                variant: crate::widgets::ToastVariant::Info,
+            });
+        }
+        if !dotfile.is_custom {
+            return Ok(ActionResult::ShowToast {
+                message: "Only custom-added files can be removed from the list".into(),
+                variant: crate::widgets::ToastVariant::Info,
+            });
+        }
+
+        let relative_path = dotfile.relative_path.to_string_lossy().to_string();
+
+        // Remove from config.custom_files
+        config.custom_files.retain(|f| f != &relative_path);
+        if let Err(e) = config.save(config_path) {
+            warn!("Failed to save config: {}", e);
+            return Ok(ActionResult::ShowToast {
+                message: format!("Error saving config: {e}"),
+                variant: crate::widgets::ToastVariant::Error,
+            });
+        }
+
+        // Rescan dotfiles
+        self.scan_dotfiles(config)?;
+
+        info!("Removed custom file entry: {}", relative_path);
+        Ok(ActionResult::ShowToast {
+            message: format!("Removed {relative_path} from file list"),
+            variant: crate::widgets::ToastVariant::Success,
+        })
+    }
+
     /// Move a file to/from common.
     pub fn move_to_common(
         &mut self,
@@ -2050,6 +2234,9 @@ impl Screen for DotfileSelectionScreen {
         } else if self.state.confirm_unsync_common.is_some() {
             // Unsync common file confirmation
             self.render_unsync_common_confirm(frame, area, ctx.config)?;
+        } else if self.state.confirm_remove_custom.is_some() {
+            // Remove custom file confirmation
+            self.render_remove_custom_confirm(frame, area, ctx.config)?;
         }
 
         Ok(())
@@ -2079,6 +2266,15 @@ impl Screen for DotfileSelectionScreen {
             if let Event::Key(key) = event {
                 if key.kind == KeyEventKind::Press {
                     return self.handle_unsync_common_confirm(key.code, ctx.config);
+                }
+            }
+            return Ok(ScreenAction::None);
+        }
+
+        if self.state.confirm_remove_custom.is_some() {
+            if let Event::Key(key) = event {
+                if key.kind == KeyEventKind::Press {
+                    return self.handle_remove_custom_confirm(key.code, ctx.config);
                 }
             }
             return Ok(ScreenAction::None);

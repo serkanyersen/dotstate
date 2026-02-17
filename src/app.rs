@@ -1326,6 +1326,15 @@ impl App {
                 )?;
                 self.handle_action_result(result)?;
             }
+            ScreenAction::RemoveCustomFile { file_index } => {
+                use crate::screens::dotfile_selection::DotfileAction;
+                let result = self.dotfile_selection_screen.process_action(
+                    DotfileAction::RemoveCustomFile { file_index },
+                    &mut self.config,
+                    &self.config_path,
+                )?;
+                self.handle_action_result(result)?;
+            }
         }
         Ok(())
     }
