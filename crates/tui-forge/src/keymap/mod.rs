@@ -12,6 +12,7 @@ pub use presets::KeymapPreset;
 
 use crossterm::event::{KeyCode, KeyModifiers};
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 
 /// Keymap configuration with preset and optional overrides
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -57,6 +58,28 @@ impl Keymap {
         None
     }
 
+    /// Get the action for a key event while extending the preset with
+    /// application-provided bindings.
+    ///
+    /// Precedence order:
+    /// 1) `self.overrides`
+    /// 2) `extra_bindings`
+    /// 3) preset bindings
+    #[must_use]
+    pub fn get_action_with_bindings(
+        &self,
+        code: KeyCode,
+        modifiers: KeyModifiers,
+        extra_bindings: &[KeyBinding],
+    ) -> Option<Action> {
+        for binding in self.all_bindings_with(extra_bindings) {
+            if binding.matches(code, modifiers) {
+                return Some(binding.action);
+            }
+        }
+        None
+    }
+
     /// Get all bindings (overrides + preset) for display in help
     /// Overrides shadow preset bindings for the same action
     #[must_use]
@@ -72,6 +95,28 @@ impl Keymap {
                 .any(|o| o.action == preset_binding.action);
             if !is_overridden {
                 bindings.push(preset_binding);
+            }
+        }
+
+        bindings
+    }
+
+    /// Get all bindings using the precedence:
+    /// overrides > `extra_bindings` > preset.
+    #[must_use]
+    pub fn all_bindings_with(&self, extra_bindings: &[KeyBinding]) -> Vec<KeyBinding> {
+        let mut bindings = self.overrides.clone();
+        let mut shadowed: HashSet<Action> = self.overrides.iter().map(|b| b.action.clone()).collect();
+
+        for extra in extra_bindings {
+            if shadowed.insert(extra.action.clone()) {
+                bindings.push(extra.clone());
+            }
+        }
+
+        for preset in self.preset.bindings() {
+            if shadowed.insert(preset.action.clone()) {
+                bindings.push(preset);
             }
         }
 
@@ -127,6 +172,39 @@ impl Keymap {
         }
 
         // Fallback for actions not in current map (shouldn't happen for core actions)
+        format!("{action:?}")
+    }
+
+    /// Get display text for an action while extending the preset with
+    /// application-provided bindings.
+    ///
+    /// Precedence order:
+    /// 1) `self.overrides`
+    /// 2) `extra_bindings`
+    /// 3) preset bindings
+    #[must_use]
+    pub fn get_key_display_for_action_with_bindings(
+        &self,
+        action: &Action,
+        extra_bindings: &[KeyBinding],
+    ) -> String {
+        if let Some(binding) = self.overrides.iter().find(|b| &b.action == action) {
+            return binding.display();
+        }
+
+        if let Some(binding) = extra_bindings.iter().find(|b| &b.action == action) {
+            return binding.display();
+        }
+
+        if let Some(binding) = self
+            .preset
+            .bindings()
+            .into_iter()
+            .find(|b| &b.action == action)
+        {
+            return binding.display();
+        }
+
         format!("{action:?}")
     }
 }

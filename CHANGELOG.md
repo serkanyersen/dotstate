@@ -18,6 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **UI Toolkit Migration**: Fully migrated layout and navigation utilities (`create_standard_layout`, `create_split_layout`, `center_popup`, `MouseRegions`, `ListStateExt`) to `tui-forge` and removed DotState duplicate utility modules
 - **UI Toolkit Migration**: Fully migrated icon system to `tui-forge` (`Icons`/`IconSet`), removed `src/icons.rs`, and kept DotState-specific precedence via `DOTSTATE_ICONS` in `Config::icons()`
 - **UI Toolkit Migration**: Fully migrated `Header` and `Footer` usage to `tui-forge` and removed DotState duplicate header/footer components
+- **Keymap Migration**: Migrated DotState keymap implementation to `tui-forge` keymap types and removed local duplicate keymap action/binding/preset modules
+- **UI Toolkit Migration**: Migrated help overlay rendering to `tui_forge::HelpOverlay` and removed DotState duplicate help overlay component
+- **Keymap Extensibility**: Added generic keymap extension APIs in `tui-forge` (`all_bindings_with`, `get_action_with_bindings`, `get_key_display_for_action_with_bindings`) and adapted DotState to provide app-specific bindings via `Action::Custom(...)` without adding DotState-specific actions to `tui-forge` presets
 
 ### Fixed
 

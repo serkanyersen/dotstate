@@ -369,9 +369,8 @@ impl DotfileSelectionScreen {
 
     /// Handle main dotfile list navigation and selection.
     fn handle_dotfile_list(&mut self, key_code: KeyCode, config: &Config) -> Result<ScreenAction> {
-        let action = config
-            .keymap
-            .get_action(key_code, crossterm::event::KeyModifiers::NONE);
+        let action =
+            crate::keymap::get_action(&config.keymap, key_code, crossterm::event::KeyModifiers::NONE);
         use crate::keymap::Action;
 
         let display_items = self.get_display_items(&config.active_profile);
@@ -538,7 +537,7 @@ impl DotfileSelectionScreen {
                     self.file_browser.open(crate::utils::get_home_dir());
                     return Ok(ScreenAction::None);
                 }
-                Action::ToggleBackup => {
+                action if action == crate::keymap::dotstate_action_toggle_backup() => {
                     self.state.backup_enabled = !self.state.backup_enabled;
                     return Ok(ScreenAction::SetBackupEnabled {
                         enabled: self.state.backup_enabled,
@@ -572,7 +571,7 @@ impl DotfileSelectionScreen {
                 Action::Cancel | Action::Quit => {
                     return Ok(ScreenAction::Navigate(ScreenId::MainMenu));
                 }
-                Action::Move => {
+                action if action == crate::keymap::dotstate_action_move() => {
                     if let Some(idx) = self.state.dotfile_list_state.selected() {
                         if idx < display_items.len() {
                             if let DisplayItem::File(file_idx) = &display_items[idx] {
@@ -1131,10 +1130,16 @@ impl DotfileSelectionScreen {
             "Tab: Focus | {}: Navigate | Space/{}: Toggle | {}: {} | {}: Add Custom | {}: Backup ({}){} | {}: Back",
              config.keymap.navigation_display(),
              k(crate::keymap::Action::Confirm),
-             k(crate::keymap::Action::Move),
+             crate::keymap::get_key_display_for_action(
+                 &config.keymap,
+                 &crate::keymap::dotstate_action_move(),
+             ),
              move_text,
              k(crate::keymap::Action::Create),
-             k(crate::keymap::Action::ToggleBackup),
+             crate::keymap::get_key_display_for_action(
+                 &config.keymap,
+                 &crate::keymap::dotstate_action_toggle_backup(),
+             ),
              backup_status,
              remove_part,
              k(crate::keymap::Action::Quit)

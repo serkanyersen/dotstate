@@ -1029,7 +1029,13 @@ impl MainMenuScreen {
             .map(|c| {
                 let t = theme();
                 let theme_name = t.theme_type.to_config_string();
-                c.keymap.footer_navigation(theme_name)
+                format!(
+                    "{}: Navigate | {}: Select | {}: Back | ?: Help | Theme: {} (t)",
+                    c.keymap.navigation_display(),
+                    c.keymap.confirm_display(),
+                    c.keymap.quit_display(),
+                    theme_name
+                )
             })
             .unwrap_or_else(|| {
                 "↑↓: Navigate | Enter: Select | q: Back | ?: Help | t: Theme".to_string()

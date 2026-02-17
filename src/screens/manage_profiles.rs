@@ -1126,7 +1126,7 @@ impl Screen for ManageProfilesScreen {
                             }
 
                             // Handle actions for non-character keys (arrows, Tab, Esc, etc.)
-                            if let Some(action) = action {
+                            if let Some(action) = action.clone() {
                                 match action {
                                     Action::Cancel => {
                                         self.state.popup_type = ProfilePopupType::None;
@@ -1368,7 +1368,7 @@ impl Screen for ManageProfilesScreen {
                             }
 
                             // Handle actions for non-character keys (arrows, Tab, Esc, etc.)
-                            if let Some(action) = action {
+                            if let Some(action) = action.clone() {
                                 match action {
                                     Action::Cancel => {
                                         self.state.popup_type = ProfilePopupType::None;
@@ -1443,7 +1443,7 @@ impl Screen for ManageProfilesScreen {
                             }
 
                             // Handle actions for non-character keys (arrows, Tab, Esc, etc.)
-                            if let Some(action) = action {
+                            if let Some(action) = action.clone() {
                                 match action {
                                     Action::Cancel => {
                                         self.state.popup_type = ProfilePopupType::None;
@@ -1506,7 +1506,7 @@ impl Screen for ManageProfilesScreen {
                             }
                         }
                         ProfilePopupType::Switch => {
-                            if let Some(action) = action {
+                            if let Some(action) = action.clone() {
                                 match action {
                                     Action::Cancel => {
                                         self.state.popup_type = ProfilePopupType::None;
@@ -1542,7 +1542,7 @@ impl Screen for ManageProfilesScreen {
         match event {
             Event::Key(key) if key.kind == KeyEventKind::Press => {
                 let action = self.get_action(key.code, key.modifiers, &ctx.config.keymap);
-                if let Some(action) = action {
+                if let Some(action) = action.clone() {
                     match action {
                         Action::Cancel => return Ok(ScreenAction::Navigate(ScreenId::MainMenu)),
                         Action::MoveUp => {

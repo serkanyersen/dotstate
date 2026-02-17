@@ -1,185 +1,79 @@
-//! Keymap configuration module
-//!
-//! Provides customizable keyboard shortcuts with preset keymaps (standard, vim, emacs).
+//! `DotState` keymap surface re-exported from `tui-forge`.
 
-#![allow(dead_code)] // Types are used via Config in the binary, but compiler doesn't see direct usage
-
-mod actions;
-mod binding;
-mod presets;
-
-pub use actions::Action;
-pub use binding::KeyBinding;
-pub use presets::KeymapPreset;
+pub use tui_forge::keymap::{
+    format_key_display, parse_key_string, Action, KeyBinding, Keymap, KeymapPreset, ParsedKey,
+};
 
 use crossterm::event::{KeyCode, KeyModifiers};
-use serde::{Deserialize, Serialize};
 
-/// Keymap configuration with preset and optional overrides
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Keymap {
-    /// Base preset keymap
-    #[serde(default)]
-    pub preset: KeymapPreset,
-
-    /// User-defined overrides (checked before preset)
-    #[serde(default)]
-    pub overrides: Vec<KeyBinding>,
+#[must_use]
+pub fn dotstate_action_sync() -> Action {
+    Action::Custom("sync".to_string())
 }
 
-impl Default for Keymap {
-    fn default() -> Self {
-        Self {
-            preset: KeymapPreset::Standard,
-            overrides: Vec::new(),
-        }
-    }
+#[must_use]
+pub fn dotstate_action_check_status() -> Action {
+    Action::Custom("check_status".to_string())
 }
 
-impl Keymap {
-    /// Get the action for a key event, checking overrides first then preset
-    /// Note: If an action is overridden, preset bindings for that action are ignored
-    #[must_use]
-    pub fn get_action(&self, code: KeyCode, modifiers: KeyModifiers) -> Option<Action> {
-        // Use all_bindings which already handles override shadowing
-        for binding in self.all_bindings() {
-            if binding.matches(code, modifiers) {
-                return Some(binding.action);
-            }
-        }
-        None
-    }
+#[must_use]
+pub fn dotstate_action_install() -> Action {
+    Action::Custom("install".to_string())
+}
 
-    /// Get all bindings (overrides + preset) for display in help
-    /// Overrides shadow preset bindings for the same action
-    #[must_use]
-    pub fn all_bindings(&self) -> Vec<KeyBinding> {
-        let mut bindings = self.overrides.clone();
-        let preset_bindings = self.preset.bindings();
+#[must_use]
+pub fn dotstate_action_import() -> Action {
+    Action::Custom("import".to_string())
+}
 
-        // Add preset bindings that aren't overridden
-        for preset_binding in preset_bindings {
-            let is_overridden = self
-                .overrides
-                .iter()
-                .any(|o| o.action == preset_binding.action);
-            if !is_overridden {
-                bindings.push(preset_binding);
-            }
-        }
+#[must_use]
+pub fn dotstate_action_move() -> Action {
+    Action::Custom("move".to_string())
+}
 
-        bindings
-    }
+#[must_use]
+pub fn dotstate_action_toggle_backup() -> Action {
+    Action::Custom("toggle_backup".to_string())
+}
 
-    /// Get the display string for navigation keys (up/down)
-    /// Reflects actual bindings including overrides
-    #[must_use]
-    pub fn navigation_display(&self) -> String {
-        let up_key = self.get_key_display_for_action(Action::MoveUp);
-        let down_key = self.get_key_display_for_action(Action::MoveDown);
-        format!("{up_key}/{down_key}")
-    }
-
-    /// Get the display string for quit/cancel key
-    /// Reflects actual bindings including overrides
-    #[must_use]
-    pub fn quit_display(&self) -> String {
-        let quit_key = self.get_key_display_for_action(Action::Quit);
-        let cancel_key = self.get_key_display_for_action(Action::Cancel);
-        if quit_key == cancel_key {
-            quit_key
-        } else {
-            format!("{quit_key}/{cancel_key}")
-        }
-    }
-
-    /// Get the display string for confirm key
-    /// Reflects actual bindings including overrides
-    #[must_use]
-    pub fn confirm_display(&self) -> String {
-        self.get_key_display_for_action(Action::Confirm)
-    }
-
-    /// Get the display string for a specific action (e.g., `Action::Quit` -> "q")
-    /// Checks overrides first, then preset. Returns generic fallback if not found.
-    #[must_use]
-    pub fn get_key_display_for_action(&self, action: Action) -> String {
-        // Check overrides
-        if let Some(binding) = self.overrides.iter().find(|b| b.action == action) {
-            return binding.display();
-        }
-
-        // Check preset
-        if let Some(binding) = self
-            .preset
-            .bindings()
-            .into_iter()
-            .find(|b| b.action == action)
-        {
-            return binding.display();
-        }
-
-        // Fallback for actions not in current map (shouldn't happen for core actions)
-        format!("{action:?}")
-    }
-
-    /// Generate theme key hint with the given theme type name
-    #[must_use]
-    pub fn theme_key_hint(theme_type_name: &str) -> String {
-        format!("Theme: {theme_type_name} (t)")
-    }
-
-    /// Generate footer text for common navigation screens
-    #[must_use]
-    pub fn footer_navigation(&self, theme_type_name: &str) -> String {
-        format!(
-            "{}: Navigate | {}: Select | {}: Back | ?: Help | {}",
-            self.navigation_display(),
-            self.confirm_display(),
-            self.quit_display(),
-            Self::theme_key_hint(theme_type_name)
-        )
+#[must_use]
+pub fn dotstate_extra_bindings(preset: KeymapPreset) -> Vec<KeyBinding> {
+    match preset {
+        KeymapPreset::Standard => vec![
+            KeyBinding::new("s", dotstate_action_check_status()),
+            KeyBinding::new("shift+s", dotstate_action_sync()),
+            KeyBinding::new("i", dotstate_action_install()),
+            KeyBinding::new("shift+i", dotstate_action_import()),
+            KeyBinding::new("b", dotstate_action_toggle_backup()),
+            KeyBinding::new("m", dotstate_action_move()),
+        ],
+        KeymapPreset::Vim => vec![
+            KeyBinding::new("s", dotstate_action_check_status()),
+            KeyBinding::new("shift+s", dotstate_action_sync()),
+            KeyBinding::new("i", dotstate_action_install()),
+            KeyBinding::new("shift+i", dotstate_action_import()),
+            KeyBinding::new("b", dotstate_action_toggle_backup()),
+            KeyBinding::new("m", dotstate_action_move()),
+        ],
+        KeymapPreset::Emacs => vec![
+            KeyBinding::new("s", dotstate_action_check_status()),
+            KeyBinding::new("ctrl+x s", dotstate_action_sync()),
+            KeyBinding::new("i", dotstate_action_install()),
+            KeyBinding::new("shift+i", dotstate_action_import()),
+            KeyBinding::new("b", dotstate_action_toggle_backup()),
+            KeyBinding::new("m", dotstate_action_move()),
+        ],
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+#[must_use]
+pub fn get_action(keymap: &Keymap, code: KeyCode, modifiers: KeyModifiers) -> Option<Action> {
+    let extra = dotstate_extra_bindings(keymap.preset);
+    keymap.get_action_with_bindings(code, modifiers, &extra)
+}
 
-    #[test]
-    fn test_default_keymap() {
-        let keymap = Keymap::default();
-        assert_eq!(keymap.preset, KeymapPreset::Standard);
-        assert!(keymap.overrides.is_empty());
-    }
-
-    #[test]
-    fn test_get_action_from_preset() {
-        let keymap = Keymap::default();
-        // 'q' should map to Quit in standard preset
-        let action = keymap.get_action(KeyCode::Char('q'), KeyModifiers::NONE);
-        assert_eq!(action, Some(Action::Quit));
-    }
-
-    #[test]
-    fn test_override_takes_precedence() {
-        let keymap = Keymap {
-            preset: KeymapPreset::Standard,
-            overrides: vec![KeyBinding::new("q", Action::Help)],
-        };
-        // Override should win
-        let action = keymap.get_action(KeyCode::Char('q'), KeyModifiers::NONE);
-        assert_eq!(action, Some(Action::Help));
-    }
-
-    #[test]
-    fn test_vim_preset() {
-        let keymap = Keymap {
-            preset: KeymapPreset::Vim,
-            overrides: Vec::new(),
-        };
-        // 'j' should map to MoveDown in vim preset
-        let action = keymap.get_action(KeyCode::Char('j'), KeyModifiers::NONE);
-        assert_eq!(action, Some(Action::MoveDown));
-    }
+#[must_use]
+pub fn get_key_display_for_action(keymap: &Keymap, action: &Action) -> String {
+    let extra = dotstate_extra_bindings(keymap.preset);
+    keymap.get_key_display_for_action_with_bindings(action, &extra)
 }

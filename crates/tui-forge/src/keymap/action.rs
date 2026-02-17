@@ -161,7 +161,8 @@ impl Action {
             | Action::Create
             | Action::Search
             | Action::Refresh
-            | Action::Save => "Actions",
+            | Action::Save
+            => "Actions",
 
             Action::Backspace | Action::DeleteChar => "Text Editing",
 

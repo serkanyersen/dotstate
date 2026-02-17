@@ -137,7 +137,7 @@ impl ManagePackagesScreen {
     }
 
     fn get_action(&self, key: KeyCode, modifiers: KeyModifiers, keymap: &Keymap) -> Option<Action> {
-        keymap.get_action(key, modifiers)
+        crate::keymap::get_action(keymap, key, modifiers)
     }
 
     /// Process periodic tasks (package checking, installation monitoring, import discovery)
@@ -527,16 +527,16 @@ impl Screen for ManagePackagesScreen {
         } else if !matches!(self.state.installation_step, InstallationStep::NotStarted) {
             "Installing packages...".to_string()
         } else {
-            let k = |a| config.keymap.get_key_display_for_action(a);
+            let k = |a| crate::keymap::get_key_display_for_action(&config.keymap, &a);
             format!(
                 "{}: Navigate | {}: Add | {}: Import | {}: Edit | {}: Delete | {}: Check | {}: Install | {}: Back",
                 config.keymap.navigation_display(),
                 k(crate::keymap::Action::Create),
-                k(crate::keymap::Action::Import),
+                k(crate::keymap::dotstate_action_import()),
                 k(crate::keymap::Action::Edit),
                 k(crate::keymap::Action::Delete),
                 k(crate::keymap::Action::Refresh),
-                k(crate::keymap::Action::Install),
+                k(crate::keymap::dotstate_action_install()),
                 k(crate::keymap::Action::Cancel)
             )
         };
@@ -819,7 +819,7 @@ impl ManagePackagesScreen {
                     return Ok(ScreenAction::Refresh);
                 }
             }
-            Action::CheckStatus => {
+            action if action == crate::keymap::dotstate_action_check_status() => {
                 // Check Selected
                 if state.popup_type == PackagePopupType::None && !state.is_checking {
                     if let Some(idx) = state.list_state.selected() {
@@ -841,7 +841,7 @@ impl ManagePackagesScreen {
                     }
                 }
             }
-            Action::Install => {
+            action if action == crate::keymap::dotstate_action_install() => {
                 // Install Missing
                 if state.popup_type == PackagePopupType::None && !state.is_checking {
                     // Logic usually just starts installing.
@@ -899,7 +899,7 @@ impl ManagePackagesScreen {
                     return Ok(ScreenAction::Refresh);
                 }
             }
-            Action::Import => {
+            action if action == crate::keymap::dotstate_action_import() => {
                 if state.popup_type == PackagePopupType::None && !state.is_checking {
                     self.start_import()?;
                     return Ok(ScreenAction::Refresh);
@@ -1227,7 +1227,7 @@ impl ManagePackagesScreen {
         }
 
         // Handle actions for non-character keys (arrows, Tab, Esc, etc.)
-        if let Some(action) = action {
+        if let Some(action) = action.clone() {
             match action {
                 Action::Cancel => {
                     self.reset_state();
@@ -1644,7 +1644,7 @@ impl ManagePackagesScreen {
         let action = config.keymap.get_action(key.code, key.modifiers);
         let state = &mut self.state;
 
-        if let Some(action) = action {
+        if let Some(action) = action.clone() {
             match action {
                 Action::Cancel => {
                     self.reset_state();
@@ -1730,7 +1730,7 @@ impl ManagePackagesScreen {
         let action = config.keymap.get_action(key.code, key.modifiers);
 
         // Global actions (work regardless of focus)
-        if let Some(action) = action {
+        if let Some(action) = action.clone() {
             match action {
                 Action::Cancel | Action::Quit => {
                     self.state.popup_type = PackagePopupType::None;
@@ -1811,7 +1811,7 @@ impl ManagePackagesScreen {
 
         let action = config.keymap.get_action(key.code, key.modifiers);
 
-        if let Some(action) = action {
+        if let Some(action) = action.clone() {
             match action {
                 Action::MoveLeft => {
                     if self.state.import_active_tab > 0 {
@@ -1874,7 +1874,7 @@ impl ManagePackagesScreen {
         }
 
         // Navigation moves focus
-        if let Some(action) = action {
+        if let Some(action) = action.clone() {
             match action {
                 Action::MoveUp => {
                     if self.state.import_available_sources.len() > 1 {
@@ -1900,7 +1900,7 @@ impl ManagePackagesScreen {
     ) -> Result<ScreenAction> {
         let action = config.keymap.get_action(key.code, key.modifiers);
 
-        if let Some(action) = action {
+        if let Some(action) = action.clone() {
             match action {
                 Action::MoveUp => {
                     let filtered = self.get_filtered_import_packages();
@@ -2325,9 +2325,10 @@ impl ManagePackagesScreen {
                     Span::styled(format!("{} Unknown", icons.loading()), t.muted_style()),
                     Span::styled(" (press ", t.muted_style()),
                     Span::styled(
-                        config
-                            .keymap
-                            .get_key_display_for_action(crate::keymap::Action::CheckStatus),
+                        crate::keymap::get_key_display_for_action(
+                            &config.keymap,
+                            &crate::keymap::dotstate_action_check_status(),
+                        ),
                         t.emphasis_style(),
                     ),
                     Span::styled(" to check)", t.muted_style()),
