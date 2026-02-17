@@ -138,7 +138,7 @@ impl SyncWithRemoteScreen {
         area: Rect,
         config: &crate::config::Config,
     ) -> Result<()> {
-        use crate::widgets::{Dialog, DialogVariant};
+        use tui_forge::{Dialog, DialogVariant};
 
         let result_text = self
             .state

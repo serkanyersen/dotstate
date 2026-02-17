@@ -129,8 +129,7 @@ fn apply_slide(buf: &mut Buffer, old: &Buffer, area: Rect, t: f32, left: bool) {
                     // Still showing old content (shifted)
                     let old_x = area.x + rel_x + offset;
                     let old_pos = Position { x: old_x, y };
-                    if let (Some(old_cell), Some(new_cell)) =
-                        (old.cell(old_pos), buf.cell_mut(pos))
+                    if let (Some(old_cell), Some(new_cell)) = (old.cell(old_pos), buf.cell_mut(pos))
                     {
                         new_cell.set_symbol(old_cell.symbol());
                         new_cell.fg = old_cell.fg;
@@ -146,8 +145,7 @@ fn apply_slide(buf: &mut Buffer, old: &Buffer, area: Rect, t: f32, left: bool) {
                     // Still showing old content (shifted)
                     let old_x = area.x + rel_x - offset;
                     let old_pos = Position { x: old_x, y };
-                    if let (Some(old_cell), Some(new_cell)) =
-                        (old.cell(old_pos), buf.cell_mut(pos))
+                    if let (Some(old_cell), Some(new_cell)) = (old.cell(old_pos), buf.cell_mut(pos))
                     {
                         new_cell.set_symbol(old_cell.symbol());
                         new_cell.fg = old_cell.fg;

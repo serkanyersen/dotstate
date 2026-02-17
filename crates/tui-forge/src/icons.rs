@@ -247,8 +247,8 @@ impl Icons {
     #[must_use]
     pub fn warning(&self) -> &'static str {
         match self.icon_set {
-            IconSet::NerdFonts => "\u{f071}", //
-            IconSet::Unicode => "\u{26a0}",   // ⚠
+            IconSet::NerdFonts => "\u{f071}",     //
+            IconSet::Unicode => "\u{26a0}",       // ⚠
             IconSet::Emoji => "\u{26a0}\u{fe0f}", // ⚠️
             IconSet::Ascii => "[!]",
         }
@@ -267,8 +267,8 @@ impl Icons {
     #[must_use]
     pub fn info(&self) -> &'static str {
         match self.icon_set {
-            IconSet::NerdFonts => "\u{f05a}", //
-            IconSet::Unicode => "\u{2139}",   // ℹ
+            IconSet::NerdFonts => "\u{f05a}",     //
+            IconSet::Unicode => "\u{2139}",       // ℹ
             IconSet::Emoji => "\u{2139}\u{fe0f}", // ℹ️
             IconSet::Ascii => "[i]",
         }
@@ -387,8 +387,8 @@ impl Icons {
     #[must_use]
     pub fn cog(&self) -> &'static str {
         match self.icon_set {
-            IconSet::NerdFonts => "\u{f013}", // Cog/gear icon
-            IconSet::Unicode => "\u{2699}",   // ⚙
+            IconSet::NerdFonts => "\u{f013}",     // Cog/gear icon
+            IconSet::Unicode => "\u{2699}",       // ⚙
             IconSet::Emoji => "\u{2699}\u{fe0f}", // ⚙️
             IconSet::Ascii => "[*]",
         }

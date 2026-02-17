@@ -114,7 +114,7 @@ impl FormField for RadioBox {
             .enumerate()
             .map(|(i, label)| {
                 let marker = if i == self.selected {
-                    "(\u{25CF})"  // (●)
+                    "(\u{25CF})" // (●)
                 } else {
                     "( )"
                 };

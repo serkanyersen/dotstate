@@ -95,9 +95,7 @@ impl Password {
         } else if self.revealed {
             text.to_string()
         } else {
-            self.mask_char
-                .to_string()
-                .repeat(text.chars().count())
+            self.mask_char.to_string().repeat(text.chars().count())
         }
     }
 }
@@ -155,9 +153,7 @@ impl FormField for Password {
             (display, t.text_style())
         };
 
-        let paragraph = Paragraph::new(shown_text)
-            .block(block)
-            .style(text_style);
+        let paragraph = Paragraph::new(shown_text).block(block).style(text_style);
 
         frame.render_widget(paragraph, area);
 

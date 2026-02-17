@@ -354,9 +354,7 @@ impl FormField for TextArea {
             t.text_style()
         };
 
-        let paragraph = Paragraph::new(display)
-            .block(block)
-            .style(text_style);
+        let paragraph = Paragraph::new(display).block(block).style(text_style);
 
         frame.render_widget(paragraph, area);
 

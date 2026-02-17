@@ -1,23 +1,23 @@
 //! Form coordinator: manages a collection of form fields, focus, validation,
 //! layout rendering, and event routing with keymap conflict resolution.
 
-pub mod field;
 pub mod config;
-pub mod values;
-pub mod layout;
+pub mod field;
 pub mod fields;
+pub mod layout;
+pub mod values;
 
 // Re-exports
-pub use field::{FormField, FieldValue};
-pub use config::{FieldConfig, ValidateOn, validators};
-pub use values::FormValues;
-pub use layout::FormLayout;
+pub use config::{validators, FieldConfig, ValidateOn};
+pub use field::{FieldValue, FormField};
 pub use fields::*;
+pub use layout::FormLayout;
+pub use values::FormValues;
 
-use std::collections::HashMap;
 use crossterm::event::{Event, KeyCode, KeyModifiers};
 use ratatui::prelude::*;
 use ratatui::widgets::Paragraph;
+use std::collections::HashMap;
 
 use crate::theme::theme;
 
@@ -95,7 +95,12 @@ impl Form {
     /// Add a field to the form with the given unique name and configuration.
     ///
     /// Fields are rendered and focused in the order they are added.
-    pub fn field<F: FormField + 'static>(mut self, name: &str, field: F, config: FieldConfig) -> Self {
+    pub fn field<F: FormField + 'static>(
+        mut self,
+        name: &str,
+        field: F,
+        config: FieldConfig,
+    ) -> Self {
         self.fields.push(FormEntry {
             name: name.to_string(),
             field: Box::new(field),
@@ -528,12 +533,7 @@ impl Form {
 
     // -- private rendering helpers --
 
-    fn render_vertical(
-        &self,
-        frame: &mut Frame,
-        area: Rect,
-        t: &crate::theme::Theme,
-    ) {
+    fn render_vertical(&self, frame: &mut Frame, area: Rect, t: &crate::theme::Theme) {
         let mut y = area.y;
 
         for (idx, entry) in self.fields.iter().enumerate() {
@@ -559,13 +559,7 @@ impl Form {
         }
     }
 
-    fn render_grid(
-        &self,
-        frame: &mut Frame,
-        area: Rect,
-        columns: u16,
-        t: &crate::theme::Theme,
-    ) {
+    fn render_grid(&self, frame: &mut Frame, area: Rect, columns: u16, t: &crate::theme::Theme) {
         let cols = columns.max(1) as usize;
         let col_width = area.width / columns.max(1);
         let mut y = area.y;
@@ -634,8 +628,8 @@ impl Form {
                     t.text_style()
                 };
                 let required_marker = if entry.config.required { " *" } else { "" };
-                let label = Paragraph::new(format!("{label_text}{required_marker}"))
-                    .style(label_style);
+                let label =
+                    Paragraph::new(format!("{label_text}{required_marker}")).style(label_style);
                 let label_area = Rect::new(area.x, y, area.width, 1);
                 frame.render_widget(label, label_area);
                 y += 1;
@@ -786,8 +780,7 @@ mod tests {
 
     #[test]
     fn test_new_form_auto_focuses_first_field() {
-        let form = Form::new()
-            .field("name", MockTextField::new(""), FieldConfig::new());
+        let form = Form::new().field("name", MockTextField::new(""), FieldConfig::new());
         assert_eq!(form.focused_field(), Some("name"));
     }
 
@@ -836,8 +829,7 @@ mod tests {
 
     #[test]
     fn test_escape_consumed_for_text_field() {
-        let mut form = Form::new()
-            .field("name", MockTextField::new("hello"), FieldConfig::new());
+        let mut form = Form::new().field("name", MockTextField::new("hello"), FieldConfig::new());
 
         let action = form.handle_event(&key(KeyCode::Esc));
         assert_eq!(action, FormAction::Consumed);
@@ -845,8 +837,7 @@ mod tests {
 
     #[test]
     fn test_escape_ignored_for_non_text_field() {
-        let mut form = Form::new()
-            .field("toggle", MockToggle::new(false), FieldConfig::new());
+        let mut form = Form::new().field("toggle", MockToggle::new(false), FieldConfig::new());
 
         let action = form.handle_event(&key(KeyCode::Esc));
         assert_eq!(action, FormAction::Ignored);
@@ -854,8 +845,7 @@ mod tests {
 
     #[test]
     fn test_enter_submits_on_non_textarea() {
-        let mut form = Form::new()
-            .field("name", MockTextField::new(""), FieldConfig::new());
+        let mut form = Form::new().field("name", MockTextField::new(""), FieldConfig::new());
 
         let action = form.handle_event(&key(KeyCode::Enter));
         assert_eq!(action, FormAction::Submit);
@@ -863,8 +853,8 @@ mod tests {
 
     #[test]
     fn test_enter_does_not_submit_on_textarea() {
-        let mut form = Form::new()
-            .field("bio", MockTextField::new(""), FieldConfig::new().textarea());
+        let mut form =
+            Form::new().field("bio", MockTextField::new(""), FieldConfig::new().textarea());
 
         // Enter on textarea should be forwarded to the field, not submit
         let action = form.handle_event(&key(KeyCode::Enter));
@@ -875,8 +865,8 @@ mod tests {
 
     #[test]
     fn test_ctrl_enter_always_submits() {
-        let mut form = Form::new()
-            .field("bio", MockTextField::new(""), FieldConfig::new().textarea());
+        let mut form =
+            Form::new().field("bio", MockTextField::new(""), FieldConfig::new().textarea());
 
         let action = form.handle_event(&key_mod(KeyCode::Enter, KeyModifiers::CONTROL));
         assert_eq!(action, FormAction::Submit);
@@ -884,8 +874,7 @@ mod tests {
 
     #[test]
     fn test_char_routed_to_text_field_returns_value_changed() {
-        let mut form = Form::new()
-            .field("name", MockTextField::new(""), FieldConfig::new());
+        let mut form = Form::new().field("name", MockTextField::new(""), FieldConfig::new());
 
         let action = form.handle_event(&key(KeyCode::Char('a')));
         assert_eq!(action, FormAction::ValueChanged("name".to_string()));
@@ -897,8 +886,7 @@ mod tests {
 
     #[test]
     fn test_unhandled_key_on_text_field_still_consumed() {
-        let mut form = Form::new()
-            .field("name", MockTextField::new(""), FieldConfig::new());
+        let mut form = Form::new().field("name", MockTextField::new(""), FieldConfig::new());
 
         // F1 is not handled by MockTextField but field captures text
         let action = form.handle_event(&key(KeyCode::F(1)));
@@ -907,8 +895,7 @@ mod tests {
 
     #[test]
     fn test_unhandled_key_on_non_text_field_is_ignored() {
-        let mut form = Form::new()
-            .field("toggle", MockToggle::new(false), FieldConfig::new());
+        let mut form = Form::new().field("toggle", MockToggle::new(false), FieldConfig::new());
 
         // 'a' is not handled by MockToggle and it doesn't capture text
         let action = form.handle_event(&key(KeyCode::Char('a')));
@@ -917,8 +904,7 @@ mod tests {
 
     #[test]
     fn test_space_on_toggle_returns_value_changed() {
-        let mut form = Form::new()
-            .field("toggle", MockToggle::new(false), FieldConfig::new());
+        let mut form = Form::new().field("toggle", MockToggle::new(false), FieldConfig::new());
 
         let action = form.handle_event(&key(KeyCode::Char(' ')));
         assert_eq!(action, FormAction::ValueChanged("toggle".to_string()));
@@ -952,10 +938,7 @@ mod tests {
         assert_eq!(form.bool("active"), Some(true));
 
         form.clear();
-        assert_eq!(
-            form.value("name"),
-            Some(FieldValue::Text(String::new()))
-        );
+        assert_eq!(form.value("name"), Some(FieldValue::Text(String::new())));
         assert_eq!(form.bool("active"), Some(false));
     }
 
@@ -979,8 +962,11 @@ mod tests {
 
     #[test]
     fn test_validation_required() {
-        let mut form = Form::new()
-            .field("name", MockTextField::new(""), FieldConfig::new().required());
+        let mut form = Form::new().field(
+            "name",
+            MockTextField::new(""),
+            FieldConfig::new().required(),
+        );
 
         assert!(!form.validate());
         assert!(form.field_error("name").is_some());
@@ -1014,8 +1000,11 @@ mod tests {
 
     #[test]
     fn test_clear_errors() {
-        let mut form = Form::new()
-            .field("name", MockTextField::new(""), FieldConfig::new().required());
+        let mut form = Form::new().field(
+            "name",
+            MockTextField::new(""),
+            FieldConfig::new().required(),
+        );
 
         form.validate();
         assert!(!form.is_valid());
@@ -1076,8 +1065,7 @@ mod tests {
 
     #[test]
     fn test_non_key_event_ignored() {
-        let mut form = Form::new()
-            .field("name", MockTextField::new(""), FieldConfig::new());
+        let mut form = Form::new().field("name", MockTextField::new(""), FieldConfig::new());
 
         let action = form.handle_event(&Event::Resize(80, 24));
         assert_eq!(action, FormAction::Ignored);
@@ -1086,7 +1074,11 @@ mod tests {
     #[test]
     fn test_height_calculation() {
         let form = Form::new()
-            .field("a", MockTextField::new(""), FieldConfig::new().label("Name"))
+            .field(
+                "a",
+                MockTextField::new(""),
+                FieldConfig::new().label("Name"),
+            )
             .field("b", MockToggle::new(false), FieldConfig::new());
 
         // "a": label(1) + field(1) = 2

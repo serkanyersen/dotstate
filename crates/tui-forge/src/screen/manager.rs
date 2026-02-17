@@ -11,7 +11,7 @@ use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::prelude::*;
 
-use super::transition::{TransitionState, apply_transition};
+use super::transition::{apply_transition, TransitionState};
 use super::{Screen, ScreenAction, ScreenId, Transition};
 
 /// Manages a set of screens with navigation, history, and transitions.
@@ -110,11 +110,8 @@ impl<S: ScreenId, C> ScreenManager<S, C> {
                 .last_buffer
                 .take()
                 .unwrap_or_else(|| Buffer::empty(self.last_area));
-            self.transition_state = Some(TransitionState::new(
-                transition,
-                old_buffer,
-                self.last_area,
-            ));
+            self.transition_state =
+                Some(TransitionState::new(transition, old_buffer, self.last_area));
         }
 
         // Push current to history and switch
@@ -136,12 +133,8 @@ impl<S: ScreenId, C> ScreenManager<S, C> {
 
             // Reverse transition direction
             let transition = match self.default_transition {
-                Transition::SlideLeft { duration_ms } => {
-                    Transition::SlideRight { duration_ms }
-                }
-                Transition::SlideRight { duration_ms } => {
-                    Transition::SlideLeft { duration_ms }
-                }
+                Transition::SlideLeft { duration_ms } => Transition::SlideRight { duration_ms },
+                Transition::SlideRight { duration_ms } => Transition::SlideLeft { duration_ms },
                 other => other,
             };
 
@@ -150,11 +143,8 @@ impl<S: ScreenId, C> ScreenManager<S, C> {
                     .last_buffer
                     .take()
                     .unwrap_or_else(|| Buffer::empty(self.last_area));
-                self.transition_state = Some(TransitionState::new(
-                    transition,
-                    old_buffer,
-                    self.last_area,
-                ));
+                self.transition_state =
+                    Some(TransitionState::new(transition, old_buffer, self.last_area));
             }
 
             self.active = prev;
@@ -307,11 +297,7 @@ mod tests {
             Ok(())
         }
 
-        fn handle_event(
-            &mut self,
-            event: Event,
-            _ctx: &(),
-        ) -> Result<ScreenAction<TestScreen>> {
+        fn handle_event(&mut self, event: Event, _ctx: &()) -> Result<ScreenAction<TestScreen>> {
             if let Event::Key(key) = event {
                 match key.code {
                     KeyCode::Char('b') => return Ok(ScreenAction::Navigate(TestScreen::B)),
@@ -322,7 +308,6 @@ mod tests {
             }
             Ok(ScreenAction::None)
         }
-
     }
 
     fn key_event(code: KeyCode) -> Event {
@@ -368,17 +353,21 @@ mod tests {
             .register(TestScreen::A, SimpleScreen::new("A"))
             .register(TestScreen::B, SimpleScreen::new("B"));
 
-        let action = mgr.handle_event(key_event(KeyCode::Char('b')), &()).unwrap();
+        let action = mgr
+            .handle_event(key_event(KeyCode::Char('b')), &())
+            .unwrap();
         assert!(matches!(action, ScreenAction::None)); // consumed by manager
         assert_eq!(mgr.active_id(), &TestScreen::B);
     }
 
     #[test]
     fn handle_event_quit_passes_through() {
-        let mut mgr = ScreenManager::new(TestScreen::A)
-            .register(TestScreen::A, SimpleScreen::new("A"));
+        let mut mgr =
+            ScreenManager::new(TestScreen::A).register(TestScreen::A, SimpleScreen::new("A"));
 
-        let action = mgr.handle_event(key_event(KeyCode::Char('q')), &()).unwrap();
+        let action = mgr
+            .handle_event(key_event(KeyCode::Char('q')), &())
+            .unwrap();
         assert!(matches!(action, ScreenAction::Quit));
     }
 
@@ -397,8 +386,8 @@ mod tests {
 
     #[test]
     fn with_transition() {
-        let mgr: ScreenManager<TestScreen> = ScreenManager::new(TestScreen::A)
-            .with_transition(Transition::FADE);
+        let mgr: ScreenManager<TestScreen> =
+            ScreenManager::new(TestScreen::A).with_transition(Transition::FADE);
 
         assert!(!mgr.is_transitioning());
     }

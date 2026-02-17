@@ -30,10 +30,10 @@
 //! See the [README](https://github.com/user/tui-forge) for full documentation and examples.
 
 // Core
-pub mod theme;
 pub mod icons;
-pub mod mouse;
 pub mod layout;
+pub mod mouse;
+pub mod theme;
 
 // Widgets
 pub mod widgets;
@@ -55,15 +55,15 @@ pub mod screen;
 pub mod components;
 
 // Convenience re-exports at crate root
-pub use theme::{init_theme, set_custom_theme, theme, Theme, ThemeType};
 pub use icons::{IconSet, Icons};
-pub use mouse::MouseRegions;
-pub use layout::{create_standard_layout, create_split_layout, center_popup};
 pub use input::list_nav::{ListStateExt, DEFAULT_PAGE_SIZE};
+pub use layout::{center_popup, create_split_layout, create_standard_layout};
+pub use mouse::MouseRegions;
+pub use theme::{init_theme, set_custom_theme, theme, Theme, ThemeType};
 
-pub use form::{Form, FormAction, FormValues, FormLayout, FieldConfig, FieldValue, ValidateOn};
-pub use form::fields::{TextInput, TextArea, Password, Checkbox, RadioBox, ToggleSwitch};
+pub use form::fields::{Checkbox, Password, RadioBox, TextArea, TextInput, ToggleSwitch};
 pub use form::validators;
+pub use form::{FieldConfig, FieldValue, Form, FormAction, FormLayout, FormValues, ValidateOn};
 
 #[cfg(feature = "keymap")]
 pub use keymap::{Action, KeyBinding, Keymap, KeymapPreset};
@@ -71,10 +71,8 @@ pub use keymap::{Action, KeyBinding, Keymap, KeymapPreset};
 pub use screen::{Screen, ScreenAction, ScreenId, ScreenManager, Transition};
 
 pub use widgets::{
-    Popup,
-    Dialog, DialogVariant,
-    Toast, ToastPosition, ToastVariant, ToastManager, ToastWidget,
-    Menu, MenuItem, MenuState,
+    Dialog, DialogVariant, Menu, MenuItem, MenuState, Popup, Toast, ToastManager, ToastPosition,
+    ToastVariant, ToastWidget,
 };
 
-pub use components::{Header, HeaderWithWidget, Footer, HelpOverlay};
+pub use components::{Footer, Header, HeaderWithWidget, HelpOverlay};

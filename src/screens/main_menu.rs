@@ -12,11 +12,11 @@ use crate::styles::theme;
 use crate::ui::Screen as ScreenId;
 use crate::utils::{create_standard_layout, MouseRegions};
 use crate::version_check::UpdateInfo;
-use crate::widgets::{Menu, MenuItem as MenuWidgetItem, MenuState};
 use anyhow::Result;
 use crossterm::event::{Event, KeyEventKind, MouseButton, MouseEventKind};
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Clear, Paragraph, StatefulWidget, Wrap};
+use tui_forge::{Menu, MenuItem as MenuWidgetItem, MenuState};
 
 /// Menu items enum - defines the order and available menu options
 /// This is the single source of truth for menu items

@@ -260,16 +260,40 @@ mod tests {
     #[test]
     fn test_no_dotstate_specific_actions() {
         // Ensure none of the removed DotState-specific actions are present
-        for preset in [KeymapPreset::Standard, KeymapPreset::Vim, KeymapPreset::Emacs] {
+        for preset in [
+            KeymapPreset::Standard,
+            KeymapPreset::Vim,
+            KeymapPreset::Emacs,
+        ] {
             let bindings = preset.bindings();
             for binding in &bindings {
                 let desc = binding.action.description();
-                assert_ne!(desc, "Sync with remote", "Found Sync action in {}", preset.name());
-                assert_ne!(desc, "Check status", "Found CheckStatus action in {}", preset.name());
+                assert_ne!(
+                    desc,
+                    "Sync with remote",
+                    "Found Sync action in {}",
+                    preset.name()
+                );
+                assert_ne!(
+                    desc,
+                    "Check status",
+                    "Found CheckStatus action in {}",
+                    preset.name()
+                );
                 assert_ne!(desc, "Install", "Found Install action in {}", preset.name());
-                assert_ne!(desc, "Import from system", "Found Import action in {}", preset.name());
+                assert_ne!(
+                    desc,
+                    "Import from system",
+                    "Found Import action in {}",
+                    preset.name()
+                );
                 assert_ne!(desc, "Move", "Found Move action in {}", preset.name());
-                assert_ne!(desc, "Toggle backup", "Found ToggleBackup action in {}", preset.name());
+                assert_ne!(
+                    desc,
+                    "Toggle backup",
+                    "Found ToggleBackup action in {}",
+                    preset.name()
+                );
             }
         }
     }

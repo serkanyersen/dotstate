@@ -9,7 +9,7 @@ use crate::ui::Screen as ScreenId;
 use crate::utils::{
     create_standard_layout, focused_border_style, unfocused_border_style, MouseRegions,
 };
-use crate::widgets::{DialogVariant, TextInputWidget, TextInputWidgetExt};
+use crate::widgets::{TextInputWidget, TextInputWidgetExt};
 use anyhow::Result;
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
 use ratatui::prelude::*;
@@ -19,6 +19,7 @@ use ratatui::widgets::{
 };
 use std::path::Path;
 use tracing::{error, info, warn};
+use tui_forge::DialogVariant;
 
 /// Profile manager popup types
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -177,7 +178,7 @@ impl ManageProfilesScreen {
 
                 Ok(ActionResult::ShowToast {
                     message: format!("Profile '{sanitized_name}' created"),
-                    variant: crate::widgets::ToastVariant::Success,
+                    variant: tui_forge::ToastVariant::Success,
                 })
             }
             Err(e) => {
@@ -207,7 +208,7 @@ impl ManageProfilesScreen {
         if config.active_profile == target_name {
             return Ok(ActionResult::ShowToast {
                 message: format!("Already on profile '{target_name}'"),
-                variant: crate::widgets::ToastVariant::Info,
+                variant: tui_forge::ToastVariant::Info,
             });
         }
 
@@ -243,7 +244,7 @@ impl ManageProfilesScreen {
 
                 Ok(ActionResult::ShowToast {
                     message: format!("Switched to profile '{target_name}'"),
-                    variant: crate::widgets::ToastVariant::Success,
+                    variant: tui_forge::ToastVariant::Success,
                 })
             }
             Err(e) => {
@@ -302,7 +303,7 @@ impl ManageProfilesScreen {
 
                 Ok(ActionResult::ShowToast {
                     message: format!("Profile renamed to '{sanitized_name}'"),
-                    variant: crate::widgets::ToastVariant::Success,
+                    variant: tui_forge::ToastVariant::Success,
                 })
             }
             Err(e) => {
@@ -346,7 +347,7 @@ impl ManageProfilesScreen {
 
                 Ok(ActionResult::ShowToast {
                     message: format!("Profile '{name}' deleted"),
-                    variant: crate::widgets::ToastVariant::Success,
+                    variant: tui_forge::ToastVariant::Success,
                 })
             }
             Err(e) => {
@@ -838,7 +839,7 @@ impl ManageProfilesScreen {
 
     /// Render switch profile confirmation popup
     fn render_switch_popup(&self, frame: &mut Frame, area: Rect, config: &Config) -> Result<()> {
-        use crate::widgets::{Dialog, DialogVariant};
+        use tui_forge::{Dialog, DialogVariant};
 
         let selected_idx = self.state.list_state.selected();
         let current_profile = self
@@ -943,7 +944,7 @@ impl ManageProfilesScreen {
 
     /// Render delete profile confirmation popup
     fn render_delete_popup(&self, frame: &mut Frame, area: Rect, config: &Config) -> Result<()> {
-        use crate::widgets::{Dialog, DialogVariant};
+        use tui_forge::{Dialog, DialogVariant};
 
         let icons = crate::icons::Icons::from_config(config);
         let selected_idx = self.state.list_state.selected();

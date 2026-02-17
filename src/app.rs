@@ -5,7 +5,7 @@ use crate::screens::{
 };
 use crate::tui::Tui;
 use crate::ui::{GitHubSetupStep, Screen, UiState};
-use crate::widgets::{Dialog, DialogVariant, Toast, ToastManager};
+use tui_forge::{Dialog, DialogVariant, Toast, ToastManager};
 
 use anyhow::{Context, Result};
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers};
@@ -1492,7 +1492,7 @@ impl App {
                 // Show success toast
                 self.toast_manager.push(Toast::new(
                     format!("Profile '{}' activated", name),
-                    crate::widgets::ToastVariant::Success,
+                    tui_forge::ToastVariant::Success,
                 ));
             }
             Err(e) => {

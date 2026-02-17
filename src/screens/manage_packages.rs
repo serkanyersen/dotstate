@@ -2683,7 +2683,7 @@ impl ManagePackagesScreen {
         area: Rect,
         config: &Config,
     ) -> Result<()> {
-        use crate::widgets::{Dialog, DialogVariant};
+        use tui_forge::{Dialog, DialogVariant};
 
         let package_name = if let Some(idx) = self.state.delete_index {
             self.state
@@ -2826,7 +2826,7 @@ impl ManagePackagesScreen {
                 Footer::render(frame, chunks[3], footer_text)?;
             }
             InstallationStep::Complete { installed, failed } => {
-                use crate::widgets::{Dialog, DialogVariant};
+                use tui_forge::{Dialog, DialogVariant};
 
                 // Build summary content
                 let mut summary = format!(
@@ -2865,7 +2865,7 @@ impl ManagePackagesScreen {
         area: Rect,
         config: &Config,
     ) -> Result<()> {
-        use crate::widgets::{Dialog, DialogVariant};
+        use tui_forge::{Dialog, DialogVariant};
 
         // Count missing packages
         let missing_count = self

@@ -171,9 +171,7 @@ impl<'a> ToastWidget<'a> {
         };
 
         let y = match self.toast.position {
-            ToastPosition::TopLeft | ToastPosition::Top | ToastPosition::TopRight => {
-                area.y + pad
-            }
+            ToastPosition::TopLeft | ToastPosition::Top | ToastPosition::TopRight => area.y + pad,
             ToastPosition::Left | ToastPosition::Right => {
                 area.y + (area.height.saturating_sub(toast_height)) / 2
             }

@@ -83,10 +83,7 @@ impl FieldConfig {
     }
 
     /// Append a validator closure.
-    pub fn validate(
-        mut self,
-        f: impl Fn(&FieldValue) -> Result<(), String> + 'static,
-    ) -> Self {
+    pub fn validate(mut self, f: impl Fn(&FieldValue) -> Result<(), String> + 'static) -> Self {
         self.validators.push(Box::new(f));
         self
     }

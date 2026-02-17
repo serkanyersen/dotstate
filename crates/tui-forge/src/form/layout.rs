@@ -54,10 +54,7 @@ pub fn calculate_field_height(label: Option<&str>, field_height: u16, has_error:
 ///
 /// # Returns
 /// Total height in terminal rows, including inter-field / inter-row spacing.
-pub fn calculate_total_height(
-    entries: &[(Option<&str>, u16, bool)],
-    layout: &FormLayout,
-) -> u16 {
+pub fn calculate_total_height(entries: &[(Option<&str>, u16, bool)], layout: &FormLayout) -> u16 {
     if entries.is_empty() {
         return 0;
     }
@@ -142,9 +139,9 @@ mod tests {
     #[test]
     fn test_total_height_vertical_multiple() {
         let entries = vec![
-            (Some("Name"), 1, false),   // 1 + 1 = 2
-            (None, 1, true),            // 0 + 1 + 1 = 2
-            (Some("Bio"), 3, false),    // 1 + 3 = 4
+            (Some("Name"), 1, false), // 1 + 1 = 2
+            (None, 1, true),          // 0 + 1 + 1 = 2
+            (Some("Bio"), 3, false),  // 1 + 3 = 4
         ];
         // 2 + 1(spacing) + 2 + 1(spacing) + 4 = 10
         assert_eq!(calculate_total_height(&entries, &FormLayout::Vertical), 10);
@@ -153,9 +150,9 @@ mod tests {
     #[test]
     fn test_total_height_grid_two_columns() {
         let entries = vec![
-            (Some("First"), 1, false),  // height = 2
-            (Some("Last"), 1, true),    // height = 3  -> row max = 3
-            (Some("Email"), 1, false),  // height = 2  -> row max = 2
+            (Some("First"), 1, false), // height = 2
+            (Some("Last"), 1, true),   // height = 3  -> row max = 3
+            (Some("Email"), 1, false), // height = 2  -> row max = 2
         ];
         // row1: 3 + spacing(1) + row2: 2 = 6
         let layout = FormLayout::Grid { columns: 2 };

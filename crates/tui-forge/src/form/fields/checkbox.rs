@@ -56,7 +56,13 @@ impl Checkbox {
         self.selected
             .iter()
             .enumerate()
-            .filter_map(|(i, &s)| if s { Some(self.options[i].as_str()) } else { None })
+            .filter_map(|(i, &s)| {
+                if s {
+                    Some(self.options[i].as_str())
+                } else {
+                    None
+                }
+            })
             .collect()
     }
 

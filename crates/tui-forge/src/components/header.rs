@@ -136,14 +136,10 @@ impl<W: Widget> Widget for HeaderWithWidget<'_, W> {
         let total_widget_width = self.widget_width + 2;
         let horizontal_chunks = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints([
-                Constraint::Length(total_widget_width),
-                Constraint::Min(0),
-            ])
+            .constraints([Constraint::Length(total_widget_width), Constraint::Min(0)])
             .split(inner_area);
 
-        let widget_block =
-            Block::default().padding(ratatui::widgets::Padding::new(0, 1, 0, 0));
+        let widget_block = Block::default().padding(ratatui::widgets::Padding::new(0, 1, 0, 0));
         let widget_area = widget_block.inner(horizontal_chunks[0]);
         widget_block.render(horizontal_chunks[0], buf);
         self.widget.render(widget_area, buf);

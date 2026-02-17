@@ -18,7 +18,6 @@ use crate::utils::{
     create_split_layout, create_standard_layout, focused_border_style, unfocused_border_style,
     MouseRegions, TextInput,
 };
-use crate::widgets::{Dialog, DialogVariant};
 use crate::widgets::{TextInputWidget, TextInputWidgetExt};
 use anyhow::Result;
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
@@ -35,6 +34,7 @@ use ratatui::Frame;
 use std::path::{Path, PathBuf};
 use syntect::highlighting::Theme;
 use syntect::parsing::SyntaxSet;
+use tui_forge::{Dialog, DialogVariant};
 
 /// Display item for the dotfile list (header or file)
 #[derive(Debug, Clone, PartialEq)]
@@ -556,7 +556,7 @@ impl DotfileSelectionScreen {
                                 if dotfile.synced {
                                     return Ok(ScreenAction::ShowToast {
                                         message: "Unsync the file first before removing it".into(),
-                                        variant: crate::widgets::ToastVariant::Info,
+                                        variant: tui_forge::ToastVariant::Info,
                                     });
                                 }
                                 if !dotfile.is_custom {
@@ -564,7 +564,7 @@ impl DotfileSelectionScreen {
                                         message:
                                             "Only custom-added files can be removed from the list"
                                                 .into(),
-                                        variant: crate::widgets::ToastVariant::Info,
+                                        variant: tui_forge::ToastVariant::Info,
                                     });
                                 }
                                 self.state.confirm_remove_custom = Some(*file_idx);
@@ -1806,7 +1806,7 @@ impl DotfileSelectionScreen {
             warn!("Invalid file index: {}", file_index);
             return Ok(ActionResult::ShowToast {
                 message: "Invalid file selection".to_string(),
-                variant: crate::widgets::ToastVariant::Error,
+                variant: tui_forge::ToastVariant::Error,
             });
         }
 
@@ -1839,7 +1839,7 @@ impl DotfileSelectionScreen {
                 info!("Successfully added file to sync: {}", relative_path);
                 Ok(ActionResult::ShowToast {
                     message: format!("Added {relative_path} to sync"),
-                    variant: crate::widgets::ToastVariant::Success,
+                    variant: tui_forge::ToastVariant::Success,
                 })
             }
             Ok(crate::services::AddFileResult::AlreadySynced) => {
@@ -1849,7 +1849,7 @@ impl DotfileSelectionScreen {
 
                 Ok(ActionResult::ShowToast {
                     message: format!("{relative_path} is already synced"),
-                    variant: crate::widgets::ToastVariant::Info,
+                    variant: tui_forge::ToastVariant::Info,
                 })
             }
             Ok(crate::services::AddFileResult::ValidationFailed(msg)) => {
@@ -1857,14 +1857,14 @@ impl DotfileSelectionScreen {
                 Ok(ActionResult::ShowDialog {
                     title: "Cannot Add File".to_string(),
                     content: msg,
-                    variant: crate::widgets::DialogVariant::Error,
+                    variant: tui_forge::DialogVariant::Error,
                 })
             }
             Err(e) => {
                 warn!("Error adding file to sync: {}", e);
                 Ok(ActionResult::ShowToast {
                     message: format!("Error: {e}"),
-                    variant: crate::widgets::ToastVariant::Error,
+                    variant: tui_forge::ToastVariant::Error,
                 })
             }
         }
@@ -1896,7 +1896,7 @@ impl DotfileSelectionScreen {
                     );
                     Ok(ActionResult::ShowToast {
                         message: format!("Removed {relative_path} from sync"),
-                        variant: crate::widgets::ToastVariant::Success,
+                        variant: tui_forge::ToastVariant::Success,
                     })
                 }
                 Ok(crate::services::RemoveFileResult::NotSynced) => {
@@ -1906,14 +1906,14 @@ impl DotfileSelectionScreen {
 
                     Ok(ActionResult::ShowToast {
                         message: format!("{relative_path} is not synced"),
-                        variant: crate::widgets::ToastVariant::Info,
+                        variant: tui_forge::ToastVariant::Info,
                     })
                 }
                 Err(e) => {
                     warn!("Error removing common file from sync: {}", e);
                     Ok(ActionResult::ShowToast {
                         message: format!("Error: {e}"),
-                        variant: crate::widgets::ToastVariant::Error,
+                        variant: tui_forge::ToastVariant::Error,
                     })
                 }
             }
@@ -1929,7 +1929,7 @@ impl DotfileSelectionScreen {
                     info!("Successfully removed file from sync: {}", relative_path);
                     Ok(ActionResult::ShowToast {
                         message: format!("Removed {relative_path} from sync"),
-                        variant: crate::widgets::ToastVariant::Success,
+                        variant: tui_forge::ToastVariant::Success,
                     })
                 }
                 Ok(crate::services::RemoveFileResult::NotSynced) => {
@@ -1939,14 +1939,14 @@ impl DotfileSelectionScreen {
 
                     Ok(ActionResult::ShowToast {
                         message: format!("{relative_path} is not synced"),
-                        variant: crate::widgets::ToastVariant::Info,
+                        variant: tui_forge::ToastVariant::Info,
                     })
                 }
                 Err(e) => {
                     warn!("Error removing file from sync: {}", e);
                     Ok(ActionResult::ShowToast {
                         message: format!("Error: {e}"),
-                        variant: crate::widgets::ToastVariant::Error,
+                        variant: tui_forge::ToastVariant::Error,
                     })
                 }
             }
@@ -1968,7 +1968,7 @@ impl DotfileSelectionScreen {
             return Ok(ActionResult::ShowDialog {
                 title: "File Not Found".to_string(),
                 content: format!("The file {} does not exist", full_path.display()),
-                variant: crate::widgets::DialogVariant::Error,
+                variant: tui_forge::DialogVariant::Error,
             });
         }
 
@@ -1978,7 +1978,7 @@ impl DotfileSelectionScreen {
             return Ok(ActionResult::ShowDialog {
                 title: "Cannot Add File".to_string(),
                 content: reason.unwrap_or_else(|| "Cannot add this file".to_string()),
-                variant: crate::widgets::DialogVariant::Error,
+                variant: tui_forge::DialogVariant::Error,
             });
         }
 
@@ -2005,12 +2005,12 @@ impl DotfileSelectionScreen {
                 info!("Successfully added custom file to sync: {}", relative_path);
                 Ok(ActionResult::ShowToast {
                     message: format!("Added {relative_path} to sync"),
-                    variant: crate::widgets::ToastVariant::Success,
+                    variant: tui_forge::ToastVariant::Success,
                 })
             }
             Ok(crate::services::AddFileResult::AlreadySynced) => Ok(ActionResult::ShowToast {
                 message: format!("{relative_path} is already synced"),
-                variant: crate::widgets::ToastVariant::Info,
+                variant: tui_forge::ToastVariant::Info,
             }),
             Ok(crate::services::AddFileResult::ValidationFailed(msg)) => {
                 warn!(
@@ -2020,14 +2020,14 @@ impl DotfileSelectionScreen {
                 Ok(ActionResult::ShowDialog {
                     title: "Cannot Add File".to_string(),
                     content: msg,
-                    variant: crate::widgets::DialogVariant::Error,
+                    variant: tui_forge::DialogVariant::Error,
                 })
             }
             Err(e) => {
                 warn!("Error adding custom file to sync: {}", e);
                 Ok(ActionResult::ShowToast {
                     message: format!("Error: {e}"),
-                    variant: crate::widgets::ToastVariant::Error,
+                    variant: tui_forge::ToastVariant::Error,
                 })
             }
         }
@@ -2043,7 +2043,7 @@ impl DotfileSelectionScreen {
         if file_index >= self.state.dotfiles.len() {
             return Ok(ActionResult::ShowToast {
                 message: "Invalid file index".into(),
-                variant: crate::widgets::ToastVariant::Error,
+                variant: tui_forge::ToastVariant::Error,
             });
         }
 
@@ -2051,13 +2051,13 @@ impl DotfileSelectionScreen {
         if dotfile.synced {
             return Ok(ActionResult::ShowToast {
                 message: "Unsync the file first before removing it".into(),
-                variant: crate::widgets::ToastVariant::Info,
+                variant: tui_forge::ToastVariant::Info,
             });
         }
         if !dotfile.is_custom {
             return Ok(ActionResult::ShowToast {
                 message: "Only custom-added files can be removed from the list".into(),
-                variant: crate::widgets::ToastVariant::Info,
+                variant: tui_forge::ToastVariant::Info,
             });
         }
 
@@ -2069,7 +2069,7 @@ impl DotfileSelectionScreen {
             warn!("Failed to save config: {}", e);
             return Ok(ActionResult::ShowToast {
                 message: format!("Error saving config: {e}"),
-                variant: crate::widgets::ToastVariant::Error,
+                variant: tui_forge::ToastVariant::Error,
             });
         }
 
@@ -2079,7 +2079,7 @@ impl DotfileSelectionScreen {
         info!("Removed custom file entry: {}", relative_path);
         Ok(ActionResult::ShowToast {
             message: format!("Removed {relative_path} from file list"),
-            variant: crate::widgets::ToastVariant::Success,
+            variant: tui_forge::ToastVariant::Success,
         })
     }
 
@@ -2095,7 +2095,7 @@ impl DotfileSelectionScreen {
             warn!("Invalid file index: {}", file_index);
             return Ok(ActionResult::ShowToast {
                 message: "Invalid file selection".to_string(),
-                variant: crate::widgets::ToastVariant::Error,
+                variant: tui_forge::ToastVariant::Error,
             });
         }
 
@@ -2114,14 +2114,14 @@ impl DotfileSelectionScreen {
                     info!("Successfully moved {} to profile", relative_path);
                     Ok(ActionResult::ShowToast {
                         message: format!("Moved {relative_path} to profile"),
-                        variant: crate::widgets::ToastVariant::Success,
+                        variant: tui_forge::ToastVariant::Success,
                     })
                 }
                 Err(e) => {
                     warn!("Error moving file from common: {}", e);
                     Ok(ActionResult::ShowToast {
                         message: format!("Error: {e}"),
-                        variant: crate::widgets::ToastVariant::Error,
+                        variant: tui_forge::ToastVariant::Error,
                     })
                 }
             }
@@ -2151,14 +2151,14 @@ impl DotfileSelectionScreen {
                     info!("Successfully moved {} to common", relative_path);
                     Ok(ActionResult::ShowToast {
                         message: format!("Moved {relative_path} to common"),
-                        variant: crate::widgets::ToastVariant::Success,
+                        variant: tui_forge::ToastVariant::Success,
                     })
                 }
                 Err(e) => {
                     warn!("Error moving file to common: {}", e);
                     Ok(ActionResult::ShowToast {
                         message: format!("Error: {e}"),
-                        variant: crate::widgets::ToastVariant::Error,
+                        variant: tui_forge::ToastVariant::Error,
                     })
                 }
             }

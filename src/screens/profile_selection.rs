@@ -10,7 +10,7 @@ use crate::services::ProfileService;
 use crate::styles::theme;
 use crate::ui::{ProfileSelectionState, Screen as ScreenId};
 use crate::utils::MouseRegions;
-use crate::widgets::{DialogVariant, TextInputWidget, TextInputWidgetExt};
+use crate::widgets::{TextInputWidget, TextInputWidgetExt};
 use anyhow::Result;
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
 use ratatui::layout::Rect;
@@ -19,6 +19,7 @@ use ratatui::widgets::{Block, Borders, List, ListItem};
 use ratatui::Frame;
 use std::path::Path;
 use tracing::{error, info};
+use tui_forge::DialogVariant;
 
 /// Actions that can be processed by the profile selection screen
 #[derive(Debug, Clone)]
@@ -75,7 +76,7 @@ impl ProfileSelectionScreen {
 
     /// Render the exit warning popup.
     fn render_exit_warning(&self, frame: &mut Frame, area: Rect, config: &Config) {
-        use crate::widgets::{Dialog, DialogVariant};
+        use tui_forge::{Dialog, DialogVariant};
 
         let icons = crate::icons::Icons::from_config(config);
         let warning_text = format!(

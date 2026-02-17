@@ -99,7 +99,7 @@ pub enum ScreenAction {
     /// Show a toast notification (non-blocking, auto-dismisses).
     ShowToast {
         message: String,
-        variant: crate::widgets::ToastVariant,
+        variant: tui_forge::ToastVariant,
     },
     /// Request to quit the application.
     Quit,
@@ -236,13 +236,13 @@ pub enum ActionResult {
     /// Show a toast notification
     ShowToast {
         message: String,
-        variant: crate::widgets::ToastVariant,
+        variant: tui_forge::ToastVariant,
     },
     /// Show a modal dialog
     ShowDialog {
         title: String,
         content: String,
-        variant: crate::widgets::DialogVariant,
+        variant: tui_forge::DialogVariant,
     },
     /// Navigate to a different screen
     Navigate(ScreenId),
