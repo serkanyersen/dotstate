@@ -5,9 +5,7 @@ use crate::keymap::{Action, Keymap};
 use crate::screens::{ActionResult, RenderContext, Screen, ScreenAction, ScreenContext};
 use crate::services::ProfileService;
 use crate::ui::Screen as ScreenId;
-use crate::utils::{
-    create_standard_layout, focused_border_style, unfocused_border_style, MouseRegions,
-};
+use crate::utils::{focused_border_style, unfocused_border_style};
 use crate::widgets::{TextInputWidget, TextInputWidgetExt};
 use anyhow::Result;
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
@@ -20,6 +18,7 @@ use std::path::Path;
 use tracing::{error, info, warn};
 use tui_forge::theme;
 use tui_forge::DialogVariant;
+use tui_forge::MouseRegions;
 
 /// Profile manager popup types
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1044,7 +1043,8 @@ impl Screen for ManageProfilesScreen {
         frame.render_widget(background, area);
 
         // Layout: Header, Content (split), Footer
-        let (header_chunk, content_chunk, footer_chunk) = create_standard_layout(area, 5, 3);
+        let (header_chunk, content_chunk, footer_chunk) =
+            tui_forge::create_standard_layout(area, 5, 3);
 
         // Header
         let _ = Header::render(

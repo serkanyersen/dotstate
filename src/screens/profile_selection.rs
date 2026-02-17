@@ -8,7 +8,6 @@ use crate::screens::screen_trait::{RenderContext, Screen, ScreenAction, ScreenCo
 use crate::screens::ActionResult;
 use crate::services::ProfileService;
 use crate::ui::{ProfileSelectionState, Screen as ScreenId};
-use crate::utils::MouseRegions;
 use crate::widgets::{TextInputWidget, TextInputWidgetExt};
 use anyhow::Result;
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
@@ -19,6 +18,7 @@ use ratatui::Frame;
 use std::path::Path;
 use tracing::{error, info};
 use tui_forge::DialogVariant;
+use tui_forge::MouseRegions;
 
 /// Actions that can be processed by the profile selection screen
 #[derive(Debug, Clone)]
@@ -136,11 +136,11 @@ impl ProfileSelectionScreen {
     fn render_profile_list(&mut self, frame: &mut Frame, area: Rect, config: &Config) {
         use crate::components::footer::Footer;
         use crate::components::header::Header;
-        use crate::utils::create_standard_layout;
         use tui_forge::theme; // list_highlight_symbol from active theme
 
         let icons = crate::icons::Icons::from_config(config);
-        let (header_area, content_area, footer_area) = create_standard_layout(area, 5, 3);
+        let (header_area, content_area, footer_area) =
+            tui_forge::create_standard_layout(area, 5, 3);
 
         // Track mouse regions
         self.list_area = Some(content_area);

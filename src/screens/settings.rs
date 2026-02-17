@@ -11,10 +11,7 @@ use crate::icons::Icons;
 use crate::keymap::{Action, KeymapPreset};
 use crate::screens::screen_trait::{RenderContext, Screen, ScreenAction, ScreenContext};
 use crate::ui::Screen as ScreenId;
-use crate::utils::{
-    create_split_layout, create_standard_layout, focused_border_style, unfocused_border_style,
-    MouseRegions,
-};
+use crate::utils::{focused_border_style, unfocused_border_style};
 use anyhow::Result;
 use crossterm::event::{Event, KeyEventKind, MouseButton, MouseEventKind};
 use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
@@ -24,7 +21,7 @@ use ratatui::widgets::{
     Block, Borders, List, ListItem, ListState, Padding, Paragraph, StatefulWidget, Wrap,
 };
 use ratatui::Frame;
-use tui_forge::{init_theme, theme, ThemeType};
+use tui_forge::{init_theme, theme, MouseRegions, ThemeType};
 
 /// Available settings
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -618,7 +615,8 @@ impl SettingsScreen {
 impl Screen for SettingsScreen {
     fn render(&mut self, frame: &mut Frame, area: Rect, ctx: &RenderContext) -> Result<()> {
         // Standard layout (header=5, footer=2)
-        let (header_chunk, content_chunk, footer_chunk) = create_standard_layout(area, 5, 3);
+        let (header_chunk, content_chunk, footer_chunk) =
+            tui_forge::create_standard_layout(area, 5, 3);
 
         // Header
         Header::render(
@@ -629,7 +627,7 @@ impl Screen for SettingsScreen {
         )?;
 
         // Content: two-pane layout
-        let panes = create_split_layout(content_chunk, &[40, 60]);
+        let panes = tui_forge::create_split_layout(content_chunk, &[40, 60]);
 
         // Left: settings list
         self.render_settings_list(frame, panes[0], ctx.config);

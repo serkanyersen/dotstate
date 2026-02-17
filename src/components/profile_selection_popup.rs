@@ -5,9 +5,7 @@
 
 use crate::config::Config;
 use crate::keymap::Action;
-use crate::utils::{
-    focused_border_style, unfocused_border_style, MouseRegions, ProfileManifest, TextInput,
-};
+use crate::utils::{focused_border_style, unfocused_border_style, ProfileManifest, TextInput};
 use anyhow::Result;
 use crossterm::event::{KeyCode, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
@@ -15,7 +13,7 @@ use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, List, ListItem, ListState, Padding, Paragraph, Wrap};
 use tui_forge::theme;
 use tui_forge::widgets::popup::PopupRenderResult;
-use tui_forge::Popup;
+use tui_forge::{MouseRegions, Popup};
 
 /// Result of profile selection
 #[derive(Debug, Clone)]

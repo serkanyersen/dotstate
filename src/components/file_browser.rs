@@ -9,8 +9,6 @@
 use crate::components::file_preview::FilePreview;
 use crate::config::Config;
 use crate::keymap::Action;
-use crate::utils::list_navigation::ListStateExt;
-use crate::utils::mouse::MouseRegions;
 use crate::utils::style::{focused_border_style, unfocused_border_style};
 use crate::utils::text_input::TextInput;
 use crate::widgets::text_input::{TextInputWidget, TextInputWidgetExt};
@@ -27,6 +25,7 @@ use syntect::highlighting::Theme;
 use syntect::parsing::SyntaxSet;
 use tui_forge::theme as ui_theme;
 use tui_forge::Popup;
+use tui_forge::{ListStateExt, MouseRegions};
 
 /// Focus area within the file browser
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

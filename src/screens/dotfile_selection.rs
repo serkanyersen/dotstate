@@ -13,10 +13,7 @@ use crate::screens::screen_trait::{RenderContext, Screen, ScreenAction, ScreenCo
 use crate::screens::ActionResult;
 use crate::services::SyncService;
 use crate::ui::Screen as ScreenId;
-use crate::utils::{
-    create_split_layout, create_standard_layout, focused_border_style, unfocused_border_style,
-    MouseRegions, TextInput,
-};
+use crate::utils::{focused_border_style, unfocused_border_style, TextInput};
 use crate::widgets::{TextInputWidget, TextInputWidgetExt};
 use anyhow::Result;
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
@@ -34,6 +31,7 @@ use ratatui::Frame;
 use std::path::{Path, PathBuf};
 use syntect::highlighting::Theme;
 use syntect::parsing::SyntaxSet;
+use tui_forge::MouseRegions;
 use tui_forge::{Dialog, DialogVariant};
 
 /// Display item for the dotfile list (header or file)
@@ -825,7 +823,7 @@ impl DotfileSelectionScreen {
         theme: &Theme,
     ) -> Result<()> {
         // Split content into left (list + description) and right (preview)
-        let content_chunks = create_split_layout(content_chunk, &[50, 50]);
+        let content_chunks = tui_forge::create_split_layout(content_chunk, &[50, 50]);
         let left_area = content_chunks[0];
         let preview_area = content_chunks[1];
         let icons = crate::icons::Icons::from_config(config);
@@ -2194,7 +2192,8 @@ impl Screen for DotfileSelectionScreen {
         frame.render_widget(background, area);
 
         // Layout: Title/Description, Content (list + preview), Footer
-        let (header_chunk, content_chunk, footer_chunk) = create_standard_layout(area, 5, 3);
+        let (header_chunk, content_chunk, footer_chunk) =
+            tui_forge::create_standard_layout(area, 5, 3);
 
         // Header: Use common header component
         let _ = Header::render(

@@ -11,9 +11,7 @@ use crate::ui::{
 use crate::utils::package_installer::PackageInstaller;
 use crate::utils::package_manager::PackageManagerImpl;
 use crate::utils::profile_manifest::{Package, PackageManager};
-use crate::utils::{
-    create_standard_layout, focused_border_style, unfocused_border_style, MouseRegions,
-};
+use crate::utils::{focused_border_style, unfocused_border_style};
 use crate::widgets::{TextInputWidget, TextInputWidgetExt};
 use anyhow::Result;
 use crossterm::event::{Event, KeyCode, KeyModifiers, MouseButton, MouseEventKind};
@@ -22,6 +20,7 @@ use ratatui::widgets::{Block, Borders, List, ListItem, Padding, Paragraph, Tabs,
 use std::time::Duration;
 use tracing::{debug, error, info, warn};
 use tui_forge::theme;
+use tui_forge::MouseRegions;
 
 pub struct ManagePackagesScreen {
     pub state: PackageManagerState,
@@ -494,7 +493,7 @@ impl Screen for ManagePackagesScreen {
         }
 
         // Always render main content first (so dialogs can dim it)
-        let layout = create_standard_layout(area, 5, 3);
+        let layout = tui_forge::create_standard_layout(area, 5, 3);
 
         // Header
         let _header_height = Header::render(

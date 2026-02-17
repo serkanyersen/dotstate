@@ -445,4 +445,4 @@ impl UiState {
 // - render_message() -> MessageComponent
 // - render_synced_files() -> SyncedFilesComponent
 // - render_dotfile_selection() -> DotfileSelectionScreen (self-contained)
-// popup_area removed - use crate::utils::center_popup instead
+// popup_area removed - use tui_forge::center_popup instead

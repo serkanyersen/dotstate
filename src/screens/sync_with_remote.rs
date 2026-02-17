@@ -7,9 +7,7 @@ use crate::components::footer::Footer;
 use crate::components::header::Header;
 use crate::screens::screen_trait::{RenderContext, Screen, ScreenAction, ScreenContext};
 use crate::ui::{Screen as ScreenId, SyncWithRemoteState};
-use crate::utils::{
-    create_split_layout, create_standard_layout, focused_border_style, unfocused_border_style,
-};
+use crate::utils::{focused_border_style, unfocused_border_style};
 use anyhow::Result;
 use crossterm::event::Event;
 use ratatui::layout::{Alignment, Position, Rect};
@@ -266,7 +264,7 @@ impl SyncWithRemoteScreen {
         }
 
         // Split content into List (Left) and Preview (Right)
-        let chunks = create_split_layout(content_chunk, &[50, 50]);
+        let chunks = tui_forge::create_split_layout(content_chunk, &[50, 50]);
         let list_area = chunks[0];
         let preview_area = chunks[1];
 
@@ -392,7 +390,8 @@ impl Screen for SyncWithRemoteScreen {
         let background = Block::default().style(t.background_style());
         frame.render_widget(background, area);
 
-        let (header_chunk, content_chunk, footer_chunk) = create_standard_layout(area, 5, 3);
+        let (header_chunk, content_chunk, footer_chunk) =
+            tui_forge::create_standard_layout(area, 5, 3);
 
         // Header
         let description = if self.state.is_syncing {

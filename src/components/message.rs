@@ -5,7 +5,6 @@ use crate::components::message_box::MessageBox;
 use crate::config::Config;
 use crate::keymap::Action;
 use crate::ui::Screen;
-use crate::utils::create_standard_layout;
 use anyhow::Result;
 use crossterm::event::{Event, KeyEventKind, MouseButton, MouseEventKind};
 use ratatui::prelude::*;
@@ -47,7 +46,8 @@ impl Component for MessageComponent {
         let background = Block::default().style(t.background_style());
         frame.render_widget(background, area);
 
-        let (header_chunk, content_chunk, footer_chunk) = create_standard_layout(area, 5, 3);
+        let (header_chunk, content_chunk, footer_chunk) =
+            tui_forge::create_standard_layout(area, 5, 3);
 
         // Header: Use common header component
         let description = match self.screen_type {

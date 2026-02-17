@@ -10,10 +10,7 @@ use crate::icons::Icons;
 use crate::keymap::Action;
 use crate::screens::screen_trait::{RenderContext, Screen, ScreenAction, ScreenContext};
 use crate::ui::{GitHubSetupData, GitHubSetupStep};
-use crate::utils::{
-    create_split_layout, create_standard_layout, focused_border_style, unfocused_border_style,
-    MouseRegions, TextInput,
-};
+use crate::utils::{focused_border_style, unfocused_border_style, TextInput};
 use crate::widgets::{TextInputWidget, TextInputWidgetExt};
 use anyhow::Result;
 use crossterm::event::{Event, KeyEventKind, MouseButton, MouseEventKind};
@@ -23,6 +20,7 @@ use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Block, Borders, Clear, Padding, Paragraph, StatefulWidget, Wrap};
 use ratatui::Frame;
 use tui_forge::theme;
+use tui_forge::MouseRegions;
 use tui_forge::{Menu, MenuItem, MenuState};
 
 /// Focus within the storage setup screen
@@ -754,7 +752,7 @@ impl StorageSetupScreen {
         // Height: 8 steps + plus 1 unified padding = 10
         let popup_width = 50u16.min(area.width.saturating_sub(4));
         let popup_height = 30u16.min(area.height.saturating_sub(2));
-        let popup_area = crate::utils::center_popup(area, popup_width, popup_height);
+        let popup_area = tui_forge::center_popup(area, popup_width, popup_height);
 
         // Clear the popup area
         frame.render_widget(Clear, popup_area);
@@ -1222,7 +1220,8 @@ impl Screen for StorageSetupScreen {
         frame.render_widget(background, area);
 
         // Standard layout (header=5, footer=3)
-        let (header_chunk, content_chunk, footer_chunk) = create_standard_layout(area, 5, 3);
+        let (header_chunk, content_chunk, footer_chunk) =
+            tui_forge::create_standard_layout(area, 5, 3);
 
         // Header
         Header::render(
@@ -1242,7 +1241,7 @@ impl Screen for StorageSetupScreen {
             Footer::render(frame, footer_chunk, "Setting up your repository...")?;
         } else {
             // Content: two-pane layout (40/60 like settings)
-            let panes = create_split_layout(content_chunk, &[40, 60]);
+            let panes = tui_forge::create_split_layout(content_chunk, &[40, 60]);
 
             // Left: method selection list
             self.render_method_list(frame, panes[0], ctx);

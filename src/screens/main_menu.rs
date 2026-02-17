@@ -9,13 +9,13 @@ use crate::config::Config;
 use crate::icons::Icons;
 use crate::screens::screen_trait::{RenderContext, Screen, ScreenAction, ScreenContext};
 use crate::ui::Screen as ScreenId;
-use crate::utils::{create_standard_layout, MouseRegions};
 use crate::version_check::UpdateInfo;
 use anyhow::Result;
 use crossterm::event::{Event, KeyEventKind, MouseButton, MouseEventKind};
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Clear, Paragraph, StatefulWidget, Wrap};
 use tui_forge::theme;
+use tui_forge::MouseRegions;
 use tui_forge::{Menu, MenuItem as MenuWidgetItem, MenuState};
 
 /// Menu items enum - defines the order and available menu options
@@ -782,7 +782,8 @@ impl MainMenuScreen {
         let background = Block::default().style(t.background_style());
         frame.render_widget(background, area);
 
-        let (header_chunk, content_chunk, footer_chunk) = create_standard_layout(area, 5, 3);
+        let (header_chunk, content_chunk, footer_chunk) =
+            tui_forge::create_standard_layout(area, 5, 3);
 
         // Header: Use common header component (with logo on left)
         let _ = Header::render(
