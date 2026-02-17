@@ -1,3 +1,7 @@
+[workspace]
+members = [".", "crates/tui-forge"]
+resolver = "2"
+
 [package]
 name = "dotstate"
 version = "0.3.1"
@@ -20,6 +24,7 @@ path = "src/lib.rs"
 # TUI
 ratatui = "0.30"
 crossterm = "0.29"
+tui-forge = { path = "crates/tui-forge", features = ["keymap"] }
 
 # Git operations
 git2 = { version = "0.20", features = ["vendored-openssl"] }
