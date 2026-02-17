@@ -7,7 +7,6 @@
 use crate::components::footer::Footer;
 use crate::components::header::Header;
 use crate::config::{Config, RepoMode};
-use crate::icons::Icons;
 use crate::keymap::{Action, KeymapPreset};
 use crate::screens::screen_trait::{RenderContext, Screen, ScreenAction, ScreenContext};
 use crate::ui::Screen as ScreenId;
@@ -145,7 +144,7 @@ impl SettingsScreen {
                     .collect()
             }
             Some(SettingItem::IconSet) => {
-                use crate::icons::IconSet;
+                use tui_forge::IconSet;
                 let current = &config.icon_set;
                 vec![
                     ("auto".to_string(), current == "auto"),
@@ -188,7 +187,7 @@ impl SettingsScreen {
     /// Get explanation text for the current setting
     fn get_explanation(&self, config: &Config) -> Text<'static> {
         let t = theme();
-        let icons = Icons::from_config(config);
+        let icons = config.icons();
 
         match self.selected_setting(config.repo_mode) {
             Some(SettingItem::Theme) => {
@@ -209,7 +208,7 @@ impl SettingsScreen {
                 Text::from(lines)
             }
             Some(SettingItem::IconSet) => {
-                let icons_preview = Icons::from_config(config);
+                let icons_preview = config.icons();
                 let lines = vec![
                     Line::from(Span::styled("Icon Set", t.title_style())),
                     Line::from(""),
@@ -439,7 +438,7 @@ impl SettingsScreen {
 
     fn render_settings_list(&mut self, frame: &mut Frame, area: Rect, config: &Config) {
         let t = theme();
-        let icons = Icons::from_config(config);
+        let icons = config.icons();
         let is_focused = self.state.focus == SettingsFocus::List;
 
         // Store pane area and populate mouse regions
@@ -536,7 +535,7 @@ impl SettingsScreen {
 
         // Render options
         let options = self.get_options(config);
-        let icons = Icons::from_config(config);
+        let icons = config.icons();
 
         // Populate option click regions (each option is 1 line inside the block)
         let options_inner = Block::default().borders(Borders::ALL).inner(chunks[0]);

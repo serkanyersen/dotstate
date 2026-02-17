@@ -12,7 +12,6 @@ pub mod dotfile_candidates;
 pub mod file_manager;
 pub mod git;
 pub mod github;
-pub mod icons;
 pub mod keymap;
 pub mod screens;
 pub mod services;

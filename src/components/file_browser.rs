@@ -640,7 +640,7 @@ impl FileBrowser {
     /// Render the file/directory list
     fn render_list(&mut self, frame: &mut Frame, area: Rect, config: &Config) {
         let t = ui_theme();
-        let icons = crate::icons::Icons::from_config(config);
+        let icons = config.icons();
 
         let items: Vec<ListItem> = self
             .entries

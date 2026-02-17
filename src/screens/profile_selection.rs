@@ -77,7 +77,7 @@ impl ProfileSelectionScreen {
     fn render_exit_warning(&self, frame: &mut Frame, area: Rect, config: &Config) {
         use tui_forge::{Dialog, DialogVariant};
 
-        let icons = crate::icons::Icons::from_config(config);
+        let icons = config.icons();
         let warning_text = format!(
             "{} Profile Selection Required\n\n\
             You MUST select a profile before continuing.\n\
@@ -138,7 +138,7 @@ impl ProfileSelectionScreen {
         use crate::components::header::Header;
         use tui_forge::theme; // list_highlight_symbol from active theme
 
-        let icons = crate::icons::Icons::from_config(config);
+        let icons = config.icons();
         let (header_area, content_area, footer_area) =
             tui_forge::create_standard_layout(area, 5, 3);
 

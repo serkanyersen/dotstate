@@ -6,7 +6,7 @@
 
 use crate::components::footer::Footer;
 use crate::components::header::Header;
-use crate::icons::Icons;
+use tui_forge::Icons;
 use crate::keymap::Action;
 use crate::screens::screen_trait::{RenderContext, Screen, ScreenAction, ScreenContext};
 use crate::ui::{GitHubSetupData, GitHubSetupStep};
@@ -226,7 +226,7 @@ impl StorageSetupScreen {
 
     /// Get icons from config
     fn icons(&self, ctx: &RenderContext) -> Icons {
-        Icons::from_config(ctx.config)
+        ctx.config.icons()
     }
 
     /// Get key display for an action

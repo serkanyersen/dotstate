@@ -6,7 +6,7 @@
 use crate::components::footer::Footer;
 use crate::components::header::Header;
 use crate::config::Config;
-use crate::icons::Icons;
+use tui_forge::Icons;
 use crate::screens::screen_trait::{RenderContext, Screen, ScreenAction, ScreenContext};
 use crate::ui::Screen as ScreenId;
 use crate::version_check::UpdateInfo;
@@ -490,7 +490,7 @@ impl MainMenuScreen {
             git_status,
             update_info: None,
             is_update_selected: false,
-            icons: Icons::from_config(config),
+            icons: config.icons(),
         }
     }
 
@@ -630,7 +630,7 @@ impl MainMenuScreen {
     /// Update config (only updates config, doesn't change selection)
     pub fn update_config(&mut self, config: Config) {
         // Update icons when config changes (e.g., icon set changed in settings)
-        self.icons = Icons::from_config(&config);
+        self.icons = config.icons();
         self.config = Some(config);
     }
 

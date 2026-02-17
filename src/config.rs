@@ -311,11 +311,11 @@ impl Config {
             .cloned()
     }
 
-    /// Get the icon set based on config value
-    /// Returns the configured icon set, or auto-detects if set to "auto"
+    /// Get the icon set based on config value.
+    /// Returns the configured icon set, or auto-detects if set to "auto".
     #[must_use]
-    pub fn get_icon_set(&self) -> crate::icons::IconSet {
-        use crate::icons::IconSet;
+    pub fn get_icon_set(&self) -> tui_forge::IconSet {
+        use tui_forge::IconSet;
 
         match self.icon_set.to_lowercase().as_str() {
             "nerd" | "nerdfont" | "nerdfonts" => IconSet::NerdFonts,
@@ -324,6 +324,16 @@ impl Config {
             "ascii" | "plain" => IconSet::Ascii,
             _ => IconSet::detect(), // Auto-detect or fallback to detection
         }
+    }
+
+    /// Build icon provider using `DotState` precedence:
+    /// `DOTSTATE_ICONS` env var > config value > auto-detect.
+    #[must_use]
+    pub fn icons(&self) -> tui_forge::Icons {
+        if std::env::var("DOTSTATE_ICONS").is_ok() {
+            return tui_forge::Icons::with_env_var("DOTSTATE_ICONS");
+        }
+        tui_forge::Icons::with_icon_set(self.get_icon_set())
     }
 
     // Profile-related methods removed - use ProfileManifest directly

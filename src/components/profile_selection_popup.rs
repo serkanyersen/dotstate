@@ -276,7 +276,7 @@ impl ProfileSelectionPopup {
             return;
         }
 
-        let icons = crate::icons::Icons::from_config(config);
+        let icons = config.icons();
         let t = theme();
 
         // Build footer text
@@ -315,7 +315,7 @@ impl ProfileSelectionPopup {
         &mut self,
         frame: &mut Frame,
         area: Rect,
-        icons: &crate::icons::Icons,
+        icons: &tui_forge::Icons,
         t: &tui_forge::Theme,
     ) {
         // Store list area for mouse scroll hit-testing
@@ -385,7 +385,7 @@ impl ProfileSelectionPopup {
     fn render_create_new_item(
         &self,
         is_selected: bool,
-        icons: &crate::icons::Icons,
+        icons: &tui_forge::Icons,
         t: &tui_forge::Theme,
     ) -> ListItem<'static> {
         let input_text = self.create_input.text();
@@ -436,7 +436,7 @@ impl ProfileSelectionPopup {
         &self,
         frame: &mut Frame,
         area: Rect,
-        icons: &crate::icons::Icons,
+        icons: &tui_forge::Icons,
         t: &tui_forge::Theme,
     ) {
         let content = if let Some(idx) = self.list_state.selected() {
@@ -469,7 +469,7 @@ impl ProfileSelectionPopup {
     fn build_profile_preview<'a>(
         &self,
         profile: &ProfileInfo,
-        _icons: &crate::icons::Icons,
+        _icons: &tui_forge::Icons,
         t: &tui_forge::Theme,
     ) -> Text<'a> {
         let description = profile.description.as_deref().unwrap_or("No description");
@@ -544,7 +544,7 @@ impl ProfileSelectionPopup {
     /// Build the preview content for creating a new profile
     fn build_create_new_preview<'a>(
         &self,
-        _icons: &crate::icons::Icons,
+        _icons: &tui_forge::Icons,
         t: &tui_forge::Theme,
     ) -> Text<'a> {
         let input_text = self.create_input.text();

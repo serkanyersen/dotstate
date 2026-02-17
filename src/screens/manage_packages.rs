@@ -2104,7 +2104,7 @@ impl ManagePackagesScreen {
                 .iter()
                 .enumerate()
                 .map(|(idx, package)| {
-                    let icons = crate::icons::Icons::from_config(config);
+                    let icons = config.icons();
                     let status_icon = match self.state.package_statuses.get(idx) {
                         Some(PackageStatus::Installed) => icons.success(),
                         Some(PackageStatus::NotInstalled) => icons.error(),
@@ -2231,7 +2231,7 @@ impl ManagePackagesScreen {
         config: &Config,
     ) -> Vec<Line<'_>> {
         let t = theme();
-        let icons = crate::icons::Icons::from_config(config);
+        let icons = config.icons();
         let mut lines = Vec::new();
 
         // Helper for labeled fields

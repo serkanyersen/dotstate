@@ -445,7 +445,7 @@ impl ManageProfilesScreen {
         config: &Config,
     ) -> Result<()> {
         let t = theme();
-        let icons = crate::icons::Icons::from_config(config);
+        let icons = config.icons();
         let active_profile = &config.active_profile;
 
         let items: Vec<ListItem> = self
@@ -515,7 +515,7 @@ impl ManageProfilesScreen {
     /// Render profile details on the right
     fn render_profile_details(&self, frame: &mut Frame, area: Rect, config: &Config) -> Result<()> {
         let active_profile = &config.active_profile;
-        let icons = crate::icons::Icons::from_config(config);
+        let icons = config.icons();
 
         // Find selected profile (use selected index, fallback to active, then first)
         let profile = self
@@ -668,7 +668,7 @@ impl ManageProfilesScreen {
     ) -> Result<()> {
         use tui_forge::Popup;
 
-        let icons = crate::icons::Icons::from_config(config);
+        let icons = config.icons();
         let k = |a| config.keymap.get_key_display_for_action(a);
         let footer_text = format!(
             "{}: Next Field | {}: Navigate Copy From | {}: Toggle Selection | {}: Create | {}: Cancel",
@@ -945,7 +945,7 @@ impl ManageProfilesScreen {
     fn render_delete_popup(&self, frame: &mut Frame, area: Rect, config: &Config) -> Result<()> {
         use tui_forge::{Dialog, DialogVariant};
 
-        let icons = crate::icons::Icons::from_config(config);
+        let icons = config.icons();
         let selected_idx = self.state.list_state.selected();
         let profile = selected_idx.and_then(|idx| self.state.profiles.get(idx));
         let active_profile = &config.active_profile;

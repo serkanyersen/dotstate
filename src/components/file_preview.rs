@@ -237,7 +237,7 @@ impl FilePreview {
         } else if file_path.is_dir() {
             let mut preview_lines = Vec::new();
             let theme = tui_forge::theme();
-            let icons = crate::icons::Icons::from_config(config);
+            let icons = config.icons();
 
             preview_lines.push(Line::from(vec![
                 Span::styled("Directory: ", theme.title_style()),

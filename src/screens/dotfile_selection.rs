@@ -826,7 +826,7 @@ impl DotfileSelectionScreen {
         let content_chunks = tui_forge::create_split_layout(content_chunk, &[50, 50]);
         let left_area = content_chunks[0];
         let preview_area = content_chunks[1];
-        let icons = crate::icons::Icons::from_config(config);
+        let icons = config.icons();
         // Split left area into list (top) and description (bottom)
         let left_chunks = Layout::default()
             .direction(Direction::Vertical)

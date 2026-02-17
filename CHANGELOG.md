@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Theme System Migration**: Fully migrated DotState from `src/styles.rs` to `tui-forge` theme APIs and removed the local styles module
 - **UI Toolkit Migration**: Fully migrated `Popup` usage to `tui-forge` and removed DotState duplicate popup implementation
 - **UI Toolkit Migration**: Fully migrated layout and navigation utilities (`create_standard_layout`, `create_split_layout`, `center_popup`, `MouseRegions`, `ListStateExt`) to `tui-forge` and removed DotState duplicate utility modules
+- **UI Toolkit Migration**: Fully migrated icon system to `tui-forge` (`Icons`/`IconSet`), removed `src/icons.rs`, and kept DotState-specific precedence via `DOTSTATE_ICONS` in `Config::icons()`
 
 ### Fixed
 
