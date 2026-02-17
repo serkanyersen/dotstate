@@ -12,7 +12,6 @@ use crate::file_manager::Dotfile;
 use crate::screens::screen_trait::{RenderContext, Screen, ScreenAction, ScreenContext};
 use crate::screens::ActionResult;
 use crate::services::SyncService;
-use crate::styles::{theme as ui_theme, LIST_HIGHLIGHT_SYMBOL};
 use crate::ui::Screen as ScreenId;
 use crate::utils::{
     create_split_layout, create_standard_layout, focused_border_style, unfocused_border_style,
@@ -25,6 +24,7 @@ use ratatui::layout::Position;
 use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use ratatui::style::{Modifier, Style};
 use tracing::{debug, info, warn};
+use tui_forge::theme as ui_theme;
 
 use ratatui::widgets::{
     Block, Borders, Clear, List, ListItem, ListState, Paragraph, Scrollbar, ScrollbarOrientation,
@@ -980,7 +980,7 @@ impl DotfileSelectionScreen {
                     .border_style(list_border_style),
             )
             .highlight_style(t.highlight_style())
-            .highlight_symbol(LIST_HIGHLIGHT_SYMBOL);
+            .highlight_symbol(tui_forge::theme().list_highlight_symbol);
 
         StatefulWidget::render(
             list,

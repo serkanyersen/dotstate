@@ -91,10 +91,10 @@ fn main() -> Result<()> {
     let env_no_color = std::env::var_os("NO_COLOR").is_some();
     let config_theme_type = config
         .theme
-        .parse::<dotstate::styles::ThemeType>()
+        .parse::<tui_forge::ThemeType>()
         .unwrap_or_default();
     let no_colors =
-        cli.no_colors || env_no_color || config_theme_type == dotstate::styles::ThemeType::NoColor;
+        cli.no_colors || env_no_color || config_theme_type == tui_forge::ThemeType::NoColor;
 
     // If any source disables colors, set NO_COLOR so crossterm/ratatui respects it.
     if no_colors {
@@ -104,11 +104,11 @@ fn main() -> Result<()> {
 
     // Initialize theme based on config, but force NoColor when requested.
     let theme_type = if no_colors {
-        dotstate::styles::ThemeType::NoColor
+        tui_forge::ThemeType::NoColor
     } else {
         config_theme_type
     };
-    dotstate::styles::init_theme(theme_type);
+    tui_forge::init_theme(theme_type);
     info!("Theme initialized: {:?}", theme_type);
 
     let mut app = App::new()?;

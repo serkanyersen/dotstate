@@ -6,7 +6,6 @@ use crate::components::file_preview::FilePreview;
 use crate::components::footer::Footer;
 use crate::components::header::Header;
 use crate::screens::screen_trait::{RenderContext, Screen, ScreenAction, ScreenContext};
-use crate::styles::{theme as ui_theme, LIST_HIGHLIGHT_SYMBOL};
 use crate::ui::{Screen as ScreenId, SyncWithRemoteState};
 use crate::utils::{
     create_split_layout, create_standard_layout, focused_border_style, unfocused_border_style,
@@ -20,6 +19,7 @@ use ratatui::widgets::{
     StatefulWidget, Wrap,
 };
 use ratatui::Frame;
+use tui_forge::theme as ui_theme;
 
 /// Focus area in sync with remote screen
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -323,7 +323,7 @@ impl SyncWithRemoteScreen {
                     .padding(ratatui::widgets::Padding::new(1, 1, 1, 1)),
             )
             .highlight_style(t.highlight_style())
-            .highlight_symbol(LIST_HIGHLIGHT_SYMBOL);
+            .highlight_symbol(tui_forge::theme().list_highlight_symbol);
 
         StatefulWidget::render(
             list,

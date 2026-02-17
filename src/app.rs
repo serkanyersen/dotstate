@@ -320,7 +320,7 @@ impl App {
 
     /// Cycle through themes: dark -> light -> nocolor -> midnight -> dark
     fn cycle_theme(&mut self) -> Result<()> {
-        use crate::styles::ThemeType;
+        use tui_forge::ThemeType;
 
         let current_theme = self
             .config
@@ -347,7 +347,7 @@ impl App {
         }
 
         // Re-initialize theme
-        crate::styles::init_theme(next_theme);
+        tui_forge::init_theme(next_theme);
         info!("Theme changed to: {:?}", next_theme);
 
         // Save config

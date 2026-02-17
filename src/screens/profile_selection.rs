@@ -7,7 +7,6 @@ use crate::config::Config;
 use crate::screens::screen_trait::{RenderContext, Screen, ScreenAction, ScreenContext};
 use crate::screens::ActionResult;
 use crate::services::ProfileService;
-use crate::styles::theme;
 use crate::ui::{ProfileSelectionState, Screen as ScreenId};
 use crate::utils::MouseRegions;
 use crate::widgets::{TextInputWidget, TextInputWidgetExt};
@@ -137,8 +136,8 @@ impl ProfileSelectionScreen {
     fn render_profile_list(&mut self, frame: &mut Frame, area: Rect, config: &Config) {
         use crate::components::footer::Footer;
         use crate::components::header::Header;
-        use crate::styles::LIST_HIGHLIGHT_SYMBOL;
         use crate::utils::create_standard_layout;
+        use tui_forge::theme; // list_highlight_symbol from active theme
 
         let icons = crate::icons::Icons::from_config(config);
         let (header_area, content_area, footer_area) = create_standard_layout(area, 5, 3);
@@ -191,7 +190,7 @@ impl ProfileSelectionScreen {
                     .add_modifier(Modifier::BOLD)
                     .fg(Color::Cyan),
             )
-            .highlight_symbol(LIST_HIGHLIGHT_SYMBOL);
+            .highlight_symbol(tui_forge::theme().list_highlight_symbol);
 
         frame.render_stateful_widget(list, content_area, &mut self.state.list_state);
 
@@ -335,7 +334,7 @@ impl Default for ProfileSelectionScreen {
 impl Screen for ProfileSelectionScreen {
     fn render(&mut self, frame: &mut Frame, area: Rect, ctx: &RenderContext) -> Result<()> {
         // Background
-        let t = crate::styles::theme();
+        let t = tui_forge::theme();
         let background = ratatui::widgets::Block::default().style(t.background_style());
         frame.render_widget(background, area);
 

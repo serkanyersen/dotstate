@@ -1,10 +1,10 @@
 //! The [`DotstateLogo`] widget renders the dotstate logo.
-use crate::styles::theme;
 use indoc::indoc;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::text::Text;
 use ratatui::widgets::Widget;
+use tui_forge::theme;
 
 /// A widget that renders the dotstate logo
 ///

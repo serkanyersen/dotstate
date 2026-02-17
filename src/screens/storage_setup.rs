@@ -9,7 +9,6 @@ use crate::components::header::Header;
 use crate::icons::Icons;
 use crate::keymap::Action;
 use crate::screens::screen_trait::{RenderContext, Screen, ScreenAction, ScreenContext};
-use crate::styles::theme;
 use crate::ui::{GitHubSetupData, GitHubSetupStep};
 use crate::utils::{
     create_split_layout, create_standard_layout, focused_border_style, unfocused_border_style,
@@ -23,6 +22,7 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Block, Borders, Clear, Padding, Paragraph, StatefulWidget, Wrap};
 use ratatui::Frame;
+use tui_forge::theme;
 use tui_forge::{Menu, MenuItem, MenuState};
 
 /// Focus within the storage setup screen

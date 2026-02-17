@@ -41,8 +41,8 @@ impl FilePreview {
         config: &crate::config::Config,
     ) -> Result<()> {
         let preview_title = title.unwrap_or("Preview");
-        let no_color = crate::styles::theme().theme_type == crate::styles::ThemeType::NoColor;
-        let t = crate::styles::theme();
+        let no_color = tui_forge::theme().theme_type == tui_forge::ThemeType::NoColor;
+        let t = tui_forge::theme();
         let (border_style, border_type) = if focused {
             (focused_border_style(), t.border_focused_type)
         } else {
@@ -236,7 +236,7 @@ impl FilePreview {
             }
         } else if file_path.is_dir() {
             let mut preview_lines = Vec::new();
-            let theme = crate::styles::theme();
+            let theme = tui_forge::theme();
             let icons = crate::icons::Icons::from_config(config);
 
             preview_lines.push(Line::from(vec![

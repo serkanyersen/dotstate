@@ -1,5 +1,5 @@
-use crate::styles::theme;
 use ratatui::prelude::*;
+use tui_forge::theme;
 
 /// Get the border style for a focused pane
 #[must_use]

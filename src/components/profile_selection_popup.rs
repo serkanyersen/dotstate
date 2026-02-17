@@ -6,7 +6,6 @@
 use crate::components::{Popup, PopupRenderResult};
 use crate::config::Config;
 use crate::keymap::Action;
-use crate::styles::theme;
 use crate::utils::{
     focused_border_style, unfocused_border_style, MouseRegions, ProfileManifest, TextInput,
 };
@@ -15,6 +14,7 @@ use crossterm::event::{KeyCode, KeyModifiers, MouseButton, MouseEvent, MouseEven
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, List, ListItem, ListState, Padding, Paragraph, Wrap};
+use tui_forge::theme;
 
 /// Result of profile selection
 #[derive(Debug, Clone)]
@@ -317,7 +317,7 @@ impl ProfileSelectionPopup {
         frame: &mut Frame,
         area: Rect,
         icons: &crate::icons::Icons,
-        t: &crate::styles::Theme,
+        t: &tui_forge::Theme,
     ) {
         // Store list area for mouse scroll hit-testing
         self.list_area = Some(area);
@@ -377,7 +377,7 @@ impl ProfileSelectionPopup {
                     .border_style(focused_border_style()),
             )
             .highlight_style(Style::default().bg(t.highlight_bg))
-            .highlight_symbol(crate::styles::LIST_HIGHLIGHT_SYMBOL);
+            .highlight_symbol(tui_forge::theme().list_highlight_symbol);
 
         frame.render_stateful_widget(list, area, &mut self.list_state);
     }
@@ -387,7 +387,7 @@ impl ProfileSelectionPopup {
         &self,
         is_selected: bool,
         icons: &crate::icons::Icons,
-        t: &crate::styles::Theme,
+        t: &tui_forge::Theme,
     ) -> ListItem<'static> {
         let input_text = self.create_input.text();
 
@@ -438,7 +438,7 @@ impl ProfileSelectionPopup {
         frame: &mut Frame,
         area: Rect,
         icons: &crate::icons::Icons,
-        t: &crate::styles::Theme,
+        t: &tui_forge::Theme,
     ) {
         let content = if let Some(idx) = self.list_state.selected() {
             if idx < self.profiles.len() {
@@ -471,7 +471,7 @@ impl ProfileSelectionPopup {
         &self,
         profile: &ProfileInfo,
         _icons: &crate::icons::Icons,
-        t: &crate::styles::Theme,
+        t: &tui_forge::Theme,
     ) -> Text<'a> {
         let description = profile.description.as_deref().unwrap_or("No description");
 
@@ -546,7 +546,7 @@ impl ProfileSelectionPopup {
     fn build_create_new_preview<'a>(
         &self,
         _icons: &crate::icons::Icons,
-        t: &crate::styles::Theme,
+        t: &tui_forge::Theme,
     ) -> Text<'a> {
         let input_text = self.create_input.text();
 

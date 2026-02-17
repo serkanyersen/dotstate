@@ -4,9 +4,9 @@
 //! simple text messages. Handles background dimming, clearing, positioning, and optional borders.
 
 use crate::components::footer::Footer;
-use crate::styles::theme;
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Clear, Paragraph};
+use tui_forge::theme;
 
 /// Result of rendering a popup, containing area for content
 #[derive(Debug)]

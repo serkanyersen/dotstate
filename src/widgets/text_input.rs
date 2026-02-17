@@ -160,9 +160,9 @@ impl<'a> TextInputWidget<'a> {
             // Default block
             let mut block = Block::default()
                 .borders(Borders::ALL)
-                .border_type(crate::styles::theme().border_type(self.focused))
+                .border_type(tui_forge::theme().border_type(self.focused))
                 .border_style(self.border_style())
-                .style(crate::styles::theme().background_style());
+                .style(tui_forge::theme().background_style());
 
             if let Some(title) = self.title {
                 block = block

@@ -1,7 +1,7 @@
-use crate::styles::theme;
 use anyhow::Result;
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Paragraph};
+use tui_forge::theme;
 
 /// Common footer component
 pub struct Footer;

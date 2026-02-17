@@ -4,7 +4,6 @@ use crate::config::Config;
 use crate::keymap::{Action, Keymap};
 use crate::screens::{ActionResult, RenderContext, Screen, ScreenAction, ScreenContext};
 use crate::services::ProfileService;
-use crate::styles::{theme, LIST_HIGHLIGHT_SYMBOL};
 use crate::ui::Screen as ScreenId;
 use crate::utils::{
     create_standard_layout, focused_border_style, unfocused_border_style, MouseRegions,
@@ -19,6 +18,7 @@ use ratatui::widgets::{
 };
 use std::path::Path;
 use tracing::{error, info, warn};
+use tui_forge::theme;
 use tui_forge::DialogVariant;
 
 /// Profile manager popup types
@@ -489,7 +489,7 @@ impl ManageProfilesScreen {
                     .border_style(focused_border_style()),
             )
             .highlight_style(t.highlight_style())
-            .highlight_symbol(LIST_HIGHLIGHT_SYMBOL);
+            .highlight_symbol(tui_forge::theme().list_highlight_symbol);
 
         // Render with state
         frame.render_stateful_widget(list, area, &mut self.state.list_state);
@@ -798,7 +798,7 @@ impl ManageProfilesScreen {
                         .border_style(border_style),
                 )
                 .highlight_style(t.highlight_style())
-                .highlight_symbol(LIST_HIGHLIGHT_SYMBOL);
+                .highlight_symbol(tui_forge::theme().list_highlight_symbol);
 
             // Create a temporary list state for rendering
             // Index 0 = "Start Blank" (None), Index 1+ = profile at (idx - 1)

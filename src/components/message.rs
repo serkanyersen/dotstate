@@ -42,7 +42,7 @@ impl Component for MessageComponent {
         // Clear the entire area first
         frame.render_widget(Clear, area);
 
-        let t = crate::styles::theme();
+        let t = tui_forge::theme();
         // Background - use Reset to inherit terminal's native background
         let background = Block::default().style(t.background_style());
         frame.render_widget(background, area);

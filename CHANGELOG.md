@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Developer Guide**: Clarified symlink rule in `CLAUDE.md` and `.claude/skills/dotstate-dev/SKILL.md` to distinguish tracked home↔repo symlinks from internal content-symlink preservation during recursive copy
 - **Architecture**: Added `crates/tui-forge` as an internal workspace crate and wired DotState to consume it as a local dependency
 - **UI Toolkit Migration**: Fully migrated `Dialog`, `Toast`, and `Menu` usage to `tui-forge` and removed DotState duplicate implementations
-- **Planning**: Added tui-forge integration roadmap document at `docs/plans/2026-02-17-tui-forge-integration-plan.md`
+- **Theme System Migration**: Fully migrated DotState from `src/styles.rs` to `tui-forge` theme APIs and removed the local styles module
 
 ### Fixed
 

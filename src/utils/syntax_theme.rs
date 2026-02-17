@@ -3,8 +3,8 @@
 //! This module provides a unified way to select syntax themes based on
 //! the current UI theme type, avoiding duplication across the codebase.
 
-use crate::styles::ThemeType;
 use syntect::highlighting::{Theme, ThemeSet};
+use tui_forge::ThemeType;
 
 /// Get the appropriate syntax highlighting theme based on the current UI theme.
 ///
@@ -74,7 +74,7 @@ pub fn get_syntax_theme(theme_set: &ThemeSet, theme_type: ThemeType) -> &Theme {
 /// A reference to the selected syntax highlighting theme.
 #[must_use]
 pub fn get_current_syntax_theme(theme_set: &ThemeSet) -> &Theme {
-    use crate::styles::theme as ui_theme;
+    use tui_forge::theme as ui_theme;
     let theme_type = ui_theme().theme_type;
     get_syntax_theme(theme_set, theme_type)
 }

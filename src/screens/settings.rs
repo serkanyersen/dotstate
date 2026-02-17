@@ -10,7 +10,6 @@ use crate::config::{Config, RepoMode};
 use crate::icons::Icons;
 use crate::keymap::{Action, KeymapPreset};
 use crate::screens::screen_trait::{RenderContext, Screen, ScreenAction, ScreenContext};
-use crate::styles::{init_theme, theme, ThemeType};
 use crate::ui::Screen as ScreenId;
 use crate::utils::{
     create_split_layout, create_standard_layout, focused_border_style, unfocused_border_style,
@@ -25,6 +24,7 @@ use ratatui::widgets::{
     Block, Borders, List, ListItem, ListState, Padding, Paragraph, StatefulWidget, Wrap,
 };
 use ratatui::Frame;
+use tui_forge::{init_theme, theme, ThemeType};
 
 /// Available settings
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -518,7 +518,7 @@ impl SettingsScreen {
                     .style(t.background_style()),
             )
             .highlight_style(t.highlight_style())
-            .highlight_symbol(crate::styles::LIST_HIGHLIGHT_SYMBOL);
+            .highlight_symbol(tui_forge::theme().list_highlight_symbol);
 
         StatefulWidget::render(list, area, frame.buffer_mut(), &mut self.state.list_state);
     }

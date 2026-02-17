@@ -3,7 +3,6 @@
 //! Displays current keybindings when user presses '?' key.
 
 use crate::keymap::Keymap;
-use crate::styles::theme;
 use anyhow::Result;
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
@@ -12,6 +11,7 @@ use ratatui::{
     widgets::{Block, Borders, Clear, Paragraph, Wrap},
     Frame,
 };
+use tui_forge::theme;
 
 /// Renders the help overlay showing current keybindings
 pub struct HelpOverlay;

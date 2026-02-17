@@ -1,7 +1,7 @@
-use crate::styles::theme;
 use anyhow::Result;
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
+use tui_forge::theme;
 
 /// Message box component for displaying status/error/info messages
 pub struct MessageBox;

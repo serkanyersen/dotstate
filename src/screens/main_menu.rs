@@ -8,7 +8,6 @@ use crate::components::header::Header;
 use crate::config::Config;
 use crate::icons::Icons;
 use crate::screens::screen_trait::{RenderContext, Screen, ScreenAction, ScreenContext};
-use crate::styles::theme;
 use crate::ui::Screen as ScreenId;
 use crate::utils::{create_standard_layout, MouseRegions};
 use crate::version_check::UpdateInfo;
@@ -16,6 +15,7 @@ use anyhow::Result;
 use crossterm::event::{Event, KeyEventKind, MouseButton, MouseEventKind};
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Clear, Paragraph, StatefulWidget, Wrap};
+use tui_forge::theme;
 use tui_forge::{Menu, MenuItem as MenuWidgetItem, MenuState};
 
 /// Menu items enum - defines the order and available menu options

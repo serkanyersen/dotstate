@@ -1,8 +1,8 @@
-use crate::styles::theme;
 use crate::widgets::DotstateLogo;
 use anyhow::Result;
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
+use tui_forge::theme;
 
 /// Common header component for all screens
 pub struct Header;

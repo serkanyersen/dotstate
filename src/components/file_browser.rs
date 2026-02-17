@@ -10,7 +10,6 @@ use crate::components::file_preview::FilePreview;
 use crate::components::popup::Popup;
 use crate::config::Config;
 use crate::keymap::Action;
-use crate::styles::{theme as ui_theme, LIST_HIGHLIGHT_SYMBOL};
 use crate::utils::list_navigation::ListStateExt;
 use crate::utils::mouse::MouseRegions;
 use crate::utils::style::{focused_border_style, unfocused_border_style};
@@ -27,6 +26,7 @@ use ratatui::Frame;
 use std::path::{Path, PathBuf};
 use syntect::highlighting::Theme;
 use syntect::parsing::SyntaxSet;
+use tui_forge::theme as ui_theme;
 
 /// Focus area within the file browser
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -692,7 +692,7 @@ impl FileBrowser {
                     .style(t.background_style()),
             )
             .highlight_style(t.highlight_style())
-            .highlight_symbol(LIST_HIGHLIGHT_SYMBOL);
+            .highlight_symbol(tui_forge::theme().list_highlight_symbol);
 
         StatefulWidget::render(list, area, frame.buffer_mut(), &mut self.list_state);
 

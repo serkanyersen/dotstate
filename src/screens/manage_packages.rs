@@ -4,7 +4,6 @@ use crate::config::Config;
 use crate::keymap::{Action, Keymap};
 use crate::screens::{RenderContext, Screen, ScreenAction, ScreenContext};
 use crate::services::{PackageCreationParams, PackageService};
-use crate::styles::{theme, LIST_HIGHLIGHT_SYMBOL};
 use crate::ui::{
     AddPackageField, InstallationStatus, InstallationStep, PackageManagerState, PackagePopupType,
     PackageStatus, Screen as ScreenEnum,
@@ -22,6 +21,7 @@ use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, List, ListItem, Padding, Paragraph, Tabs, Wrap};
 use std::time::Duration;
 use tracing::{debug, error, info, warn};
+use tui_forge::theme;
 
 pub struct ManagePackagesScreen {
     pub state: PackageManagerState,
@@ -2165,7 +2165,7 @@ impl ManagePackagesScreen {
                         .border_style(focused_border_style()),
                 )
                 .highlight_style(t.highlight_style())
-                .highlight_symbol(LIST_HIGHLIGHT_SYMBOL);
+                .highlight_symbol(tui_forge::theme().list_highlight_symbol);
 
             frame.render_stateful_widget(list, area, &mut self.state.list_state);
 
@@ -3199,7 +3199,7 @@ impl ManagePackagesScreen {
                     )),
             )
             .highlight_style(Style::default().bg(t.highlight_bg).fg(t.text))
-            .highlight_symbol(crate::styles::LIST_HIGHLIGHT_SYMBOL);
+            .highlight_symbol(tui_forge::theme().list_highlight_symbol);
 
         frame.render_stateful_widget(list, area, &mut self.state.import_list_state);
 

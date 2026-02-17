@@ -16,7 +16,6 @@ pub mod icons;
 pub mod keymap;
 pub mod screens;
 pub mod services;
-pub mod styles;
 pub mod tui;
 pub mod ui;
 pub mod utils;
