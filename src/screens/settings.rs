@@ -4,13 +4,12 @@
 //! - Left: List of settings
 //! - Right: Current value, options, and explanation
 
-use crate::components::footer::Footer;
-use crate::components::header::Header;
 use crate::config::{Config, RepoMode};
 use crate::keymap::{Action, KeymapPreset};
 use crate::screens::screen_trait::{RenderContext, Screen, ScreenAction, ScreenContext};
 use crate::ui::Screen as ScreenId;
 use crate::utils::{focused_border_style, unfocused_border_style};
+use crate::widgets::DotstateLogo;
 use anyhow::Result;
 use crossterm::event::{Event, KeyEventKind, MouseButton, MouseEventKind};
 use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
@@ -20,6 +19,8 @@ use ratatui::widgets::{
     Block, Borders, List, ListItem, ListState, Padding, Paragraph, StatefulWidget, Wrap,
 };
 use ratatui::Frame;
+use tui_forge::Footer;
+use tui_forge::Header;
 use tui_forge::{init_theme, theme, MouseRegions, ThemeType};
 
 /// Available settings
@@ -618,12 +619,15 @@ impl Screen for SettingsScreen {
             tui_forge::create_standard_layout(area, 5, 3);
 
         // Header
-        Header::render(
-            frame,
+        let logo = DotstateLogo::regular();
+        let app_version = format!("v{}", env!("CARGO_PKG_VERSION"));
+        frame.render_widget(
+            Header::new("DotState - Settings")
+                .description("Configure your preferences. Changes are applied instantly.")
+                .subtitle(&app_version)
+                .with_widget(logo, logo.width()),
             header_chunk,
-            "DotState - Settings",
-            "Configure your preferences. Changes are applied instantly.",
-        )?;
+        );
 
         // Content: two-pane layout
         let panes = tui_forge::create_split_layout(content_chunk, &[40, 60]);
@@ -643,7 +647,7 @@ impl Screen for SettingsScreen {
             k(Action::Confirm),
             k(Action::Cancel),
         );
-        Footer::render(frame, footer_chunk, &footer_text)?;
+        frame.render_widget(Footer::new(&footer_text), footer_chunk);
 
         Ok(())
     }

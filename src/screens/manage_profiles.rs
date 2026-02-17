@@ -1,12 +1,10 @@
-use crate::components::footer::Footer;
-use crate::components::header::Header;
 use crate::config::Config;
 use crate::keymap::{Action, Keymap};
 use crate::screens::{ActionResult, RenderContext, Screen, ScreenAction, ScreenContext};
 use crate::services::ProfileService;
 use crate::ui::Screen as ScreenId;
 use crate::utils::{focused_border_style, unfocused_border_style};
-use crate::widgets::{TextInputWidget, TextInputWidgetExt};
+use crate::widgets::{DotstateLogo, TextInputWidget, TextInputWidgetExt};
 use anyhow::Result;
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
 use ratatui::prelude::*;
@@ -18,6 +16,8 @@ use std::path::Path;
 use tracing::{error, info, warn};
 use tui_forge::theme;
 use tui_forge::DialogVariant;
+use tui_forge::Footer;
+use tui_forge::Header;
 use tui_forge::MouseRegions;
 
 /// Profile manager popup types
@@ -1047,12 +1047,17 @@ impl Screen for ManageProfilesScreen {
             tui_forge::create_standard_layout(area, 5, 3);
 
         // Header
-        let _ = Header::render(
-            frame,
+        let logo = DotstateLogo::regular();
+        let app_version = format!("v{}", env!("CARGO_PKG_VERSION"));
+        frame.render_widget(
+            Header::new("DotState - Manage Profiles")
+                .description(
+                    "Manage different profiles for different machines. Each profile has its own set of synced dotfiles.",
+                )
+                .subtitle(&app_version)
+                .with_widget(logo, logo.width()),
             header_chunk,
-            "DotState - Manage Profiles",
-            "Manage different profiles for different machines. Each profile has its own set of synced dotfiles."
-        )?;
+        );
 
         // Split content: Left (profiles list), Right (profile details)
         let chunks = Layout::default()
@@ -1086,7 +1091,7 @@ impl Screen for ManageProfilesScreen {
                 k(crate::keymap::Action::Delete),
                 k(crate::keymap::Action::Cancel)
             );
-            Footer::render(frame, footer_chunk, &footer_text)?;
+            frame.render_widget(Footer::new(&footer_text), footer_chunk);
         }
 
         Ok(())

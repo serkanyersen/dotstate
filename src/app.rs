@@ -560,12 +560,8 @@ impl App {
             // Render help overlay on top of everything if active
             if self.ui_state.show_help_overlay {
                 let config_path = self.config_path.to_string_lossy().to_string();
-                let _ = crate::components::help_overlay::HelpOverlay::render(
-                    frame,
-                    area,
-                    &self.config.keymap,
-                    &config_path,
-                );
+                let _ =
+                    crate::components::help_overlay::HelpOverlay::render(frame, area, &self.config.keymap, &config_path);
             }
         })?;
         Ok(())

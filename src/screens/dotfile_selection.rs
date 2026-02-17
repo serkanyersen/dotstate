@@ -4,8 +4,6 @@
 //! It owns all state and rendering logic (self-contained screen).
 
 use crate::components::file_preview::FilePreview;
-use crate::components::footer::Footer;
-use crate::components::header::Header;
 use crate::components::{FileBrowser, FileBrowserResult};
 use crate::config::Config;
 use crate::file_manager::Dotfile;
@@ -14,7 +12,7 @@ use crate::screens::ActionResult;
 use crate::services::SyncService;
 use crate::ui::Screen as ScreenId;
 use crate::utils::{focused_border_style, unfocused_border_style, TextInput};
-use crate::widgets::{TextInputWidget, TextInputWidgetExt};
+use crate::widgets::{DotstateLogo, TextInputWidget, TextInputWidgetExt};
 use anyhow::Result;
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
 use ratatui::layout::Position;
@@ -32,7 +30,7 @@ use std::path::{Path, PathBuf};
 use syntect::highlighting::Theme;
 use syntect::parsing::SyntaxSet;
 use tui_forge::MouseRegions;
-use tui_forge::{Dialog, DialogVariant};
+use tui_forge::{Dialog, DialogVariant, Footer, Header};
 
 /// Display item for the dotfile list (header or file)
 #[derive(Debug, Clone, PartialEq)]
@@ -807,7 +805,7 @@ impl DotfileSelectionScreen {
             k(crate::keymap::Action::Confirm),
             k(crate::keymap::Action::Quit)
         );
-        let _ = Footer::render(frame, footer_chunk, &footer_text)?;
+        frame.render_widget(Footer::new(&footer_text), footer_chunk);
 
         Ok(())
     }
@@ -1142,7 +1140,7 @@ impl DotfileSelectionScreen {
              k(crate::keymap::Action::Quit)
         );
 
-        let _ = Footer::render(frame, footer_chunk, &footer_text)?;
+        frame.render_widget(Footer::new(&footer_text), footer_chunk);
 
         Ok(())
     }
@@ -2196,12 +2194,17 @@ impl Screen for DotfileSelectionScreen {
             tui_forge::create_standard_layout(area, 5, 3);
 
         // Header: Use common header component
-        let _ = Header::render(
-            frame,
+        let logo = DotstateLogo::regular();
+        let app_version = format!("v{}", env!("CARGO_PKG_VERSION"));
+        frame.render_widget(
+            Header::new("DotState - Manage Files")
+                .description(
+                    "Add or remove files to your repository. You can also add custom files. We have automatically detected some common dotfiles for you.",
+                )
+                .subtitle(&app_version)
+                .with_widget(logo, logo.width()),
             header_chunk,
-            "DotState - Manage Files",
-            "Add or remove files to your repository. You can also add custom files. We have automatically detected some common dotfiles for you."
-        )?;
+        );
 
         // Render main content (either custom file input or dotfile list)
         if self.state.adding_custom_file && !self.file_browser.is_open() {

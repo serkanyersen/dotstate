@@ -3,18 +3,19 @@
 //! This screen is the application's entry point after setup, showing
 //! the main navigation menu.
 
-use crate::components::footer::Footer;
-use crate::components::header::Header;
 use crate::config::Config;
-use tui_forge::Icons;
 use crate::screens::screen_trait::{RenderContext, Screen, ScreenAction, ScreenContext};
 use crate::ui::Screen as ScreenId;
 use crate::version_check::UpdateInfo;
+use crate::widgets::DotstateLogo;
 use anyhow::Result;
 use crossterm::event::{Event, KeyEventKind, MouseButton, MouseEventKind};
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Clear, Paragraph, StatefulWidget, Wrap};
 use tui_forge::theme;
+use tui_forge::Footer;
+use tui_forge::Header;
+use tui_forge::Icons;
 use tui_forge::MouseRegions;
 use tui_forge::{Menu, MenuItem as MenuWidgetItem, MenuState};
 
@@ -786,12 +787,17 @@ impl MainMenuScreen {
             tui_forge::create_standard_layout(area, 5, 3);
 
         // Header: Use common header component (with logo on left)
-        let _ = Header::render(
-            frame,
+        let logo = DotstateLogo::regular();
+        let app_version = format!("v{}", env!("CARGO_PKG_VERSION"));
+        frame.render_widget(
+            Header::new("DotState - Dotfile Manager")
+                .description(
+                    "Manage your dotfiles with ease. Sync to GitHub, organize by profiles, and keep your configuration files safe.",
+                )
+                .subtitle(&app_version)
+                .with_widget(logo, logo.width()),
             header_chunk,
-            "DotState - Dotfile Manager",
-            "Manage your dotfiles with ease. Sync to GitHub, organize by profiles, and keep your configuration files safe."
-        )?;
+        );
 
         // Split content into left and right panels
         let content_split = Layout::default()
@@ -1028,7 +1034,7 @@ impl MainMenuScreen {
             .unwrap_or_else(|| {
                 "↑↓: Navigate | Enter: Select | q: Back | ?: Help | t: Theme".to_string()
             });
-        let _ = Footer::render(frame, footer_chunk, &footer_text)?;
+        frame.render_widget(Footer::new(&footer_text), footer_chunk);
 
         Ok(())
     }

@@ -4,14 +4,11 @@
 //! - Left: Storage method selection (GitHub or Local)
 //! - Right: Form fields and context-sensitive help
 
-use crate::components::footer::Footer;
-use crate::components::header::Header;
-use tui_forge::Icons;
 use crate::keymap::Action;
 use crate::screens::screen_trait::{RenderContext, Screen, ScreenAction, ScreenContext};
 use crate::ui::{GitHubSetupData, GitHubSetupStep};
 use crate::utils::{focused_border_style, unfocused_border_style, TextInput};
-use crate::widgets::{TextInputWidget, TextInputWidgetExt};
+use crate::widgets::{DotstateLogo, TextInputWidget, TextInputWidgetExt};
 use anyhow::Result;
 use crossterm::event::{Event, KeyEventKind, MouseButton, MouseEventKind};
 use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
@@ -20,6 +17,9 @@ use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Block, Borders, Clear, Padding, Paragraph, StatefulWidget, Wrap};
 use ratatui::Frame;
 use tui_forge::theme;
+use tui_forge::Footer;
+use tui_forge::Header;
+use tui_forge::Icons;
 use tui_forge::MouseRegions;
 use tui_forge::{Menu, MenuItem, MenuState};
 
@@ -1224,12 +1224,15 @@ impl Screen for StorageSetupScreen {
             tui_forge::create_standard_layout(area, 5, 3);
 
         // Header
-        Header::render(
-            frame,
+        let logo = DotstateLogo::regular();
+        let app_version = format!("v{}", env!("CARGO_PKG_VERSION"));
+        frame.render_widget(
+            Header::new("DotState - Storage Setup")
+                .description("Choose where to store your dotfiles.")
+                .subtitle(&app_version)
+                .with_widget(logo, logo.width()),
             header_chunk,
-            "DotState - Storage Setup",
-            "Choose where to store your dotfiles.",
-        )?;
+        );
 
         // Check if we're in processing mode
         if let StorageSetupStep::Processing(step) = self.state.step {
@@ -1238,7 +1241,7 @@ impl Screen for StorageSetupScreen {
             self.render_processing(frame, area, step);
 
             // Footer with processing message
-            Footer::render(frame, footer_chunk, "Setting up your repository...")?;
+            frame.render_widget(Footer::new("Setting up your repository..."), footer_chunk);
         } else {
             // Content: two-pane layout (40/60 like settings)
             let panes = tui_forge::create_split_layout(content_chunk, &[40, 60]);
@@ -1298,7 +1301,7 @@ impl Screen for StorageSetupScreen {
                     }
                 }
             };
-            Footer::render(frame, footer_chunk, &footer_text)?;
+            frame.render_widget(Footer::new(&footer_text), footer_chunk);
         }
 
         Ok(())

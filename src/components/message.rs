@@ -1,14 +1,15 @@
 use crate::components::component::{Component, ComponentAction};
-use crate::components::footer::Footer;
-use crate::components::header::Header;
 use crate::components::message_box::MessageBox;
 use crate::config::Config;
 use crate::keymap::Action;
 use crate::ui::Screen;
+use crate::widgets::DotstateLogo;
 use anyhow::Result;
 use crossterm::event::{Event, KeyEventKind, MouseButton, MouseEventKind};
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Clear};
+use tui_forge::Footer;
+use tui_forge::Header;
 
 /// Message component for displaying status messages
 pub struct MessageComponent {
@@ -54,7 +55,15 @@ impl Component for MessageComponent {
             Screen::SyncWithRemote => "Syncing with remote repository...",
             _ => "Important Notice",
         };
-        let _ = Header::render(frame, header_chunk, &self.title, description)?;
+        let logo = DotstateLogo::regular();
+        let app_version = format!("v{}", env!("CARGO_PKG_VERSION"));
+        frame.render_widget(
+            Header::new(&self.title)
+                .description(description)
+                .subtitle(&app_version)
+                .with_widget(logo, logo.width()),
+            header_chunk,
+        );
 
         // Message with styled block - use MessageBox component
         let message_color = match self.screen_type {
@@ -71,7 +80,10 @@ impl Component for MessageComponent {
         )?;
 
         // Footer
-        let _ = Footer::render(frame, footer_chunk, "Press any key or click to continue")?;
+        frame.render_widget(
+            Footer::new("Press any key or click to continue"),
+            footer_chunk,
+        );
 
         Ok(())
     }

@@ -3,11 +3,10 @@
 //! This screen handles syncing changes with the remote repository (push/pull).
 
 use crate::components::file_preview::FilePreview;
-use crate::components::footer::Footer;
-use crate::components::header::Header;
 use crate::screens::screen_trait::{RenderContext, Screen, ScreenAction, ScreenContext};
 use crate::ui::{Screen as ScreenId, SyncWithRemoteState};
 use crate::utils::{focused_border_style, unfocused_border_style};
+use crate::widgets::DotstateLogo;
 use anyhow::Result;
 use crossterm::event::Event;
 use ratatui::layout::{Alignment, Position, Rect};
@@ -18,6 +17,8 @@ use ratatui::widgets::{
 };
 use ratatui::Frame;
 use tui_forge::theme as ui_theme;
+use tui_forge::Footer;
+use tui_forge::Header;
 
 /// Focus area in sync with remote screen
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -399,12 +400,15 @@ impl Screen for SyncWithRemoteScreen {
         } else {
             "Review changes before syncing with remote"
         };
-        let _ = Header::render(
-            frame,
+        let logo = DotstateLogo::regular();
+        let app_version = format!("v{}", env!("CARGO_PKG_VERSION"));
+        frame.render_widget(
+            Header::new("DotState - Sync with Remote")
+                .description(description)
+                .subtitle(&app_version)
+                .with_widget(logo, logo.width()),
             header_chunk,
-            "DotState - Sync with Remote",
-            description,
-        )?;
+        );
 
         // Always render main content first
         if self.state.is_syncing {
@@ -443,7 +447,7 @@ impl Screen for SyncWithRemoteScreen {
                 k(crate::keymap::Action::Cancel)
             )
         };
-        let _ = Footer::render(frame, footer_chunk, &footer_text)?;
+        frame.render_widget(Footer::new(&footer_text), footer_chunk);
 
         Ok(())
     }

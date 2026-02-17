@@ -3,8 +3,6 @@
 pub mod component;
 pub mod file_browser;
 pub mod file_preview;
-pub mod footer;
-pub mod header;
 pub mod help_overlay;
 pub mod message;
 pub mod message_box;

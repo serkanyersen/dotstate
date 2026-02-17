@@ -1,5 +1,3 @@
-use crate::components::footer::Footer;
-use crate::components::header::Header;
 use crate::config::Config;
 use crate::keymap::{Action, Keymap};
 use crate::screens::{RenderContext, Screen, ScreenAction, ScreenContext};
@@ -12,7 +10,7 @@ use crate::utils::package_installer::PackageInstaller;
 use crate::utils::package_manager::PackageManagerImpl;
 use crate::utils::profile_manifest::{Package, PackageManager};
 use crate::utils::{focused_border_style, unfocused_border_style};
-use crate::widgets::{TextInputWidget, TextInputWidgetExt};
+use crate::widgets::{DotstateLogo, TextInputWidget, TextInputWidgetExt};
 use anyhow::Result;
 use crossterm::event::{Event, KeyCode, KeyModifiers, MouseButton, MouseEventKind};
 use ratatui::prelude::*;
@@ -20,6 +18,8 @@ use ratatui::widgets::{Block, Borders, List, ListItem, Padding, Paragraph, Tabs,
 use std::time::Duration;
 use tracing::{debug, error, info, warn};
 use tui_forge::theme;
+use tui_forge::Footer;
+use tui_forge::Header;
 use tui_forge::MouseRegions;
 
 pub struct ManagePackagesScreen {
@@ -496,12 +496,15 @@ impl Screen for ManagePackagesScreen {
         let layout = tui_forge::create_standard_layout(area, 5, 3);
 
         // Header
-        let _header_height = Header::render(
-            frame,
+        let logo = DotstateLogo::regular();
+        let app_version = format!("v{}", env!("CARGO_PKG_VERSION"));
+        frame.render_widget(
+            Header::new("DotState - Manage Packages")
+                .description("Manage CLI tools and dependencies for your profile")
+                .subtitle(&app_version)
+                .with_widget(logo, logo.width()),
             layout.0,
-            "DotState - Manage Packages",
-            "Manage CLI tools and dependencies for your profile",
-        )?;
+        );
 
         // Main content area
         let main_area = layout.1;
@@ -537,7 +540,7 @@ impl Screen for ManagePackagesScreen {
                 k(crate::keymap::Action::Cancel)
             )
         };
-        Footer::render(frame, layout.2, &footer_text)?;
+        frame.render_widget(Footer::new(&footer_text), layout.2);
 
         // Render installation dialogs on top of content (with dimming)
         if !matches!(self.state.installation_step, InstallationStep::NotStarted) {
@@ -2570,7 +2573,7 @@ impl ManagePackagesScreen {
             k(crate::keymap::Action::Confirm),
             k(crate::keymap::Action::Cancel)
         );
-        Footer::render(frame, chunks[chunks.len() - 1], &footer_text)?;
+        frame.render_widget(Footer::new(&footer_text), chunks[chunks.len() - 1]);
 
         Ok(())
     }
@@ -2822,7 +2825,7 @@ impl ManagePackagesScreen {
 
                 // Footer
                 let footer_text = "Installing packages... (this may take a while)";
-                Footer::render(frame, chunks[3], footer_text)?;
+                frame.render_widget(Footer::new(footer_text), chunks[3]);
             }
             InstallationStep::Complete { installed, failed } => {
                 use tui_forge::{Dialog, DialogVariant};
@@ -3255,7 +3258,7 @@ impl ManagePackagesScreen {
             )
         };
 
-        Footer::render(frame, area, &footer_text)?;
+        frame.render_widget(Footer::new(&footer_text), area);
         Ok(())
     }
 }

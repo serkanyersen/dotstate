@@ -8,7 +8,7 @@ use crate::screens::screen_trait::{RenderContext, Screen, ScreenAction, ScreenCo
 use crate::screens::ActionResult;
 use crate::services::ProfileService;
 use crate::ui::{ProfileSelectionState, Screen as ScreenId};
-use crate::widgets::{TextInputWidget, TextInputWidgetExt};
+use crate::widgets::{DotstateLogo, TextInputWidget, TextInputWidgetExt};
 use anyhow::Result;
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
 use ratatui::layout::Rect;
@@ -134,9 +134,9 @@ impl ProfileSelectionScreen {
 
     /// Render the main profile list.
     fn render_profile_list(&mut self, frame: &mut Frame, area: Rect, config: &Config) {
-        use crate::components::footer::Footer;
-        use crate::components::header::Header;
-        use tui_forge::theme; // list_highlight_symbol from active theme
+        use tui_forge::theme;
+        use tui_forge::Footer;
+        use tui_forge::Header; // list_highlight_symbol from active theme
 
         let icons = config.icons();
         let (header_area, content_area, footer_area) =
@@ -157,11 +157,14 @@ impl ProfileSelectionScreen {
         }
 
         // Header
-        let _ = Header::render(
-            frame,
+        let logo = DotstateLogo::regular();
+        let app_version = format!("v{}", env!("CARGO_PKG_VERSION"));
+        frame.render_widget(
+            Header::new("Select Profile to Activate")
+                .description("Choose which profile to activate after setup")
+                .subtitle(&app_version)
+                .with_widget(logo, logo.width()),
             header_area,
-            "Select Profile to Activate",
-            "Choose which profile to activate after setup",
         );
 
         // Build list items
@@ -205,7 +208,7 @@ impl ProfileSelectionScreen {
                 .keymap
                 .get_key_display_for_action(crate::keymap::Action::Cancel)
         );
-        let _ = Footer::render(frame, footer_area, &footer_text);
+        frame.render_widget(Footer::new(&footer_text), footer_area);
     }
 
     /// Process a profile selection action.
