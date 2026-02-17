@@ -151,7 +151,8 @@ let nav = ctx.config.keymap.navigation_display();
 
 ## Symlink Management
 
-**NEVER use `std::os::unix::fs::symlink` directly.**
+**Use `SymlinkManager` for DotState-managed symlinks (home ↔ repo tracked links).**
+Direct symlink APIs are only acceptable when preserving internal content symlinks during recursive copy (for example in `copy_dir_all`), where tracking is not intended.
 
 ```rust
 use crate::utils::SymlinkManager;

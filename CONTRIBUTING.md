@@ -82,22 +82,20 @@ cargo run
 ```
 dotstate/
 ├── src/
-│   ├── main.rs              # Entry point
-│   ├── app.rs               # Main application logic
-│   ├── cli.rs               # CLI command definitions
+│   ├── main.rs              # Binary entry point (CLI/TUI launcher)
+│   ├── lib.rs               # Library exports and module wiring
+│   ├── app.rs               # TUI event loop and screen routing
+│   ├── cli/                 # CLI command modules
+│   ├── screens/             # Screen controllers (Screen trait implementations)
+│   ├── components/          # Reusable UI components
+│   ├── services/            # Business logic services
+│   ├── utils/               # Infrastructure/utilities (symlink, validation, etc.)
 │   ├── config.rs            # Configuration management
 │   ├── git.rs               # Git operations
 │   ├── github.rs            # GitHub API integration
-│   ├── tui.rs               # TUI setup and event loop
-│   ├── ui.rs                # UI state definitions
-│   ├── components/          # UI components
-│   │   ├── main_menu.rs
-│   │   ├── package_manager.rs
-│   │   └── ...
-│   └── utils/               # Utility functions
-│       ├── package_manager.rs
-│       ├── symlink_manager.rs
-│       └── ...
+│   ├── tui.rs               # TUI setup and terminal integration
+│   ├── ui.rs                # Shared UI state and enums
+│   └── keymap/              # Keybinding presets and overrides
 ├── Cargo.toml
 ├── README.md
 └── CONTRIBUTING.md
@@ -178,4 +176,3 @@ If you have questions about contributing:
 - Reach out to maintainers
 
 Thank you for contributing to DotState! 🎉
-

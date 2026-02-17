@@ -36,7 +36,7 @@ src/
 
 ## Critical Rules
 
-1. **Never use `std::os::unix::fs::symlink` directly** - Always use `SymlinkManager` (tracks in symlinks.json, handles backups)
+1. **Use `SymlinkManager` for DotState-managed symlinks** - Do not call raw symlink APIs for home↔repo managed links (tracking + backups live in `SymlinkManager`). Exception: preserving internal content symlinks during recursive copy (`copy_dir_all`) is allowed.
 2. **Never hardcode colors** - Always use `theme()` from `crate::styles`
 3. **Never hardcode keys** - Always use the keymap system via `ctx.config.keymap.get_action()`
 4. **Always use Services layer** for business operations (never bypass with direct file/symlink ops)

@@ -200,6 +200,16 @@ impl SymlinkManager {
         profile_name: &str,
         files: &[String],
     ) -> Result<Vec<SymlinkOperation>> {
+        let home_dir = crate::utils::get_home_dir();
+        self.activate_profile_with_home(profile_name, files, &home_dir)
+    }
+
+    fn activate_profile_with_home(
+        &mut self,
+        profile_name: &str,
+        files: &[String],
+        home_dir: &Path,
+    ) -> Result<Vec<SymlinkOperation>> {
         info!("Activating profile: {}", profile_name);
 
         // Create backup session if backups are enabled
@@ -218,8 +228,6 @@ impl SymlinkManager {
                 "Profile directory does not exist: {profile_path:?}"
             ));
         }
-
-        let home_dir = crate::utils::get_home_dir();
 
         for file in files {
             let source = profile_path.join(file);
@@ -1675,12 +1683,15 @@ mod tests {
             .unwrap();
 
         // Track the symlink target for cleanup
-        let home_dir = crate::utils::get_home_dir();
-        let symlink_target = home_dir.join(".testrc");
+        let symlink_target = temp_dir.path().join(".testrc");
 
         // Activate profile
-        let result = manager.activate_profile("test-profile", &[".testrc".to_string()]);
-        assert!(result.is_ok());
+        let result = manager.activate_profile_with_home(
+            "test-profile",
+            &[".testrc".to_string()],
+            temp_dir.path(),
+        );
+        assert!(result.is_ok(), "activate_profile error: {:?}", result.err());
 
         let operations = result.unwrap();
         assert_eq!(operations.len(), 1);

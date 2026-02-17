@@ -973,10 +973,15 @@ impl App {
             }
             ScreenAction::NavigateWithMessage {
                 screen,
-                title: _,
-                message: _,
+                title,
+                message,
             } => {
-                // TODO: Show message and navigate
+                self.dialog_state = Some(DialogState {
+                    title,
+                    content: message,
+                    variant: DialogVariant::Default,
+                    scroll_offset: 0,
+                });
                 self.ui_state.current_screen = screen;
             }
             ScreenAction::ShowMessage { title, content } => {

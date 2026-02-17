@@ -87,7 +87,7 @@ Managing dotfiles can be a pain. You want your `.zshrc`, `.vimrc`, and other con
 [Installation Guide](https://dotstate.serkan.dev/#installation)
 
 ```bash
-curl -fsSL https://dotstate.serkan.dev/install.sh | bash"
+curl -fsSL https://dotstate.serkan.dev/install.sh | bash
 ```
 
 ### Using Cargo

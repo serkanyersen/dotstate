@@ -28,7 +28,8 @@ impl BackupManager {
 
     /// Create a new timestamped backup directory for a sync operation
     pub fn create_backup_session(&self) -> Result<PathBuf> {
-        let timestamp = Local::now().format("%Y-%m-%dT%H:%M:%S").to_string();
+        // Use filesystem-safe timestamp (':' is invalid on some platforms/filesystems).
+        let timestamp = Local::now().format("%Y-%m-%dT%H-%M-%S").to_string();
         let session_dir = self.backup_root.join(&timestamp);
 
         fs::create_dir_all(&session_dir).context("Failed to create backup session directory")?;
@@ -90,19 +91,27 @@ impl Default for BackupManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::TempDir;
 
     #[test]
     fn test_backup_manager_creation() {
-        // Test that we can create a backup manager
-        let manager = BackupManager::new();
-        assert!(manager.is_ok());
+        // Use a test-local writable backup root.
+        let temp_dir = TempDir::new().unwrap();
+        let backup_root = temp_dir.path().join("backups");
+        fs::create_dir_all(&backup_root).unwrap();
+        let manager = BackupManager { backup_root };
+        assert!(manager.backup_root().exists());
     }
 
     #[test]
     fn test_backup_session_creation() {
-        let manager = BackupManager::new().unwrap();
+        // Use a test-local writable backup root.
+        let temp_dir = TempDir::new().unwrap();
+        let backup_root = temp_dir.path().join("backups");
+        fs::create_dir_all(&backup_root).unwrap();
+        let manager = BackupManager { backup_root };
         let session = manager.create_backup_session();
-        assert!(session.is_ok());
+        assert!(session.is_ok(), "session error: {:?}", session.err());
 
         let session_path = session.unwrap();
         assert!(session_path.exists());
@@ -110,7 +119,7 @@ mod tests {
 
         // Check that the directory name matches the timestamp format
         let dir_name = session_path.file_name().unwrap().to_str().unwrap();
-        assert!(dir_name.len() == 19); // YYYY-MM-DDTHH:MM:SS
+        assert!(dir_name.len() == 19); // YYYY-MM-DDTHH-MM-SS
         assert!(dir_name.contains('T'));
     }
 }

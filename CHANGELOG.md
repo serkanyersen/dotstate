@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Docs**: Updated `CONTRIBUTING.md` project structure to match current modular layout (`src/cli/`, `src/screens/`, services layer, and `lib.rs`)
+- **Developer Guide**: Clarified symlink rule in `CLAUDE.md` and `.claude/skills/dotstate-dev/SKILL.md` to distinguish tracked home↔repo symlinks from internal content-symlink preservation during recursive copy
+
+### Fixed
+
+- **README**: Fixed website install command typo (removed trailing quote from `curl ... | bash`)
+- **Navigation**: Implemented `NavigateWithMessage` handling so message payloads are shown in a dialog instead of being dropped
+- **Backups**: Switched backup session timestamp format to filesystem-safe naming (`YYYY-MM-DDTHH-MM-SS`)
+- **Tests**: Made backup/symlink tests sandbox-safe and deterministic by using test-local writable paths instead of real home-directory side effects
+
 ---
 
 ## [0.3.1] - 2026-02-16
