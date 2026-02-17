@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Architecture**: Added `crates/tui-forge` as an internal workspace crate and wired DotState to consume it as a local dependency
 - **UI Toolkit Migration**: Fully migrated `Dialog`, `Toast`, and `Menu` usage to `tui-forge` and removed DotState duplicate implementations
 - **Theme System Migration**: Fully migrated DotState from `src/styles.rs` to `tui-forge` theme APIs and removed the local styles module
+- **UI Toolkit Migration**: Fully migrated `Popup` usage to `tui-forge` and removed DotState duplicate popup implementation
 
 ### Fixed
 

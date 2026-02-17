@@ -3,7 +3,6 @@
 //! A popup for selecting or creating a profile during onboarding.
 //! Features inline profile creation without nested popups.
 
-use crate::components::{Popup, PopupRenderResult};
 use crate::config::Config;
 use crate::keymap::Action;
 use crate::utils::{
@@ -15,6 +14,8 @@ use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, List, ListItem, ListState, Padding, Paragraph, Wrap};
 use tui_forge::theme;
+use tui_forge::widgets::popup::PopupRenderResult;
+use tui_forge::Popup;
 
 /// Result of profile selection
 #[derive(Debug, Clone)]

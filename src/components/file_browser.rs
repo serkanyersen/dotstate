@@ -7,7 +7,6 @@
 //! - Keyboard navigation between panes
 
 use crate::components::file_preview::FilePreview;
-use crate::components::popup::Popup;
 use crate::config::Config;
 use crate::keymap::Action;
 use crate::utils::list_navigation::ListStateExt;
@@ -27,6 +26,7 @@ use std::path::{Path, PathBuf};
 use syntect::highlighting::Theme;
 use syntect::parsing::SyntaxSet;
 use tui_forge::theme as ui_theme;
+use tui_forge::Popup;
 
 /// Focus area within the file browser
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

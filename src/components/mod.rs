@@ -8,11 +8,11 @@ pub mod header;
 pub mod help_overlay;
 pub mod message;
 pub mod message_box;
-pub mod popup;
+
 pub mod profile_selection_popup;
 
 pub use component::{Component, ComponentAction};
 pub use file_browser::{FileBrowser, FileBrowserFocus, FileBrowserResult};
 pub use message::MessageComponent;
-pub use popup::{Popup, PopupRenderResult};
+
 pub use profile_selection_popup::{ProfileSelectionPopup, ProfileSelectionResult};

@@ -2411,7 +2411,7 @@ impl ManagePackagesScreen {
         area: Rect,
         config: &Config,
     ) -> Result<()> {
-        use crate::components::Popup;
+        use tui_forge::Popup;
 
         let t = theme();
         // Make popup larger to fit all fields, especially for custom packages
@@ -2750,7 +2750,7 @@ impl ManagePackagesScreen {
                 failed,
                 ..
             } => {
-                use crate::components::Popup;
+                use tui_forge::Popup;
                 let result = Popup::new()
                     .width(70)
                     .height(40)
@@ -2937,9 +2937,9 @@ impl ManagePackagesScreen {
         area: Rect,
         config: &Config,
     ) -> Result<()> {
-        use crate::components::Popup;
         use crate::ui::ImportFocus;
         use ratatui::symbols;
+        use tui_forge::Popup;
 
         let t = theme();
 

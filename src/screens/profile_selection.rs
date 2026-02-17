@@ -104,7 +104,7 @@ impl ProfileSelectionScreen {
 
     /// Render the create profile popup.
     fn render_create_popup(&mut self, frame: &mut Frame, area: Rect, config: &Config) {
-        use crate::components::Popup;
+        use tui_forge::Popup;
 
         let footer_text = format!(
             "{}: Create  |  {}: Cancel",

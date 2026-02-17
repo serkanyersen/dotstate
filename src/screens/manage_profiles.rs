@@ -667,7 +667,7 @@ impl ManageProfilesScreen {
         area: Rect,
         config: &Config,
     ) -> Result<()> {
-        use crate::components::Popup;
+        use tui_forge::Popup;
 
         let icons = crate::icons::Icons::from_config(config);
         let k = |a| config.keymap.get_key_display_for_action(a);
@@ -893,7 +893,7 @@ impl ManageProfilesScreen {
 
     /// Render rename profile popup
     fn render_rename_popup(&self, frame: &mut Frame, area: Rect, config: &Config) -> Result<()> {
-        use crate::components::Popup;
+        use tui_forge::Popup;
 
         let selected_idx = self.state.list_state.selected();
         let profile_name = selected_idx
