@@ -24,25 +24,42 @@ pub fn cmd_list(verbose: bool) -> Result<()> {
     let manifest = crate::utils::ProfileManifest::load_or_backfill(&config.repo_path)
         .context("Failed to load profile manifest")?;
 
-    // Get common files
-    let common_files = manifest.get_common_files();
+    let profile_name = &config.active_profile;
 
-    // Get active profile's synced files
-    let empty_vec = Vec::new();
-    let synced_files = manifest
-        .profiles
-        .iter()
-        .find(|p| p.name == config.active_profile)
-        .map_or(&empty_vec, |p| &p.synced_files);
+    // Resolve the full file list (handles inheritance + common with overrides)
+    let resolved_files = manifest
+        .resolve_files(profile_name)
+        .context("Failed to resolve files for profile")?;
 
-    if common_files.is_empty() && synced_files.is_empty() {
+    if resolved_files.is_empty() {
         println!("No files are currently synced.");
         return Ok(());
     }
 
     let home_dir = dirs::home_dir().context("Failed to get home directory")?;
     let repo_path = &config.repo_path;
-    let profile_name = &config.active_profile;
+
+    // Show inheritance chain if applicable
+    if let Ok(chain) = manifest.inheritance_chain(profile_name) {
+        if chain.len() > 1 {
+            println!("Inheritance chain: {}", chain.join(" -> "));
+            println!();
+        }
+    }
+
+    // Group files by source
+    let common_files: Vec<_> = resolved_files
+        .iter()
+        .filter(|f| f.source_profile == "common")
+        .collect();
+    let own_files: Vec<_> = resolved_files
+        .iter()
+        .filter(|f| f.source_profile == *profile_name)
+        .collect();
+    let inherited_files: Vec<_> = resolved_files
+        .iter()
+        .filter(|f| f.source_profile != "common" && f.source_profile != *profile_name)
+        .collect();
 
     // Print common files first
     if !common_files.is_empty() {
@@ -50,85 +67,134 @@ pub fn cmd_list(verbose: bool) -> Result<()> {
             "Common files ({}) - shared across all profiles:",
             common_files.len()
         );
-        for file in common_files {
-            let symlink_path = home_dir.join(file);
-            let repo_file_path = repo_path.join("common").join(file);
-
-            if verbose {
-                let symlink_exists = symlink_path.exists();
-                let repo_file_exists = repo_file_path.exists();
-
-                println!("  {file}");
-                println!("    Symlink:   {}", symlink_path.display());
-                if symlink_exists {
-                    if let Ok(metadata) = symlink_path.symlink_metadata() {
-                        if metadata.is_symlink() {
-                            println!("      Status:  ✓ Active symlink");
-                        } else {
-                            println!("      Status:  ⚠ File exists but is not a symlink");
-                        }
-                    } else {
-                        println!("      Status:  ✓ Exists");
-                    }
-                } else {
-                    println!("      Status:  ✗ Not found");
-                }
-                println!("    Storage:   {}", repo_file_path.display());
-                if repo_file_exists {
-                    println!("      Status:  ✓ Exists");
-                } else {
-                    println!("      Status:  ✗ Not found");
-                }
-            } else {
-                println!("  {file}");
-                println!("    Symlink:   {}", symlink_path.display());
-                println!("    Storage:   {}", repo_file_path.display());
-            }
+        for file in &common_files {
+            print_file_info(
+                &home_dir,
+                repo_path,
+                &file.source_profile,
+                &file.relative_path,
+                verbose,
+            );
         }
         println!();
     }
 
-    // Print profile files
-    if !synced_files.is_empty() {
-        println!("Profile files ({}) - {}:", synced_files.len(), profile_name);
-        for file in synced_files {
-            let symlink_path = home_dir.join(file);
-            let repo_file_path = repo_path.join(profile_name).join(file);
+    // Print inherited files
+    if !inherited_files.is_empty() {
+        println!("Inherited files ({}):", inherited_files.len());
+        for file in &inherited_files {
+            print_file_info_with_source(
+                &home_dir,
+                repo_path,
+                &file.source_profile,
+                &file.relative_path,
+                verbose,
+            );
+        }
+        println!();
+    }
 
-            if verbose {
-                let symlink_exists = symlink_path.exists();
-                let repo_file_exists = repo_file_path.exists();
-
-                println!("  {file}");
-                println!("    Symlink:   {}", symlink_path.display());
-                if symlink_exists {
-                    if let Ok(metadata) = symlink_path.symlink_metadata() {
-                        if metadata.is_symlink() {
-                            println!("      Status:  ✓ Active symlink");
-                        } else {
-                            println!("      Status:  ⚠ File exists but is not a symlink");
-                        }
-                    } else {
-                        println!("      Status:  ✓ Exists");
-                    }
-                } else {
-                    println!("      Status:  ✗ Not found");
-                }
-                println!("    Storage:   {}", repo_file_path.display());
-                if repo_file_exists {
-                    println!("      Status:  ✓ Exists");
-                } else {
-                    println!("      Status:  ✗ Not found");
-                }
-            } else {
-                println!("  {file}");
-                println!("    Symlink:   {}", symlink_path.display());
-                println!("    Storage:   {}", repo_file_path.display());
-            }
+    // Print own profile files
+    if !own_files.is_empty() {
+        println!("Profile files ({}) - {}:", own_files.len(), profile_name);
+        for file in &own_files {
+            print_file_info(
+                &home_dir,
+                repo_path,
+                &file.source_profile,
+                &file.relative_path,
+                verbose,
+            );
         }
     }
 
     Ok(())
+}
+
+/// Print file info (symlink path, storage path, optional status)
+fn print_file_info(
+    home_dir: &std::path::Path,
+    repo_path: &std::path::Path,
+    source_profile: &str,
+    relative_path: &str,
+    verbose: bool,
+) {
+    let symlink_path = home_dir.join(relative_path);
+    let repo_file_path = repo_path.join(source_profile).join(relative_path);
+
+    if verbose {
+        let symlink_exists = symlink_path.exists();
+        let repo_file_exists = repo_file_path.exists();
+
+        println!("  {relative_path}");
+        println!("    Symlink:   {}", symlink_path.display());
+        if symlink_exists {
+            if let Ok(metadata) = symlink_path.symlink_metadata() {
+                if metadata.is_symlink() {
+                    println!("      Status:  ✓ Active symlink");
+                } else {
+                    println!("      Status:  ⚠ File exists but is not a symlink");
+                }
+            } else {
+                println!("      Status:  ✓ Exists");
+            }
+        } else {
+            println!("      Status:  ✗ Not found");
+        }
+        println!("    Storage:   {}", repo_file_path.display());
+        if repo_file_exists {
+            println!("      Status:  ✓ Exists");
+        } else {
+            println!("      Status:  ✗ Not found");
+        }
+    } else {
+        println!("  {relative_path}");
+        println!("    Symlink:   {}", symlink_path.display());
+        println!("    Storage:   {}", repo_file_path.display());
+    }
+}
+
+/// Print file info with source annotation (for inherited files)
+fn print_file_info_with_source(
+    home_dir: &std::path::Path,
+    repo_path: &std::path::Path,
+    source_profile: &str,
+    relative_path: &str,
+    verbose: bool,
+) {
+    let symlink_path = home_dir.join(relative_path);
+    let repo_file_path = repo_path.join(source_profile).join(relative_path);
+
+    if verbose {
+        let symlink_exists = symlink_path.exists();
+        let repo_file_exists = repo_file_path.exists();
+
+        println!("  {relative_path}  [from {source_profile}]");
+        println!("    Symlink:   {}", symlink_path.display());
+        if symlink_exists {
+            if let Ok(metadata) = symlink_path.symlink_metadata() {
+                if metadata.is_symlink() {
+                    println!("      Status:  ✓ Active symlink");
+                } else {
+                    println!("      Status:  ⚠ File exists but is not a symlink");
+                }
+            } else {
+                println!("      Status:  ✓ Exists");
+            }
+        } else {
+            println!("      Status:  ✗ Not found");
+        }
+        println!("    Storage:   {}", repo_file_path.display());
+        if repo_file_exists {
+            println!("      Status:  ✓ Exists");
+        } else {
+            println!("      Status:  ✗ Not found");
+        }
+    } else {
+        println!("  {relative_path}  [from {source_profile}]");
+        println!("    Symlink:   {}", symlink_path.display());
+        println!("    Storage:   {}", repo_file_path.display());
+    }
 }
 
 /// Execute the add command.

@@ -35,6 +35,7 @@ pub enum ProfilePopupType {
 pub enum CreateField {
     Name,
     Description,
+    InheritsFrom,
     CopyFrom,
 }
 
@@ -45,6 +46,7 @@ pub enum ProfileAction {
     CreateProfile {
         name: String,
         description: Option<String>,
+        inherits: Option<String>,
         copy_from: Option<usize>,
     },
     /// Switch to a different profile
@@ -64,8 +66,9 @@ pub struct ProfileManagerState {
     // Create popup state
     pub create_name_input: crate::utils::TextInput,
     pub create_description_input: crate::utils::TextInput,
-    pub create_copy_from: Option<usize>, // Index of profile to copy from
-    pub create_focused_field: CreateField, // Which field is focused
+    pub create_inherits_from: Option<usize>, // Index of profile to inherit from (None = no inheritance)
+    pub create_copy_from: Option<usize>,     // Index of profile to copy from
+    pub create_focused_field: CreateField,   // Which field is focused
     // Rename popup state
     pub rename_input: crate::utils::TextInput,
     // Delete popup state
@@ -73,6 +76,7 @@ pub struct ProfileManagerState {
     // Clickable areas for form fields (for mouse support)
     pub create_name_area: Option<Rect>,
     pub create_description_area: Option<Rect>,
+    pub create_inherits_from_area: Option<Rect>,
     pub create_copy_from_area: Option<Rect>,
     // Cached profiles to reduce disk I/O
     pub profiles: Vec<crate::utils::ProfileInfo>,
@@ -88,12 +92,14 @@ impl Default for ProfileManagerState {
             popup_type: ProfilePopupType::None,
             create_name_input: crate::utils::TextInput::new(),
             create_description_input: crate::utils::TextInput::new(),
+            create_inherits_from: None,
             create_copy_from: None,
             create_focused_field: CreateField::Name,
             rename_input: crate::utils::TextInput::new(),
             delete_confirm_input: crate::utils::TextInput::new(),
             create_name_area: None,
             create_description_area: None,
+            create_inherits_from_area: None,
             create_copy_from_area: None,
             profiles: Vec::new(),
             error_message: None,
@@ -144,8 +150,9 @@ impl ManageProfilesScreen {
             ProfileAction::CreateProfile {
                 name,
                 description,
+                inherits,
                 copy_from,
-            } => self.create_profile(config, &name, description, copy_from),
+            } => self.create_profile(config, &name, description, inherits, copy_from),
             ProfileAction::SwitchProfile { name } => {
                 self.switch_profile(config, config_path, &name)
             }
@@ -162,12 +169,27 @@ impl ManageProfilesScreen {
         config: &Config,
         name: &str,
         description: Option<String>,
+        inherits: Option<String>,
         copy_from: Option<usize>,
     ) -> Result<ActionResult> {
-        info!("Creating profile: {}", name);
+        info!("Creating profile: {} (inherits: {:?})", name, inherits);
 
         match ProfileService::create_profile(&config.repo_path, name, description, copy_from) {
             Ok(sanitized_name) => {
+                // Set inherits if specified
+                if let Some(parent) = &inherits {
+                    if let Ok(mut manifest) = ProfileService::load_manifest(&config.repo_path) {
+                        if let Err(e) = manifest.set_inherits(&sanitized_name, Some(parent.clone()))
+                        {
+                            warn!("Failed to set inheritance for '{}': {}", sanitized_name, e);
+                        } else if let Err(e) =
+                            ProfileService::save_manifest(&config.repo_path, &manifest)
+                        {
+                            warn!("Failed to save manifest after setting inheritance: {}", e);
+                        }
+                    }
+                }
+
                 info!("Profile '{}' created successfully", sanitized_name);
 
                 // Refresh the profiles list
@@ -175,8 +197,13 @@ impl ManageProfilesScreen {
                     warn!("Failed to refresh profiles after creation: {}", e);
                 }
 
+                let inherit_msg = if inherits.is_some() {
+                    format!(" (inherits {})", inherits.as_deref().unwrap_or(""))
+                } else {
+                    String::new()
+                };
                 Ok(ActionResult::ShowToast {
-                    message: format!("Profile '{sanitized_name}' created"),
+                    message: format!("Profile '{sanitized_name}' created{inherit_msg}"),
                     variant: crate::widgets::ToastVariant::Success,
                 })
             }
@@ -398,6 +425,16 @@ impl ManageProfilesScreen {
                             return ScreenAction::Refresh;
                         }
                     }
+                    if let Some(area) = self.state.create_inherits_from_area {
+                        if x >= area.x
+                            && x < area.x + area.width
+                            && y >= area.y
+                            && y < area.y + area.height
+                        {
+                            self.state.create_focused_field = CreateField::InheritsFrom;
+                            return ScreenAction::Refresh;
+                        }
+                    }
                     if let Some(area) = self.state.create_copy_from_area {
                         if x >= area.x
                             && x < area.x + area.width
@@ -474,7 +511,9 @@ impl ManageProfilesScreen {
                     format!("{file_count} files")
                 };
 
-                let text = format!("{} {} ({})", icon, profile.name, file_text);
+                let inherit_text = if profile.inherits.is_some() { " *" } else { "" };
+
+                let text = format!("{} {}{} ({})", icon, profile.name, inherit_text, file_text);
                 ListItem::new(text).style(name_style)
             })
             .collect();
@@ -545,27 +584,61 @@ impl ManageProfilesScreen {
 
             let description = profile.description.as_deref().unwrap_or("No description");
 
-            let files_text = if profile.synced_files.is_empty() {
-                "No files synced".to_string()
-            } else {
-                format!("{} files synced:", profile.synced_files.len())
-            };
-            // ... (rest of the function is unchanged, I'll only replace the top part)
+            // Resolve files for display (includes inherited + common)
+            let manifest = crate::utils::ProfileManifest::load_or_backfill(&config.repo_path);
+            let resolved = manifest
+                .as_ref()
+                .ok()
+                .and_then(|m| m.resolve_files(&profile.name).ok());
 
-            let files_list = if profile.synced_files.is_empty() {
-                String::new()
+            let own_files_count = profile.synced_files.len();
+            let total_files_count = resolved.as_ref().map_or(own_files_count, Vec::len);
+            let inherited_count = total_files_count.saturating_sub(own_files_count);
+
+            let files_text = if total_files_count == 0 {
+                "No files synced".to_string()
+            } else if inherited_count > 0 {
+                let common_count = resolved.as_ref().map_or(0, |r| {
+                    r.iter().filter(|f| f.source_profile == "common").count()
+                });
+                let from_parents = inherited_count.saturating_sub(common_count);
+                let mut parts = vec![format!("{own_files_count} own")];
+                if from_parents > 0 {
+                    parts.push(format!("{from_parents} inherited"));
+                }
+                if common_count > 0 {
+                    parts.push(format!("{common_count} common"));
+                }
+                format!("{total_files_count} files synced ({}):", parts.join(", "))
+            } else {
+                format!("{total_files_count} files synced:")
+            };
+
+            // Show resolved file list with source annotations for inherited files
+            let display_files: Vec<String> = if let Some(ref resolved) = resolved {
+                resolved
+                    .iter()
+                    .take(10)
+                    .map(|f| {
+                        if f.source_profile == profile.name {
+                            format!("  • {}", f.relative_path)
+                        } else {
+                            format!("  • {} [{}]", f.relative_path, f.source_profile)
+                        }
+                    })
+                    .collect()
             } else {
                 profile
                     .synced_files
                     .iter()
-                    .take(10) // Show first 10
+                    .take(10)
                     .map(|f| format!("  • {f}"))
-                    .collect::<Vec<_>>()
-                    .join("\n")
+                    .collect()
             };
+            let files_list = display_files.join("\n");
 
-            let more_text = if profile.synced_files.len() > 10 {
-                format!("\n  ... and {} more", profile.synced_files.len() - 10)
+            let more_text = if total_files_count > 10 {
+                format!("\n  ... and {} more", total_files_count - 10)
             } else {
                 String::new()
             };
@@ -589,6 +662,21 @@ impl ManageProfilesScreen {
                     Span::styled(status.0, Style::default().fg(status.1)),
                 ]),
                 Line::from(""),
+            ];
+
+            // Show inheritance info
+            if let Some(ref parent) = profile.inherits {
+                lines.push(Line::from(vec![
+                    Span::styled(
+                        "Inherits: ",
+                        Style::default().fg(t.primary).add_modifier(Modifier::BOLD),
+                    ),
+                    Span::styled(parent, Style::default().fg(t.secondary)),
+                ]));
+                lines.push(Line::from(""));
+            }
+
+            lines.extend([
                 Line::from(vec![Span::styled(
                     "Description:",
                     Style::default().fg(t.primary).add_modifier(Modifier::BOLD),
@@ -602,7 +690,7 @@ impl ManageProfilesScreen {
                     &files_text,
                     Style::default().fg(t.primary).add_modifier(Modifier::BOLD),
                 )]),
-            ];
+            ]);
 
             if !files_list.is_empty() {
                 for line in files_list.lines() {
@@ -693,7 +781,8 @@ impl ManageProfilesScreen {
                 Constraint::Length(3),                                             // Name input
                 Constraint::Length(u16::from(self.state.error_message.is_some())), // Error message
                 Constraint::Length(3), // Description input
-                Constraint::Min(8),    // Copy from option (at least 8 lines, can grow)
+                Constraint::Length(5), // Inherits From option
+                Constraint::Min(6),    // Copy from option (at least 6 lines, can grow)
                 Constraint::Min(0),    // Spacer
             ])
             .split(result.content_area);
@@ -702,7 +791,8 @@ impl ManageProfilesScreen {
         // Store field areas for mouse click-to-focus
         self.state.create_name_area = Some(chunks[0]);
         self.state.create_description_area = Some(chunks[2]);
-        self.state.create_copy_from_area = Some(chunks[3]);
+        self.state.create_inherits_from_area = Some(chunks[3]);
+        self.state.create_copy_from_area = Some(chunks[4]);
 
         // Name input
         let widget = TextInputWidget::new(&self.state.create_name_input)
@@ -725,6 +815,79 @@ impl ManageProfilesScreen {
             .focused(self.state.create_focused_field == CreateField::Description);
         frame.render_text_input_widget(widget, chunks[2]);
 
+        // Inherits From option - show list of profiles to optionally inherit from
+        {
+            let is_focused = self.state.create_focused_field == CreateField::InheritsFrom;
+            let border_style = if is_focused {
+                focused_border_style()
+            } else {
+                unfocused_border_style()
+            };
+
+            if self.state.profiles.is_empty() {
+                let para = Paragraph::new("No profiles available to inherit from")
+                    .block(
+                        Block::default()
+                            .borders(Borders::ALL)
+                            .title(" Inherits From (optional) ")
+                            .border_style(border_style),
+                    )
+                    .wrap(Wrap { trim: true });
+                frame.render_widget(para, chunks[3]);
+            } else {
+                let mut items = Vec::new();
+
+                // "None" option
+                let is_none_selected = self.state.create_inherits_from.is_none();
+                let none_prefix = if is_none_selected {
+                    format!("{} ", icons.check())
+                } else {
+                    format!("{} ", icons.uncheck())
+                };
+                let none_style = if is_none_selected {
+                    Style::default().fg(t.success)
+                } else {
+                    t.text_style()
+                };
+                items.push(ListItem::new(format!("{none_prefix}None")).style(none_style));
+
+                for (idx, profile) in self.state.profiles.iter().enumerate() {
+                    let is_selected = self.state.create_inherits_from == Some(idx);
+                    let prefix = if is_selected {
+                        format!("{} ", icons.check())
+                    } else {
+                        format!("{} ", icons.uncheck())
+                    };
+                    let style = if is_selected {
+                        Style::default().fg(t.success)
+                    } else {
+                        t.text_style()
+                    };
+                    items.push(ListItem::new(format!("{}{}", prefix, profile.name)).style(style));
+                }
+
+                let list = List::new(items)
+                    .block(
+                        Block::default()
+                            .borders(Borders::ALL)
+                            .title(" Inherits From (optional) ")
+                            .border_type(theme().border_type(false))
+                            .border_style(border_style),
+                    )
+                    .highlight_style(t.highlight_style())
+                    .highlight_symbol(LIST_HIGHLIGHT_SYMBOL);
+
+                let mut list_state = ListState::default();
+                let ui_selected_idx = self
+                    .state
+                    .create_inherits_from
+                    .map_or(Some(0), |i| Some(i + 1));
+                list_state.select(ui_selected_idx);
+
+                frame.render_stateful_widget(list, chunks[3], &mut list_state);
+            }
+        }
+
         // Copy from option - show list of profiles to select from
         let is_focused = self.state.create_focused_field == CreateField::CopyFrom;
         let border_style = if is_focused {
@@ -742,7 +905,7 @@ impl ManageProfilesScreen {
                         .border_style(border_style),
                 )
                 .wrap(Wrap { trim: true });
-            frame.render_widget(copy_para, chunks[3]);
+            frame.render_widget(copy_para, chunks[4]);
         } else {
             // Create a list with "Start Blank" first, then profiles
             let mut items = Vec::new();
@@ -810,12 +973,12 @@ impl ManageProfilesScreen {
             list_state.select(ui_selected_idx);
 
             // Calculate if we need a scrollbar (if items exceed visible area)
-            let visible_height = chunks[3].height.saturating_sub(2); // Subtract borders
+            let visible_height = chunks[4].height.saturating_sub(2); // Subtract borders
             let total_items = (self.state.profiles.len() + 1) as u16; // +1 for "Start Blank"
             let needs_scrollbar = total_items > visible_height;
 
             // Render the list
-            frame.render_stateful_widget(list, chunks[3], &mut list_state);
+            frame.render_stateful_widget(list, chunks[4], &mut list_state);
 
             // Render scrollbar if needed
             if needs_scrollbar {
@@ -829,7 +992,7 @@ impl ManageProfilesScreen {
                     .begin_symbol(Some("↑"))
                     .end_symbol(Some("↓"));
 
-                frame.render_stateful_widget(scrollbar, chunks[3], &mut scrollbar_state);
+                frame.render_stateful_widget(scrollbar, chunks[4], &mut scrollbar_state);
             }
         }
 
@@ -1127,39 +1290,30 @@ impl Screen for ManageProfilesScreen {
                                         return Ok(ScreenAction::Refresh);
                                     }
                                     Action::NextTab => {
-                                        self.state.create_focused_field =
-                                            match self.state.create_focused_field {
-                                                CreateField::Name => CreateField::Description,
-                                                CreateField::Description => CreateField::CopyFrom,
-                                                CreateField::CopyFrom => CreateField::Name,
-                                            };
+                                        self.state.create_focused_field = match self
+                                            .state
+                                            .create_focused_field
+                                        {
+                                            CreateField::Name => CreateField::Description,
+                                            CreateField::Description => CreateField::InheritsFrom,
+                                            CreateField::InheritsFrom => CreateField::CopyFrom,
+                                            CreateField::CopyFrom => CreateField::Name,
+                                        };
                                         return Ok(ScreenAction::Refresh);
                                     }
                                     Action::PrevTab => {
-                                        self.state.create_focused_field =
-                                            match self.state.create_focused_field {
-                                                CreateField::Name => CreateField::CopyFrom,
-                                                CreateField::Description => CreateField::Name,
-                                                CreateField::CopyFrom => CreateField::Description,
-                                            };
+                                        self.state.create_focused_field = match self
+                                            .state
+                                            .create_focused_field
+                                        {
+                                            CreateField::Name => CreateField::CopyFrom,
+                                            CreateField::Description => CreateField::Name,
+                                            CreateField::InheritsFrom => CreateField::Description,
+                                            CreateField::CopyFrom => CreateField::InheritsFrom,
+                                        };
                                         return Ok(ScreenAction::Refresh);
                                     }
                                     Action::Confirm => {
-                                        // Logic for CopyFrom selection vs Creation
-                                        if self.state.create_focused_field == CreateField::CopyFrom
-                                        {
-
-                                            // This logic depends on us knowing how many profiles there are to wrap/clamp.
-                                            // We probably need to fetch profiles here too to do accurate selection logic?
-                                            // Or simplified: Just handle Enter as "Create".
-                                            // The original code handled Enter as create unless in CopyFrom list partial selection?
-                                            // Actually original code (lines 1334-1353) handled detailed selection logic.
-                                            // "If Copy From is focused, select the current item first, then create"
-                                            // Wait, if we are in CopyFrom, Enter usually means "Select this option".
-                                            // But line 1355 says "Enter always creates, regardless of focus".
-                                            // So we should just proceed to create.
-                                        }
-
                                         if !self.state.create_name_input.text().is_empty() {
                                             let name =
                                                 self.state.create_name_input.text().to_string();
@@ -1186,18 +1340,27 @@ impl Screen for ManageProfilesScreen {
                                                         .to_string(),
                                                 )
                                             };
+                                            let inherits =
+                                                self.state.create_inherits_from.and_then(|idx| {
+                                                    self.state
+                                                        .profiles
+                                                        .get(idx)
+                                                        .map(|p| p.name.clone())
+                                                });
                                             let copy_from = self.state.create_copy_from;
 
                                             // Reset state
                                             self.state.popup_type = ProfilePopupType::None;
                                             self.state.create_name_input.clear();
                                             self.state.create_description_input.clear();
+                                            self.state.create_inherits_from = None;
                                             self.state.create_focused_field = CreateField::Name;
                                             self.state.error_message = None;
 
                                             return Ok(ScreenAction::CreateProfile {
                                                 name,
                                                 description,
+                                                inherits,
                                                 copy_from,
                                             });
                                         }
@@ -1210,7 +1373,22 @@ impl Screen for ManageProfilesScreen {
                             // Handle text input and specific navigation
                             match action {
                                 Some(Action::MoveUp) => {
-                                    if self.state.create_focused_field == CreateField::CopyFrom {
+                                    if self.state.create_focused_field == CreateField::InheritsFrom
+                                    {
+                                        let current =
+                                            self.state.create_inherits_from.map_or(0, |i| i + 1);
+                                        if current > 0 {
+                                            let new_val = current - 1;
+                                            self.state.create_inherits_from = if new_val == 0 {
+                                                None
+                                            } else {
+                                                Some(new_val - 1)
+                                            };
+                                            return Ok(ScreenAction::Refresh);
+                                        }
+                                    } else if self.state.create_focused_field
+                                        == CreateField::CopyFrom
+                                    {
                                         let current =
                                             self.state.create_copy_from.map_or(0, |i| i + 1);
                                         if current > 0 {
@@ -1225,9 +1403,20 @@ impl Screen for ManageProfilesScreen {
                                     }
                                 }
                                 Some(Action::MoveDown) => {
-                                    if self.state.create_focused_field == CreateField::CopyFrom {
-                                        // We need profile count to limit.
-                                        // We need profile count to limit.
+                                    if self.state.create_focused_field == CreateField::InheritsFrom
+                                    {
+                                        let profiles = &self.state.profiles;
+                                        let total = profiles.len() + 1; // +1 for "None"
+                                        let current =
+                                            self.state.create_inherits_from.map_or(0, |i| i + 1);
+                                        if current < total - 1 {
+                                            let new_val = current + 1;
+                                            self.state.create_inherits_from = Some(new_val - 1);
+                                            return Ok(ScreenAction::Refresh);
+                                        }
+                                    } else if self.state.create_focused_field
+                                        == CreateField::CopyFrom
+                                    {
                                         let profiles = &self.state.profiles;
                                         let total = profiles.len() + 1; // +1 for "Blank"
                                         let current =

@@ -601,6 +601,7 @@ impl TestEnvBuilder {
             manifest.profiles.push(ProfileInfo {
                 name: name.clone(),
                 description: description.clone(),
+                inherits: None,
                 synced_files: Vec::new(),
                 packages: Vec::new(),
             });

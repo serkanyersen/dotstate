@@ -1273,6 +1273,7 @@ impl App {
             ScreenAction::CreateProfile {
                 name,
                 description,
+                inherits,
                 copy_from,
             } => {
                 use crate::screens::manage_profiles::ProfileAction;
@@ -1280,6 +1281,7 @@ impl App {
                     ProfileAction::CreateProfile {
                         name,
                         description,
+                        inherits,
                         copy_from,
                     },
                     &mut self.config,

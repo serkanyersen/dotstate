@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Profile Inheritance**: Profiles can now inherit files and packages from a parent profile via single inheritance with child-wins override semantics
+  - New `inherits` field in profile manifest (`.dotstate-profiles.toml`) — each profile can specify at most one parent
+  - Multi-level chaining supported (e.g., p3 → p2 → p1); cycles are detected and rejected
+  - File resolution: child files override parent files, and profile files override common files with the same path
+  - Package inheritance: packages merged across the chain, child packages override parent packages with matching name + manager
+  - Manifest version bumped to 2 with automatic migration from v1 (no-op — `inherits` defaults to `None`)
+  - **Manage Profiles UI**: Create popup includes "Inherits From" field; profile details show inheritance info and resolved file counts with source annotations
+  - **CLI**: `list` command groups files by source (common / inherited / own) and shows inheritance chain; `activate` uses resolved files
+  - Delete protection: profiles that other profiles inherit from cannot be deleted
+  - Rename propagation: renaming a profile updates `inherits` references in child profiles
+
 ### Changed
 
 - **Docs**: Updated `CONTRIBUTING.md` project structure to match current modular layout (`src/cli/`, `src/screens/`, services layer, and `lib.rs`)

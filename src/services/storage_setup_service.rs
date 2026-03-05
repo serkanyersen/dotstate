@@ -393,6 +393,7 @@ impl StorageSetupService {
             profiles: vec![crate::utils::profile_manifest::ProfileInfo {
                 name: default_profile_name.clone(),
                 description: None,
+                inherits: None,
                 synced_files: Vec::new(),
                 packages: Vec::new(),
             }],
@@ -508,6 +509,7 @@ impl StorageSetupService {
             let default_profile = crate::utils::profile_manifest::ProfileInfo {
                 name: "Personal".to_string(),
                 description: None,
+                inherits: None,
                 synced_files: Vec::new(),
                 packages: Vec::new(),
             };

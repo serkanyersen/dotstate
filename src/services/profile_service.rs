@@ -3,7 +3,7 @@
 //! This module provides a service layer for profile-related operations,
 //! abstracting the details of the profile management from the UI layer.
 
-use crate::utils::profile_manifest::{Package, ProfileInfo};
+use crate::utils::profile_manifest::{Package, ProfileInfo, ResolvedFile};
 use crate::utils::symlink_manager::{OperationStatus, SymlinkManager};
 use crate::utils::{sanitize_profile_name, validate_profile_name, ProfileManifest};
 use anyhow::{Context, Result};
@@ -211,32 +211,55 @@ impl ProfileService {
         target_profile_name: &str,
         backup_enabled: bool,
     ) -> Result<ProfileSwitchResult> {
-        // Get target profile from manifest
         let manifest = Self::load_manifest(repo_path)?;
-        let target_profile = manifest
+
+        // Verify target exists
+        if !manifest
             .profiles
             .iter()
-            .find(|p| p.name == target_profile_name)
-            .ok_or_else(|| anyhow::anyhow!("Profile '{target_profile_name}' not found"))?;
+            .any(|p| p.name == target_profile_name)
+        {
+            return Err(anyhow::anyhow!("Profile '{target_profile_name}' not found"));
+        }
 
         // Don't switch if already active
         if old_profile_name == target_profile_name {
+            let packages = manifest.resolve_packages(target_profile_name)?;
             return Ok(ProfileSwitchResult {
                 removed_count: 0,
                 created_count: 0,
-                packages: target_profile.packages.clone(),
+                packages,
             });
         }
 
-        // Use SymlinkManager to switch profiles
+        // Resolve the full file list for the target (inheritance + common)
+        let resolved_files = manifest.resolve_files(target_profile_name)?;
+        let resolved_packages = manifest.resolve_packages(target_profile_name)?;
+
+        // Use SymlinkManager: deactivate old, activate new with resolved files
         let mut symlink_mgr =
             SymlinkManager::new_with_backup(repo_path.to_path_buf(), backup_enabled)?;
 
-        let switch_result = symlink_mgr.switch_profile(
-            old_profile_name,
-            target_profile_name,
-            &target_profile.synced_files,
-        )?;
+        // Step 1: Deactivate old profile (removes ALL tracked symlinks)
+        let removed = match symlink_mgr.deactivate_profile_with_restore(old_profile_name, false) {
+            Ok(ops) => ops,
+            Err(e) => {
+                error!("Failed to deactivate profile '{}': {}", old_profile_name, e);
+                return Err(anyhow::anyhow!("Failed to deactivate old profile: {e}"));
+            }
+        };
+
+        // Step 2: Activate new profile with resolved files (includes inherited + common)
+        let created = match symlink_mgr.activate_resolved(target_profile_name, &resolved_files) {
+            Ok(ops) => ops,
+            Err(e) => {
+                error!(
+                    "Failed to activate profile '{}': {}",
+                    target_profile_name, e
+                );
+                return Err(anyhow::anyhow!("Failed to activate new profile: {e}"));
+            }
+        };
 
         info!(
             "Switched from '{}' to '{}'",
@@ -244,14 +267,14 @@ impl ProfileService {
         );
         info!(
             "Removed {} symlinks, created {} symlinks",
-            switch_result.removed.len(),
-            switch_result.created.len()
+            removed.len(),
+            created.len()
         );
 
         Ok(ProfileSwitchResult {
-            removed_count: switch_result.removed.len(),
-            created_count: switch_result.created.len(),
-            packages: target_profile.packages.clone(),
+            removed_count: removed.len(),
+            created_count: created.len(),
+            packages: resolved_packages,
         })
     }
 
@@ -306,8 +329,14 @@ impl ProfileService {
             std::fs::rename(&old_path, &new_path).context("Failed to rename profile directory")?;
         }
 
-        // Update profile manifest
+        // Update profile manifest (name + any inherits references)
         manifest.rename_profile(old_name, &sanitized_name)?;
+        // Update any profiles that inherit from the old name
+        for profile in &mut manifest.profiles {
+            if profile.inherits.as_deref() == Some(old_name) {
+                profile.inherits = Some(sanitized_name.clone());
+            }
+        }
         Self::save_manifest(repo_path, &manifest)?;
 
         // Update symlinks if profile is active
@@ -360,6 +389,17 @@ impl ProfileService {
             ));
         }
 
+        // Check if other profiles inherit from this one
+        let manifest = Self::load_manifest(repo_path)?;
+        let inheriting = manifest.get_inheriting_profiles(profile_name);
+        if !inheriting.is_empty() {
+            let names = inheriting.join(", ");
+            return Err(anyhow::anyhow!(
+                "Cannot delete profile '{profile_name}' because it is inherited by: {names}. \
+                 Remove the inheritance first."
+            ));
+        }
+
         // Remove profile folder from repo
         let profile_path = repo_path.join(profile_name);
         if profile_path.exists() {
@@ -379,6 +419,10 @@ impl ProfileService {
 
     /// Activate a profile after setup (creates symlinks).
     ///
+    /// Resolves the full inheritance chain and common files, then creates
+    /// symlinks for all resolved files. Files from child profiles override
+    /// parent profiles, and profile files override common files.
+    ///
     /// # Arguments
     ///
     /// * `repo_path` - Path to the repository.
@@ -395,18 +439,20 @@ impl ProfileService {
     ) -> Result<ProfileActivationResult> {
         info!("Activating profile '{}' after setup", profile_name);
 
-        // Get profile to activate from manifest
-        let profile = Self::get_profile_info(repo_path, profile_name)?
-            .ok_or_else(|| anyhow::anyhow!("Profile '{profile_name}' not found"))?;
+        let manifest = Self::load_manifest(repo_path)?;
 
-        // Get files to sync from the profile
-        let files_to_sync = profile.synced_files.clone();
+        // Resolve the full file list (inheritance chain + common, with overrides)
+        let resolved_files = manifest.resolve_files(profile_name)?;
+        let resolved_packages = manifest.resolve_packages(profile_name)?;
 
-        if files_to_sync.is_empty() {
-            info!("Profile '{}' has no files to sync", profile_name);
+        if resolved_files.is_empty() {
+            info!(
+                "Profile '{}' has no files to sync (including inherited/common)",
+                profile_name
+            );
             return Ok(ProfileActivationResult {
                 success_count: 0,
-                packages: profile.packages,
+                packages: resolved_packages,
             });
         }
 
@@ -414,21 +460,21 @@ impl ProfileService {
         let mut symlink_mgr =
             SymlinkManager::new_with_backup(repo_path.to_path_buf(), backup_enabled)?;
 
-        // Activate profile (this will create symlinks and sync files)
-        let activation_result = match symlink_mgr.activate_profile(profile_name, &files_to_sync) {
+        // Activate using resolved files (handles multi-source directories)
+        let activation_result = match symlink_mgr.activate_resolved(profile_name, &resolved_files) {
             Ok(operations) => {
                 let success_count = operations
                     .iter()
                     .filter(|op| matches!(op.status, OperationStatus::Success))
                     .count();
                 info!(
-                    "Activated profile '{}' with {} files",
+                    "Activated profile '{}' with {} files (including inherited/common)",
                     profile_name, success_count
                 );
 
                 Ok(ProfileActivationResult {
                     success_count,
-                    packages: profile.packages,
+                    packages: resolved_packages,
                 })
             }
             Err(e) => {
@@ -436,15 +482,6 @@ impl ProfileService {
                 Err(anyhow::anyhow!("Failed to activate profile: {e}"))
             }
         }?;
-
-        // Also activate common files
-        let common_files = Self::get_common_files(repo_path)?;
-        if !common_files.is_empty() {
-            info!("Backfilling common files...");
-            if let Err(e) = symlink_mgr.activate_common_files(&common_files) {
-                warn!("Failed to activate some common files: {}", e);
-            }
-        }
 
         Ok(activation_result)
     }
@@ -454,6 +491,9 @@ impl ProfileService {
     /// This is an efficient reconciliation method that only creates missing symlinks.
     /// Perfect for after pulling changes from remote where new files were added but
     /// their symlinks don't exist locally yet.
+    ///
+    /// Resolves the full inheritance chain and common files, respecting overrides,
+    /// then ensures symlinks exist for all resolved files.
     ///
     /// Unlike `activate_profile`, this does NOT remove any existing symlinks - it only
     /// adds missing ones.
@@ -474,22 +514,24 @@ impl ProfileService {
     ) -> Result<(usize, usize, Vec<String>)> {
         info!("Ensuring symlinks for profile '{}'", profile_name);
 
-        // Get the list of files that should be synced from the manifest
-        let profile = Self::get_profile_info(repo_path, profile_name)?
-            .ok_or_else(|| anyhow::anyhow!("Profile '{profile_name}' not found"))?;
+        let manifest = Self::load_manifest(repo_path)?;
 
-        let files_to_sync = profile.synced_files;
+        // Resolve the full file list (inheritance + common with overrides)
+        let resolved_files = manifest.resolve_files(profile_name)?;
 
-        if files_to_sync.is_empty() {
-            info!("Profile '{}' has no files to sync", profile_name);
+        if resolved_files.is_empty() {
+            info!(
+                "Profile '{}' has no files to sync (including inherited/common)",
+                profile_name
+            );
             return Ok((0, 0, Vec::new()));
         }
 
-        // Use SymlinkManager to ensure symlinks
+        // Use SymlinkManager to ensure resolved symlinks
         let mut symlink_mgr =
             SymlinkManager::new_with_backup(repo_path.to_path_buf(), backup_enabled)?;
 
-        symlink_mgr.ensure_profile_symlinks(profile_name, &files_to_sync)
+        symlink_mgr.ensure_resolved_symlinks(profile_name, &resolved_files)
     }
 
     /// Ensure all common files have their symlinks created.
@@ -497,6 +539,11 @@ impl ProfileService {
     /// This is an efficient "reconciliation" method that only creates
     /// symlinks for files that don't already have them. Useful after
     /// pulling from remote when new common files may have been added.
+    ///
+    /// **Note:** When a profile with inheritance is active, common files that
+    /// are overridden by the profile chain are skipped (the profile's version
+    /// is authoritative). Use `ensure_profile_symlinks` to handle the full
+    /// resolved set.
     ///
     /// # Arguments
     ///
@@ -529,6 +576,22 @@ impl ProfileService {
             SymlinkManager::new_with_backup(repo_path.to_path_buf(), backup_enabled)?;
 
         symlink_mgr.ensure_common_symlinks(&common_files_vec)
+    }
+
+    /// Resolve the full list of files for a profile, including inherited
+    /// and common files with proper override semantics.
+    ///
+    /// This is useful for UI/CLI that need to display what files would be
+    /// active for a given profile.
+    pub fn resolve_files(repo_path: &Path, profile_name: &str) -> Result<Vec<ResolvedFile>> {
+        let manifest = Self::load_manifest(repo_path)?;
+        manifest.resolve_files(profile_name)
+    }
+
+    /// Resolve the full list of packages for a profile, including inherited packages.
+    pub fn resolve_packages(repo_path: &Path, profile_name: &str) -> Result<Vec<Package>> {
+        let manifest = Self::load_manifest(repo_path)?;
+        manifest.resolve_packages(profile_name)
     }
 }
 

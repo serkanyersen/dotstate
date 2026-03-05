@@ -29,6 +29,7 @@ fn create_profile_initializes_directory_and_manifest() -> Result<()> {
     manifest.profiles.push(ProfileInfo {
         name: "work".to_string(),
         description: Some("Work profile".to_string()),
+        inherits: None,
         synced_files: Vec::new(),
         packages: Vec::new(),
     });
@@ -81,6 +82,7 @@ fn create_profile_copies_from_existing() -> Result<()> {
     manifest.profiles.push(ProfileInfo {
         name: "work".to_string(),
         description: None,
+        inherits: None,
         synced_files: default_files,
         packages: Vec::new(),
     });
@@ -595,6 +597,175 @@ fn test_multiple_profiles_isolation() -> Result<()> {
     env.assert_profile_exists("work");
     env.assert_profile_exists("home");
     env.assert_profile_exists("gaming");
+
+    Ok(())
+}
+
+// ============================================================================
+// PROFILE INHERITANCE
+// ============================================================================
+
+#[test]
+fn inheritance_resolve_files_merges_parent_and_child() -> Result<()> {
+    // Given: p1 has f1 and f2, p2 inherits p1 and has f2 (override) and f3
+    let env = TestEnv::new()
+        .with_profile("p1")
+        .with_profile("p2")
+        .with_git()
+        .build()?;
+
+    // Set up files in p1
+    let p1_path = env.profile_path("p1");
+    std::fs::write(p1_path.join(".zshrc"), "p1 zshrc")?;
+    std::fs::write(p1_path.join(".vimrc"), "p1 vimrc")?;
+
+    // Set up files in p2 (overrides .vimrc, adds .config_nvim)
+    let p2_path = env.profile_path("p2");
+    std::fs::write(p2_path.join(".vimrc"), "p2 vimrc")?;
+    std::fs::write(p2_path.join(".config_nvim"), "p2 nvim")?;
+
+    // Set up common files
+    let common_path = env.common_path();
+    std::fs::create_dir_all(&common_path)?;
+    std::fs::write(common_path.join(".gitconfig"), "common gitconfig")?;
+
+    // Update manifest with inheritance and synced_files
+    let mut manifest = env.load_manifest()?;
+    manifest.common.synced_files = vec![".gitconfig".to_string()];
+    if let Some(p1) = manifest.profiles.iter_mut().find(|p| p.name == "p1") {
+        p1.synced_files = vec![".zshrc".to_string(), ".vimrc".to_string()];
+    }
+    if let Some(p2) = manifest.profiles.iter_mut().find(|p| p.name == "p2") {
+        p2.inherits = Some("p1".to_string());
+        p2.synced_files = vec![".vimrc".to_string(), ".config_nvim".to_string()];
+    }
+    manifest.save(&env.repo_path)?;
+
+    // When: resolve files for p2
+    let resolved = manifest.resolve_files("p2")?;
+
+    // Then: 4 files total
+    assert_eq!(resolved.len(), 4);
+
+    let find = |path: &str| resolved.iter().find(|r| r.relative_path == path).unwrap();
+    assert_eq!(find(".gitconfig").source_profile, "common");
+    assert_eq!(find(".zshrc").source_profile, "p1"); // inherited
+    assert_eq!(find(".vimrc").source_profile, "p2"); // child wins
+    assert_eq!(find(".config_nvim").source_profile, "p2"); // own
+
+    Ok(())
+}
+
+#[test]
+fn inheritance_chain_validation_detects_cycle() -> Result<()> {
+    let env = TestEnv::new()
+        .with_profile("a")
+        .with_profile("b")
+        .with_git()
+        .build()?;
+
+    let mut manifest = env.load_manifest()?;
+    if let Some(a) = manifest.profiles.iter_mut().find(|p| p.name == "a") {
+        a.inherits = Some("b".to_string());
+    }
+    if let Some(b) = manifest.profiles.iter_mut().find(|p| p.name == "b") {
+        b.inherits = Some("a".to_string());
+    }
+
+    // Validation should detect the cycle
+    let result = manifest.validate_inheritance();
+    assert!(result.is_err());
+    assert!(result.unwrap_err().to_string().contains("cycle"));
+
+    Ok(())
+}
+
+#[test]
+fn inheritance_delete_guard_prevents_deleting_parent() -> Result<()> {
+    use dotstate::services::ProfileService;
+
+    let env = TestEnv::new()
+        .with_profile("base")
+        .with_profile("child")
+        .with_activated_profile("child")
+        .with_git()
+        .build()?;
+
+    // Set child to inherit from base
+    let mut manifest = env.load_manifest()?;
+    if let Some(child) = manifest.profiles.iter_mut().find(|p| p.name == "child") {
+        child.inherits = Some("base".to_string());
+    }
+    manifest.save(&env.repo_path)?;
+
+    // Try to delete base — should fail because child inherits from it
+    let result = ProfileService::delete_profile(&env.repo_path, "base", "child");
+    assert!(result.is_err());
+    assert!(result.unwrap_err().to_string().contains("inherited by"));
+
+    Ok(())
+}
+
+#[test]
+fn inheritance_inherits_field_roundtrips_through_toml() -> Result<()> {
+    let env = TestEnv::new()
+        .with_profile("parent")
+        .with_profile("child")
+        .with_git()
+        .build()?;
+
+    // Set inheritance
+    let mut manifest = env.load_manifest()?;
+    if let Some(child) = manifest.profiles.iter_mut().find(|p| p.name == "child") {
+        child.inherits = Some("parent".to_string());
+    }
+    manifest.save(&env.repo_path)?;
+
+    // Reload and verify
+    let loaded = env.load_manifest()?;
+    let child = loaded.profiles.iter().find(|p| p.name == "child").unwrap();
+    assert_eq!(child.inherits, Some("parent".to_string()));
+
+    // parent should have no inherits
+    let parent = loaded.profiles.iter().find(|p| p.name == "parent").unwrap();
+    assert!(parent.inherits.is_none());
+
+    Ok(())
+}
+
+#[test]
+fn inheritance_profile_without_inherits_is_backward_compatible() -> Result<()> {
+    let env = TestEnv::new()
+        .with_profile("standalone")
+        .with_git()
+        .build()?;
+
+    // Set up files
+    let profile_path = env.profile_path("standalone");
+    std::fs::write(profile_path.join(".zshrc"), "standalone zshrc")?;
+
+    let common_path = env.common_path();
+    std::fs::create_dir_all(&common_path)?;
+    std::fs::write(common_path.join(".gitconfig"), "common gitconfig")?;
+
+    let mut manifest = env.load_manifest()?;
+    manifest.common.synced_files = vec![".gitconfig".to_string()];
+    if let Some(p) = manifest
+        .profiles
+        .iter_mut()
+        .find(|p| p.name == "standalone")
+    {
+        p.synced_files = vec![".zshrc".to_string()];
+    }
+    manifest.save(&env.repo_path)?;
+
+    // Resolve files — should work exactly like before inheritance was added
+    let resolved = manifest.resolve_files("standalone")?;
+    assert_eq!(resolved.len(), 2);
+
+    let find = |path: &str| resolved.iter().find(|r| r.relative_path == path).unwrap();
+    assert_eq!(find(".gitconfig").source_profile, "common");
+    assert_eq!(find(".zshrc").source_profile, "standalone");
 
     Ok(())
 }

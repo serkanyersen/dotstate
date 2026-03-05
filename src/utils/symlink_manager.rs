@@ -268,6 +268,87 @@ impl SymlinkManager {
         Ok(operations)
     }
 
+    /// Activate a profile using resolved files from inheritance chain.
+    ///
+    /// Unlike `activate_profile`, this method accepts files that may come from
+    /// different profile directories (due to inheritance). Each `ResolvedFile`
+    /// specifies which profile folder (or "common") contains the file.
+    ///
+    /// # Arguments
+    /// * `profile_name` - The active profile name (for tracking)
+    /// * `resolved_files` - Files resolved from the inheritance chain, each with
+    ///   a `source_profile` indicating which directory to read from
+    pub fn activate_resolved(
+        &mut self,
+        profile_name: &str,
+        resolved_files: &[crate::utils::profile_manifest::ResolvedFile],
+    ) -> Result<Vec<SymlinkOperation>> {
+        let home_dir = crate::utils::get_home_dir();
+        self.activate_resolved_with_home(profile_name, resolved_files, &home_dir)
+    }
+
+    fn activate_resolved_with_home(
+        &mut self,
+        profile_name: &str,
+        resolved_files: &[crate::utils::profile_manifest::ResolvedFile],
+        home_dir: &Path,
+    ) -> Result<Vec<SymlinkOperation>> {
+        info!(
+            "Activating profile '{}' with {} resolved files (inheritance)",
+            profile_name,
+            resolved_files.len()
+        );
+
+        // Create backup session if backups are enabled
+        if self.backup_enabled {
+            if let Some(ref backup_mgr) = self.backup_manager {
+                self.backup_session = Some(backup_mgr.create_backup_session()?);
+                info!("Created backup session: {:?}", self.backup_session);
+            }
+        }
+
+        let mut operations = Vec::new();
+
+        for resolved in resolved_files {
+            let source = self
+                .repo_path
+                .join(&resolved.source_profile)
+                .join(&resolved.relative_path);
+            let target = home_dir.join(&resolved.relative_path);
+
+            let operation = self.create_symlink(&source, &target, &resolved.relative_path)?;
+            operations.push(operation);
+        }
+
+        // Update tracking
+        self.tracking.active_profile = profile_name.to_string();
+        for op in &operations {
+            if matches!(
+                op.status,
+                OperationStatus::Success | OperationStatus::Skipped(_)
+            ) {
+                let already_tracked = self.tracking.symlinks.iter().any(|s| s.target == op.target);
+                if !already_tracked {
+                    self.tracking.symlinks.push(TrackedSymlink {
+                        target: op.target.clone(),
+                        source: op.source.clone(),
+                        created_at: op.timestamp,
+                        backup: op.backup.clone(),
+                    });
+                }
+            }
+        }
+
+        self.save_tracking()?;
+        info!(
+            "Profile activated with inheritance: {} ({} symlinks)",
+            profile_name,
+            operations.len()
+        );
+
+        Ok(operations)
+    }
+
     /// Deactivate a profile by removing its symlinks
     pub fn deactivate_profile(&mut self, profile_name: &str) -> Result<Vec<SymlinkOperation>> {
         self.deactivate_profile_with_restore(profile_name, true)
@@ -1254,6 +1335,138 @@ impl SymlinkManager {
 
         info!(
             "Symlink reconciliation complete: {} created, {} skipped, {} errors",
+            created_count,
+            skipped_count,
+            errors.len()
+        );
+
+        Ok((created_count, skipped_count, errors))
+    }
+
+    /// Ensure all resolved files have their symlinks created.
+    ///
+    /// Like `ensure_profile_symlinks` but works with `ResolvedFile` entries
+    /// that may come from different profile directories due to inheritance.
+    /// Only creates missing symlinks; does NOT remove existing ones.
+    pub fn ensure_resolved_symlinks(
+        &mut self,
+        profile_name: &str,
+        resolved_files: &[crate::utils::profile_manifest::ResolvedFile],
+    ) -> Result<(usize, usize, Vec<String>)> {
+        info!(
+            "Ensuring resolved symlinks for profile '{}' ({} files)",
+            profile_name,
+            resolved_files.len()
+        );
+
+        let home_dir = crate::utils::get_home_dir();
+        let mut created_count = 0;
+        let mut skipped_count = 0;
+        let mut errors = Vec::new();
+
+        // Create backup session if backups are enabled
+        if self.backup_enabled && self.backup_session.is_none() {
+            if let Some(ref backup_mgr) = self.backup_manager {
+                self.backup_session = Some(backup_mgr.create_backup_session()?);
+                debug!("Created backup session: {:?}", self.backup_session);
+            }
+        }
+
+        for resolved in resolved_files {
+            let source = self
+                .repo_path
+                .join(&resolved.source_profile)
+                .join(&resolved.relative_path);
+            let target = home_dir.join(&resolved.relative_path);
+
+            // Check if source exists in repo
+            if !source.exists() {
+                debug!("Source file does not exist in repo, skipping: {:?}", source);
+                skipped_count += 1;
+                continue;
+            }
+
+            // Check if symlink already exists and points to the right place
+            if target.symlink_metadata().is_ok() {
+                if let Ok(metadata) = target.symlink_metadata() {
+                    if metadata.is_symlink() {
+                        if let Ok(existing_target) = fs::read_link(&target) {
+                            let existing_normalized = if existing_target.is_absolute() {
+                                existing_target.canonicalize().unwrap_or(existing_target)
+                            } else if let Some(parent) = target.parent() {
+                                parent
+                                    .join(&existing_target)
+                                    .canonicalize()
+                                    .unwrap_or_else(|_| parent.join(&existing_target))
+                            } else {
+                                existing_target
+                            };
+
+                            let source_normalized = source.canonicalize().unwrap_or(source.clone());
+
+                            if existing_normalized == source_normalized {
+                                debug!(
+                                    "Symlink already exists and is correct, skipping: {:?}",
+                                    target
+                                );
+                                skipped_count += 1;
+                                continue;
+                            }
+                        }
+                    } else {
+                        errors.push(format!(
+                            "File exists at {} (not a symlink)",
+                            resolved.relative_path
+                        ));
+                        continue;
+                    }
+                }
+            }
+
+            // Symlink doesn't exist or is incorrect - create it
+            match self.create_symlink(&source, &target, &resolved.relative_path) {
+                Ok(operation) => {
+                    if matches!(operation.status, OperationStatus::Success) {
+                        self.tracking.symlinks.push(TrackedSymlink {
+                            target: operation.target.clone(),
+                            source: operation.source.clone(),
+                            created_at: operation.timestamp,
+                            backup: operation.backup.clone(),
+                        });
+
+                        if self.tracking.active_profile.is_empty() {
+                            self.tracking.active_profile = profile_name.to_string();
+                        }
+
+                        created_count += 1;
+                        info!("Created symlink for {}", resolved.relative_path);
+                    } else {
+                        warn!(
+                            "Failed to create symlink for {}: {:?}",
+                            resolved.relative_path, operation.status
+                        );
+                        errors.push(format!(
+                            "Failed to create symlink for {}",
+                            resolved.relative_path
+                        ));
+                    }
+                }
+                Err(e) => {
+                    error!(
+                        "Error creating symlink for {}: {}",
+                        resolved.relative_path, e
+                    );
+                    errors.push(format!("Error for {}: {e}", resolved.relative_path));
+                }
+            }
+        }
+
+        if created_count > 0 {
+            self.save_tracking()?;
+        }
+
+        info!(
+            "Resolved symlink reconciliation complete: {} created, {} skipped, {} errors",
             created_count,
             skipped_count,
             errors.len()

@@ -30,40 +30,36 @@ pub fn cmd_activate() -> Result<()> {
     let active_profile_name = config.active_profile.clone();
     let manifest = crate::utils::ProfileManifest::load_or_backfill(&config.repo_path)
         .context("Failed to load profile manifest")?;
-    let active_profile_files = manifest
-        .profiles
-        .iter()
-        .find(|p| p.name == active_profile_name)
-        .ok_or_else(|| anyhow::anyhow!("No active profile found"))?
-        .synced_files
-        .clone();
 
-    if active_profile_files.is_empty() {
-        eprintln!("❌ Active profile '{active_profile_name}' has no synced files.");
+    // Resolve the full file list (inheritance chain + common, with overrides)
+    let resolved_files = manifest
+        .resolve_files(&active_profile_name)
+        .context("Failed to resolve files for active profile")?;
+
+    if resolved_files.is_empty() {
+        eprintln!("❌ Active profile '{active_profile_name}' has no synced files (including inherited/common).");
         eprintln!("💡 Run 'dotstate' to select and sync files.");
         std::process::exit(1);
+    }
+
+    // Show inheritance chain if applicable
+    if let Ok(chain) = manifest.inheritance_chain(&active_profile_name) {
+        if chain.len() > 1 {
+            println!("   Inheritance chain: {}", chain.join(" -> "));
+        }
     }
 
     println!("🔗 Activating profile '{active_profile_name}'...");
     println!(
         "   This will create symlinks for {} files",
-        active_profile_files.len()
+        resolved_files.len()
     );
 
-    // Create SymlinkManager
+    // Create SymlinkManager and activate with resolved files
     let mut symlink_mgr =
         SymlinkManager::new_with_backup(config.repo_path.clone(), config.backup_enabled)?;
 
-    // Activate profile files
-    let mut operations =
-        symlink_mgr.activate_profile(&active_profile_name, &active_profile_files)?;
-
-    // Also activate common files if any exist
-    let common_files: Vec<String> = manifest.get_common_files().to_vec();
-    if !common_files.is_empty() {
-        let common_operations = symlink_mgr.activate_common_files(&common_files)?;
-        operations.extend(common_operations);
-    }
+    let operations = symlink_mgr.activate_resolved(&active_profile_name, &resolved_files)?;
 
     // Report results
     // Count Success and Skipped as successful (Skipped = symlink already correct)

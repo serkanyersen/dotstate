@@ -1,10 +1,25 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 /// Current version of the manifest file format.
 /// Increment this when making breaking changes to the schema.
-const CURRENT_VERSION: u32 = 1;
+const CURRENT_VERSION: u32 = 2;
+
+/// Maximum inheritance chain depth to prevent runaway resolution.
+const MAX_INHERITANCE_DEPTH: usize = 32;
+
+/// A resolved file entry indicating where a file comes from after
+/// walking the inheritance chain and merging with common files.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedFile {
+    /// Relative path from home directory (e.g. ".zshrc")
+    pub relative_path: String,
+    /// Which profile or "common" this file is sourced from.
+    /// This determines the repo subdirectory: `<repo>/<source_profile>/<relative_path>`
+    pub source_profile: String,
+}
 
 /// Package manager types
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -97,6 +112,11 @@ pub struct ProfileInfo {
     /// Optional description
     #[serde(default)]
     pub description: Option<String>,
+    /// Optional parent profile name for single inheritance.
+    /// When set, activating this profile also includes files (and packages)
+    /// from the parent chain. The child's files take priority over the parent's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inherits: Option<String>,
     /// Files synced for this profile (relative paths from home directory)
     #[serde(default)]
     pub synced_files: Vec<String>,
@@ -287,11 +307,22 @@ impl ProfileManifest {
 
     /// Add a profile to the manifest
     pub fn add_profile(&mut self, name: String, description: Option<String>) {
+        self.add_profile_with_inherits(name, description, None);
+    }
+
+    /// Add a profile to the manifest with optional inheritance
+    pub fn add_profile_with_inherits(
+        &mut self,
+        name: String,
+        description: Option<String>,
+        inherits: Option<String>,
+    ) {
         // Check if profile already exists
         if !self.profiles.iter().any(|p| p.name == name) {
             self.profiles.push(ProfileInfo {
                 name,
                 description,
+                inherits,
                 synced_files: Vec::new(),
                 packages: Vec::new(),
             });
@@ -395,8 +426,9 @@ impl ProfileManifest {
         if manifest.version == 0 {
             manifest = Self::migrate_v0_to_v1(manifest)?;
         }
-        // Future migrations:
-        // if manifest.version == 1 { manifest = Self::migrate_v1_to_v2(manifest)?; }
+        if manifest.version == 1 {
+            manifest = Self::migrate_v1_to_v2(manifest)?;
+        }
         Ok(manifest)
     }
 
@@ -406,6 +438,198 @@ impl ProfileManifest {
         tracing::debug!("Migrating manifest v0 -> v1");
         manifest.version = 1;
         Ok(manifest)
+    }
+
+    /// Migrate from v1 to v2 (adds `inherits` field to profiles).
+    /// This is a no-op migration since `inherits` defaults to `None` via serde.
+    fn migrate_v1_to_v2(mut manifest: Self) -> Result<Self> {
+        tracing::debug!("Migrating manifest v1 -> v2 (adds profile inheritance support)");
+        manifest.version = 2;
+        Ok(manifest)
+    }
+
+    // ==================== Inheritance Methods ====================
+
+    /// Build the inheritance chain for a profile, from child to root ancestor.
+    ///
+    /// Returns a list of profile names starting with `profile_name` and ending
+    /// with the root ancestor (the profile that has no `inherits`).
+    ///
+    /// # Errors
+    /// - If a profile in the chain is not found in the manifest.
+    /// - If a cycle is detected.
+    /// - If the chain exceeds `MAX_INHERITANCE_DEPTH`.
+    pub fn inheritance_chain(&self, profile_name: &str) -> Result<Vec<String>> {
+        let mut chain = Vec::new();
+        let mut visited = HashSet::new();
+        let mut current = profile_name.to_string();
+
+        loop {
+            if visited.contains(&current) {
+                return Err(anyhow::anyhow!(
+                    "Inheritance cycle detected: '{}' appears twice in chain: [{}]",
+                    current,
+                    chain.join(" -> ")
+                ));
+            }
+            if chain.len() >= MAX_INHERITANCE_DEPTH {
+                return Err(anyhow::anyhow!(
+                    "Inheritance chain too deep (max {MAX_INHERITANCE_DEPTH}): [{}]",
+                    chain.join(" -> ")
+                ));
+            }
+
+            visited.insert(current.clone());
+            chain.push(current.clone());
+
+            let profile = self
+                .profiles
+                .iter()
+                .find(|p| p.name == current)
+                .ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "Profile '{}' not found in manifest (referenced in inheritance chain: [{}])",
+                        current,
+                        chain.join(" -> ")
+                    )
+                })?;
+
+            match &profile.inherits {
+                Some(parent) => {
+                    current = parent.clone();
+                }
+                None => break,
+            }
+        }
+
+        Ok(chain)
+    }
+
+    /// Resolve the full list of files for a profile, walking the inheritance
+    /// chain and merging with common files.
+    ///
+    /// Resolution priority (highest to lowest):
+    /// 1. Active profile's own `synced_files`
+    /// 2. Parent profile's `synced_files`
+    /// 3. Grandparent, etc.
+    /// 4. Common files (lowest priority, overridden by any profile in chain)
+    ///
+    /// Each file appears at most once; the highest-priority source wins.
+    pub fn resolve_files(&self, profile_name: &str) -> Result<Vec<ResolvedFile>> {
+        let chain = self.inheritance_chain(profile_name)?;
+
+        // Build a map: relative_path -> source_profile
+        // Walk from root ancestor to child so that child overrides parent
+        let mut file_map: HashMap<String, String> = HashMap::new();
+
+        // First pass: walk from root ancestor to child (reverse of chain)
+        for profile_name in chain.iter().rev() {
+            if let Some(profile) = self.profiles.iter().find(|p| &p.name == profile_name) {
+                for file in &profile.synced_files {
+                    file_map.insert(file.clone(), profile_name.clone());
+                }
+            }
+        }
+
+        // Second pass: add common files only where no profile in chain provides them
+        for file in &self.common.synced_files {
+            file_map
+                .entry(file.clone())
+                .or_insert_with(|| "common".to_string());
+        }
+
+        // Convert to sorted Vec<ResolvedFile>
+        let mut resolved: Vec<ResolvedFile> = file_map
+            .into_iter()
+            .map(|(relative_path, source_profile)| ResolvedFile {
+                relative_path,
+                source_profile,
+            })
+            .collect();
+        resolved.sort_by(|a, b| a.relative_path.cmp(&b.relative_path));
+
+        Ok(resolved)
+    }
+
+    /// Resolve the full list of packages for a profile, walking the inheritance
+    /// chain and merging.
+    ///
+    /// Child packages override parent packages with the same `name + manager` key.
+    pub fn resolve_packages(&self, profile_name: &str) -> Result<Vec<Package>> {
+        let chain = self.inheritance_chain(profile_name)?;
+
+        // Walk from root ancestor to child so child overrides parent
+        // Key: (package_name, manager) -> Package
+        let mut pkg_map: HashMap<(String, String), Package> = HashMap::new();
+
+        for profile_name in chain.iter().rev() {
+            if let Some(profile) = self.profiles.iter().find(|p| &p.name == profile_name) {
+                for pkg in &profile.packages {
+                    let key = (pkg.name.clone(), format!("{:?}", pkg.manager));
+                    pkg_map.insert(key, pkg.clone());
+                }
+            }
+        }
+
+        let mut packages: Vec<Package> = pkg_map.into_values().collect();
+        packages.sort_by(|a, b| a.name.cmp(&b.name));
+
+        Ok(packages)
+    }
+
+    /// Validate the inheritance configuration of the entire manifest.
+    ///
+    /// Checks:
+    /// - All `inherits` targets exist in the manifest.
+    /// - No cycles exist.
+    /// - No chain exceeds `MAX_INHERITANCE_DEPTH`.
+    pub fn validate_inheritance(&self) -> Result<()> {
+        for profile in &self.profiles {
+            if let Some(parent_name) = &profile.inherits {
+                // Check parent exists
+                if !self.profiles.iter().any(|p| p.name == *parent_name) {
+                    return Err(anyhow::anyhow!(
+                        "Profile '{}' inherits from '{}', which does not exist",
+                        profile.name,
+                        parent_name
+                    ));
+                }
+
+                // Validate the full chain (checks for cycles and depth)
+                self.inheritance_chain(&profile.name)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Get profiles that directly inherit from the given profile.
+    #[must_use]
+    pub fn get_inheriting_profiles(&self, profile_name: &str) -> Vec<String> {
+        self.profiles
+            .iter()
+            .filter(|p| p.inherits.as_deref() == Some(profile_name))
+            .map(|p| p.name.clone())
+            .collect()
+    }
+
+    /// Set the `inherits` field for a profile.
+    pub fn set_inherits(&mut self, profile_name: &str, inherits: Option<String>) -> Result<()> {
+        if let Some(profile) = self.profiles.iter_mut().find(|p| p.name == profile_name) {
+            profile.inherits = inherits;
+            // Validate the whole manifest to catch cycles
+            if let Err(e) = self.validate_inheritance() {
+                // Revert
+                if let Some(p) = self.profiles.iter_mut().find(|p| p.name == profile_name) {
+                    p.inherits = None;
+                }
+                return Err(e);
+            }
+            Ok(())
+        } else {
+            Err(anyhow::anyhow!(
+                "Profile '{profile_name}' not found in manifest"
+            ))
+        }
     }
 
     /// Move a file from a profile to common
@@ -582,15 +806,15 @@ synced_files = [".zshrc"]
 "#;
         std::fs::write(ProfileManifest::manifest_path(repo_path), v0_manifest).unwrap();
 
-        // Load should auto-migrate to v1
+        // Load should auto-migrate to current version (v0 -> v1 -> v2)
         let loaded = ProfileManifest::load(repo_path).unwrap();
-        assert_eq!(loaded.version, 1);
+        assert_eq!(loaded.version, CURRENT_VERSION);
         assert!(loaded.is_common_file(".gitconfig"));
         assert!(loaded.has_profile("work"));
 
-        // File should be updated with version
+        // File should be updated with current version
         let content = std::fs::read_to_string(ProfileManifest::manifest_path(repo_path)).unwrap();
-        assert!(content.contains("version = 1"));
+        assert!(content.contains(&format!("version = {CURRENT_VERSION}")));
 
         // Backup should be cleaned up
         let backup_path =
@@ -603,9 +827,10 @@ synced_files = [".zshrc"]
         let temp_dir = TempDir::new().unwrap();
         let repo_path = temp_dir.path();
 
-        // Write a v1 manifest
-        let v1_manifest = r#"
-version = 1
+        // Write a manifest at the current version
+        let current_manifest = format!(
+            r#"
+version = {CURRENT_VERSION}
 
 [common]
 synced_files = []
@@ -613,12 +838,13 @@ synced_files = []
 [[profiles]]
 name = "test"
 synced_files = []
-"#;
-        std::fs::write(ProfileManifest::manifest_path(repo_path), v1_manifest).unwrap();
+"#
+        );
+        std::fs::write(ProfileManifest::manifest_path(repo_path), current_manifest).unwrap();
 
         // Load should not create backup (no migration needed)
         let loaded = ProfileManifest::load(repo_path).unwrap();
-        assert_eq!(loaded.version, 1);
+        assert_eq!(loaded.version, CURRENT_VERSION);
 
         // No backup should exist
         let backup_path =
@@ -629,6 +855,404 @@ synced_files = []
     #[test]
     fn test_new_manifest_has_current_version() {
         let manifest = ProfileManifest::default();
-        assert_eq!(manifest.version, 1);
+        assert_eq!(manifest.version, CURRENT_VERSION);
+    }
+
+    #[test]
+    fn test_manifest_migration_v1_to_v2() {
+        let temp_dir = TempDir::new().unwrap();
+        let repo_path = temp_dir.path();
+
+        // Write a v1 manifest (no inherits field)
+        let v1_manifest = r#"
+version = 1
+
+[common]
+synced_files = [".gitconfig"]
+
+[[profiles]]
+name = "work"
+synced_files = [".zshrc"]
+"#;
+        std::fs::write(ProfileManifest::manifest_path(repo_path), v1_manifest).unwrap();
+
+        // Load should auto-migrate to v2
+        let loaded = ProfileManifest::load(repo_path).unwrap();
+        assert_eq!(loaded.version, 2);
+        assert!(loaded.is_common_file(".gitconfig"));
+        assert!(loaded.has_profile("work"));
+        // inherits should default to None
+        let work = loaded.profiles.iter().find(|p| p.name == "work").unwrap();
+        assert!(work.inherits.is_none());
+    }
+
+    #[test]
+    fn test_inherits_field_serialization() {
+        let temp_dir = TempDir::new().unwrap();
+        let repo_path = temp_dir.path();
+
+        let mut manifest = ProfileManifest::default();
+        manifest.add_profile("base".to_string(), None);
+        manifest.add_profile_with_inherits(
+            "child".to_string(),
+            Some("Child profile".to_string()),
+            Some("base".to_string()),
+        );
+        manifest.save(repo_path).unwrap();
+
+        // Reload and verify
+        let loaded = ProfileManifest::load(repo_path).unwrap();
+        let base = loaded.profiles.iter().find(|p| p.name == "base").unwrap();
+        assert!(base.inherits.is_none());
+
+        let child = loaded.profiles.iter().find(|p| p.name == "child").unwrap();
+        assert_eq!(child.inherits, Some("base".to_string()));
+    }
+
+    #[test]
+    fn test_inheritance_chain_simple() {
+        let mut manifest = ProfileManifest::default();
+        manifest.add_profile("grandparent".to_string(), None);
+        manifest.add_profile_with_inherits(
+            "parent".to_string(),
+            None,
+            Some("grandparent".to_string()),
+        );
+        manifest.add_profile_with_inherits("child".to_string(), None, Some("parent".to_string()));
+
+        let chain = manifest.inheritance_chain("child").unwrap();
+        assert_eq!(chain, vec!["child", "parent", "grandparent"]);
+    }
+
+    #[test]
+    fn test_inheritance_chain_no_parent() {
+        let mut manifest = ProfileManifest::default();
+        manifest.add_profile("standalone".to_string(), None);
+
+        let chain = manifest.inheritance_chain("standalone").unwrap();
+        assert_eq!(chain, vec!["standalone"]);
+    }
+
+    #[test]
+    fn test_inheritance_cycle_detection() {
+        let mut manifest = ProfileManifest::default();
+        manifest.profiles.push(ProfileInfo {
+            name: "a".to_string(),
+            description: None,
+            inherits: Some("b".to_string()),
+            synced_files: Vec::new(),
+            packages: Vec::new(),
+        });
+        manifest.profiles.push(ProfileInfo {
+            name: "b".to_string(),
+            description: None,
+            inherits: Some("a".to_string()),
+            synced_files: Vec::new(),
+            packages: Vec::new(),
+        });
+
+        let result = manifest.inheritance_chain("a");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("cycle"));
+    }
+
+    #[test]
+    fn test_inheritance_missing_parent() {
+        let mut manifest = ProfileManifest::default();
+        manifest.profiles.push(ProfileInfo {
+            name: "orphan".to_string(),
+            description: None,
+            inherits: Some("nonexistent".to_string()),
+            synced_files: Vec::new(),
+            packages: Vec::new(),
+        });
+
+        let result = manifest.inheritance_chain("orphan");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("not found"));
+    }
+
+    #[test]
+    fn test_resolve_files_with_inheritance() {
+        let mut manifest = ProfileManifest::default();
+        manifest.common.synced_files = vec![".gitconfig".to_string(), ".tmux.conf".to_string()];
+
+        manifest.profiles.push(ProfileInfo {
+            name: "p1".to_string(),
+            description: None,
+            inherits: None,
+            synced_files: vec![".zshrc".to_string(), ".vimrc".to_string()],
+            packages: Vec::new(),
+        });
+        manifest.profiles.push(ProfileInfo {
+            name: "p2".to_string(),
+            description: None,
+            inherits: Some("p1".to_string()),
+            synced_files: vec![".vimrc".to_string(), ".config/nvim".to_string()],
+            packages: Vec::new(),
+        });
+
+        let resolved = manifest.resolve_files("p2").unwrap();
+
+        // Expected:
+        // .config/nvim -> p2 (own)
+        // .gitconfig -> common (not overridden)
+        // .tmux.conf -> common (not overridden)
+        // .vimrc -> p2 (child wins over p1)
+        // .zshrc -> p1 (inherited)
+        assert_eq!(resolved.len(), 5);
+
+        let find = |path: &str| resolved.iter().find(|r| r.relative_path == path).unwrap();
+        assert_eq!(find(".config/nvim").source_profile, "p2");
+        assert_eq!(find(".gitconfig").source_profile, "common");
+        assert_eq!(find(".tmux.conf").source_profile, "common");
+        assert_eq!(find(".vimrc").source_profile, "p2"); // child wins
+        assert_eq!(find(".zshrc").source_profile, "p1"); // inherited
+    }
+
+    #[test]
+    fn test_resolve_files_profile_overrides_common() {
+        let mut manifest = ProfileManifest::default();
+        manifest.common.synced_files = vec![".gitconfig".to_string()];
+
+        manifest.profiles.push(ProfileInfo {
+            name: "p1".to_string(),
+            description: None,
+            inherits: None,
+            synced_files: vec![".gitconfig".to_string()], // same as common
+            packages: Vec::new(),
+        });
+
+        let resolved = manifest.resolve_files("p1").unwrap();
+        assert_eq!(resolved.len(), 1);
+        assert_eq!(resolved[0].source_profile, "p1"); // profile wins over common
+    }
+
+    #[test]
+    fn test_resolve_files_no_inheritance() {
+        let mut manifest = ProfileManifest::default();
+        manifest.common.synced_files = vec![".gitconfig".to_string()];
+
+        manifest.profiles.push(ProfileInfo {
+            name: "standalone".to_string(),
+            description: None,
+            inherits: None,
+            synced_files: vec![".zshrc".to_string()],
+            packages: Vec::new(),
+        });
+
+        let resolved = manifest.resolve_files("standalone").unwrap();
+        assert_eq!(resolved.len(), 2);
+
+        let find = |path: &str| resolved.iter().find(|r| r.relative_path == path).unwrap();
+        assert_eq!(find(".gitconfig").source_profile, "common");
+        assert_eq!(find(".zshrc").source_profile, "standalone");
+    }
+
+    #[test]
+    fn test_resolve_packages_with_inheritance() {
+        let mut manifest = ProfileManifest::default();
+
+        let eza_pkg = Package {
+            name: "eza".to_string(),
+            description: Some("ls replacement".to_string()),
+            manager: PackageManager::Brew,
+            package_name: Some("eza".to_string()),
+            binary_name: "eza".to_string(),
+            install_command: None,
+            existence_check: None,
+            manager_check: None,
+        };
+        let bat_pkg = Package {
+            name: "bat".to_string(),
+            description: Some("cat replacement".to_string()),
+            manager: PackageManager::Brew,
+            package_name: Some("bat".to_string()),
+            binary_name: "bat".to_string(),
+            install_command: None,
+            existence_check: None,
+            manager_check: None,
+        };
+        let fzf_pkg = Package {
+            name: "fzf".to_string(),
+            description: Some("fuzzy finder".to_string()),
+            manager: PackageManager::Brew,
+            package_name: Some("fzf".to_string()),
+            binary_name: "fzf".to_string(),
+            install_command: None,
+            existence_check: None,
+            manager_check: None,
+        };
+
+        manifest.profiles.push(ProfileInfo {
+            name: "p1".to_string(),
+            description: None,
+            inherits: None,
+            synced_files: Vec::new(),
+            packages: vec![eza_pkg.clone(), bat_pkg],
+        });
+        manifest.profiles.push(ProfileInfo {
+            name: "p2".to_string(),
+            description: None,
+            inherits: Some("p1".to_string()),
+            synced_files: Vec::new(),
+            packages: vec![fzf_pkg],
+        });
+
+        let packages = manifest.resolve_packages("p2").unwrap();
+        assert_eq!(packages.len(), 3);
+
+        let names: Vec<&str> = packages.iter().map(|p| p.name.as_str()).collect();
+        assert!(names.contains(&"eza"));
+        assert!(names.contains(&"bat"));
+        assert!(names.contains(&"fzf"));
+    }
+
+    #[test]
+    fn test_validate_inheritance_valid() {
+        let mut manifest = ProfileManifest::default();
+        manifest.add_profile("base".to_string(), None);
+        manifest.add_profile_with_inherits("child".to_string(), None, Some("base".to_string()));
+
+        assert!(manifest.validate_inheritance().is_ok());
+    }
+
+    #[test]
+    fn test_validate_inheritance_missing_parent() {
+        let mut manifest = ProfileManifest::default();
+        manifest.profiles.push(ProfileInfo {
+            name: "orphan".to_string(),
+            description: None,
+            inherits: Some("ghost".to_string()),
+            synced_files: Vec::new(),
+            packages: Vec::new(),
+        });
+
+        assert!(manifest.validate_inheritance().is_err());
+    }
+
+    #[test]
+    fn test_validate_inheritance_cycle() {
+        let mut manifest = ProfileManifest::default();
+        manifest.profiles.push(ProfileInfo {
+            name: "a".to_string(),
+            description: None,
+            inherits: Some("b".to_string()),
+            synced_files: Vec::new(),
+            packages: Vec::new(),
+        });
+        manifest.profiles.push(ProfileInfo {
+            name: "b".to_string(),
+            description: None,
+            inherits: Some("a".to_string()),
+            synced_files: Vec::new(),
+            packages: Vec::new(),
+        });
+
+        assert!(manifest.validate_inheritance().is_err());
+    }
+
+    #[test]
+    fn test_set_inherits() {
+        let mut manifest = ProfileManifest::default();
+        manifest.add_profile("base".to_string(), None);
+        manifest.add_profile("child".to_string(), None);
+
+        // Set inheritance
+        manifest
+            .set_inherits("child", Some("base".to_string()))
+            .unwrap();
+        assert_eq!(
+            manifest
+                .profiles
+                .iter()
+                .find(|p| p.name == "child")
+                .unwrap()
+                .inherits,
+            Some("base".to_string())
+        );
+
+        // Clear inheritance
+        manifest.set_inherits("child", None).unwrap();
+        assert!(manifest
+            .profiles
+            .iter()
+            .find(|p| p.name == "child")
+            .unwrap()
+            .inherits
+            .is_none());
+    }
+
+    #[test]
+    fn test_set_inherits_cycle_prevention() {
+        let mut manifest = ProfileManifest::default();
+        manifest.add_profile_with_inherits("a".to_string(), None, Some("b".to_string()));
+        manifest.add_profile("b".to_string(), None);
+
+        // Try to create a cycle: b -> a (a already -> b)
+        let result = manifest.set_inherits("b", Some("a".to_string()));
+        assert!(result.is_err());
+        // b should remain without inherits (reverted)
+        assert!(manifest
+            .profiles
+            .iter()
+            .find(|p| p.name == "b")
+            .unwrap()
+            .inherits
+            .is_none());
+    }
+
+    #[test]
+    fn test_get_inheriting_profiles() {
+        let mut manifest = ProfileManifest::default();
+        manifest.add_profile("base".to_string(), None);
+        manifest.add_profile_with_inherits("child1".to_string(), None, Some("base".to_string()));
+        manifest.add_profile_with_inherits("child2".to_string(), None, Some("base".to_string()));
+        manifest.add_profile("standalone".to_string(), None);
+
+        let children = manifest.get_inheriting_profiles("base");
+        assert_eq!(children.len(), 2);
+        assert!(children.contains(&"child1".to_string()));
+        assert!(children.contains(&"child2".to_string()));
+
+        assert!(manifest.get_inheriting_profiles("standalone").is_empty());
+    }
+
+    #[test]
+    fn test_three_level_inheritance() {
+        let mut manifest = ProfileManifest::default();
+        manifest.common.synced_files = vec![".gitconfig".to_string()];
+
+        manifest.profiles.push(ProfileInfo {
+            name: "grandparent".to_string(),
+            description: None,
+            inherits: None,
+            synced_files: vec![".zshrc".to_string(), ".bashrc".to_string()],
+            packages: Vec::new(),
+        });
+        manifest.profiles.push(ProfileInfo {
+            name: "parent".to_string(),
+            description: None,
+            inherits: Some("grandparent".to_string()),
+            synced_files: vec![".zshrc".to_string(), ".vimrc".to_string()], // overrides grandparent .zshrc
+            packages: Vec::new(),
+        });
+        manifest.profiles.push(ProfileInfo {
+            name: "child".to_string(),
+            description: None,
+            inherits: Some("parent".to_string()),
+            synced_files: vec![".config/nvim".to_string()], // adds new file only
+            packages: Vec::new(),
+        });
+
+        let resolved = manifest.resolve_files("child").unwrap();
+        assert_eq!(resolved.len(), 5);
+
+        let find = |path: &str| resolved.iter().find(|r| r.relative_path == path).unwrap();
+        assert_eq!(find(".bashrc").source_profile, "grandparent"); // inherited through
+        assert_eq!(find(".config/nvim").source_profile, "child"); // own
+        assert_eq!(find(".gitconfig").source_profile, "common"); // common
+        assert_eq!(find(".vimrc").source_profile, "parent"); // from parent
+        assert_eq!(find(".zshrc").source_profile, "parent"); // parent overrode grandparent
     }
 }

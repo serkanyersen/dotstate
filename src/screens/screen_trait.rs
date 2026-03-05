@@ -192,6 +192,8 @@ pub enum ScreenAction {
         name: String,
         /// Optional description.
         description: Option<String>,
+        /// Optional parent profile to inherit from.
+        inherits: Option<String>,
         /// Index of profile to copy from.
         copy_from: Option<usize>,
     },
