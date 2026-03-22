@@ -1175,8 +1175,7 @@ impl App {
                         self.storage_setup_screen.get_state_mut().status_message =
                             Some(format!("✅ Token updated for {owner}/{repo}"));
                         self.storage_setup_screen.get_state_mut().is_editing_token = false;
-                        self.storage_setup_screen.get_state_mut().token_input =
-                            crate::utils::TextInput::with_text("••••••••••••••••••••");
+                        self.storage_setup_screen.set_token_display_masked();
                     }
                     Err(e) => {
                         self.storage_setup_screen.get_state_mut().error_message =

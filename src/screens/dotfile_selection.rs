@@ -12,9 +12,9 @@ use crate::screens::ActionResult;
 use crate::services::SyncService;
 use crate::ui::Screen as ScreenId;
 use crate::utils::{focused_border_style, unfocused_border_style, TextInput};
-use crate::widgets::{DotstateLogo, TextInputWidget, TextInputWidgetExt};
+use crate::widgets::DotstateLogo;
 use anyhow::Result;
-use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
+use crossterm::event::{Event, KeyCode, KeyEventKind, MouseButton, MouseEventKind};
 use ratatui::layout::Position;
 use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use ratatui::style::{Modifier, Style};
@@ -30,7 +30,7 @@ use std::path::{Path, PathBuf};
 use syntect::highlighting::Theme;
 use syntect::parsing::SyntaxSet;
 use tui_forge::MouseRegions;
-use tui_forge::{Dialog, DialogVariant, Footer, Header};
+use tui_forge::{Dialog, DialogVariant, FieldConfig, Footer, Form, FormAction, Header};
 
 /// Display item for the dotfile list (header or file)
 #[derive(Debug, Clone, PartialEq)]
@@ -86,7 +86,6 @@ pub struct DotfileSelectionState {
     pub dotfile_list_state: ListState, // ListState for main dotfile list (handles selection and scrolling)
     pub status_message: Option<String>, // For sync summary
     pub adding_custom_file: bool,      // Whether we're in "add custom file" mode
-    pub custom_file_input: TextInput,  // Input for custom file path
     pub custom_file_focused: bool,     // Whether custom file input is focused
     pub file_browser_mode: bool,       // Whether we're in file browser mode
     pub file_browser_path: PathBuf,    // Current directory in file browser
@@ -124,7 +123,6 @@ impl Default for DotfileSelectionState {
             dotfile_list_state: ListState::default(),
             status_message: None,
             adding_custom_file: false,
-            custom_file_input: TextInput::new(),
             custom_file_focused: true,
             file_browser_mode: false,
             file_browser_path: dirs::home_dir().unwrap_or_else(|| PathBuf::from("/")),
@@ -151,6 +149,7 @@ impl Default for DotfileSelectionState {
 /// Dotfile selection screen controller.
 pub struct DotfileSelectionScreen {
     state: DotfileSelectionState,
+    custom_file_form: Form,
     /// File browser component
     file_browser: FileBrowser,
     /// Mouse regions for dotfile list items
@@ -167,6 +166,12 @@ impl DotfileSelectionScreen {
     pub fn new() -> Self {
         Self {
             state: DotfileSelectionState::default(),
+            custom_file_form: Form::new().field(
+                "custom_path",
+                tui_forge::TextInput::new()
+                    .placeholder("Enter file path (e.g., ~/.myconfig or /path/to/file)"),
+                FieldConfig::new().label("Custom File Path").required(),
+            ),
             file_browser: FileBrowser::new(),
             mouse_regions: MouseRegions::new(),
             list_pane_area: None,
@@ -271,99 +276,112 @@ impl DotfileSelectionScreen {
     /// Handle custom file input (legacy mode, less common).
     fn handle_custom_file_input(
         &mut self,
-        key_code: KeyCode,
+        key: crossterm::event::KeyEvent,
         config: &Config,
     ) -> Result<ScreenAction> {
+        let action = crate::keymap::get_action(&config.keymap, key.code, key.modifiers);
+
         // When input is not focused, only allow Enter to focus or Esc to cancel
         if !self.state.custom_file_focused {
-            match key_code {
-                KeyCode::Enter => {
+            match action {
+                Some(crate::keymap::Action::Confirm) => {
                     self.state.custom_file_focused = true;
+                    self.custom_file_form.focus_field("custom_path");
                     return Ok(ScreenAction::None);
                 }
-                KeyCode::Esc => {
+                Some(crate::keymap::Action::Cancel | crate::keymap::Action::Quit) => {
                     self.state.adding_custom_file = false;
-                    self.state.custom_file_input.clear();
+                    self.custom_file_form.clear();
                     return Ok(ScreenAction::None);
                 }
                 _ => return Ok(ScreenAction::None),
             }
         }
 
-        // When focused, handle all input
-        match key_code {
-            KeyCode::Char(c) => {
-                self.state.custom_file_input.insert_char(c);
-            }
-            KeyCode::Left | KeyCode::Right | KeyCode::Home | KeyCode::End => {
-                self.state.custom_file_input.handle_key(key_code);
-            }
-            KeyCode::Backspace => {
-                self.state.custom_file_input.backspace();
-            }
-            KeyCode::Delete => {
-                self.state.custom_file_input.delete();
-            }
-            KeyCode::Tab => {
-                self.state.custom_file_focused = false;
-            }
-            KeyCode::Enter => {
-                let path_str = self.state.custom_file_input.text_trimmed();
-                if path_str.is_empty() {
-                    return Ok(ScreenAction::ShowMessage {
-                        title: "Invalid Path".to_string(),
-                        content: "File path cannot be empty".to_string(),
-                    });
-                } else {
-                    let full_path = crate::utils::expand_path(path_str);
-
-                    if full_path.exists() {
-                        // Calculate relative path
-                        let home_dir = crate::utils::get_home_dir();
-                        let relative_path = match full_path.strip_prefix(&home_dir) {
-                            Ok(p) => p.to_string_lossy().to_string(),
-                            Err(_) => path_str.to_string(),
-                        };
-
-                        // Close input mode
-                        self.state.adding_custom_file = false;
-                        self.state.custom_file_input.clear();
-                        self.state.focus = DotfileSelectionFocus::FilesList;
-
-                        // Validate before showing confirmation
-                        let repo_path = &config.repo_path;
-                        let (is_safe, reason) = crate::utils::is_safe_to_add(&full_path, repo_path);
-                        if !is_safe {
-                            return Ok(ScreenAction::ShowMessage {
-                                title: "Cannot Add File".to_string(),
-                                content: format!(
-                                    "{}.\n\nPath: {}",
-                                    reason.unwrap_or_else(|| "Cannot add this file".to_string()),
-                                    full_path.display()
-                                ),
-                            });
-                        }
-
-                        // Show confirmation modal
-                        self.state.show_custom_file_confirm = true;
-                        self.state.custom_file_confirm_path = Some(full_path);
-                        self.state.custom_file_confirm_relative = Some(relative_path);
-                    } else {
-                        return Ok(ScreenAction::ShowMessage {
-                            title: "File Not Found".to_string(),
-                            content: format!("File does not exist: {full_path:?}"),
-                        });
-                    }
-                }
-            }
-            KeyCode::Esc => {
-                self.state.adding_custom_file = false;
-                self.state.custom_file_input.clear();
-                self.state.focus = DotfileSelectionFocus::FilesList;
-            }
-            _ => {}
+        if matches!(
+            action,
+            Some(crate::keymap::Action::Cancel | crate::keymap::Action::Quit)
+        ) {
+            self.state.adding_custom_file = false;
+            self.custom_file_form.clear();
+            self.state.focus = DotfileSelectionFocus::FilesList;
+            return Ok(ScreenAction::None);
+        }
+        if matches!(action, Some(crate::keymap::Action::NextTab)) {
+            self.state.custom_file_focused = false;
+            self.custom_file_form.unfocus();
+            return Ok(ScreenAction::None);
+        }
+        if matches!(
+            action,
+            Some(crate::keymap::Action::Confirm | crate::keymap::Action::Save)
+        ) {
+            return self.submit_custom_file_path(config);
         }
 
+        match self.custom_file_form.handle_event(&Event::Key(key)) {
+            FormAction::Submit => return self.submit_custom_file_path(config),
+            FormAction::Consumed | FormAction::ValueChanged(_) => {}
+            FormAction::Ignored => {}
+        }
+
+        Ok(ScreenAction::None)
+    }
+
+    fn submit_custom_file_path(&mut self, config: &Config) -> Result<ScreenAction> {
+        let path_str = self
+            .custom_file_form
+            .values()
+            .text("custom_path")
+            .unwrap_or_default()
+            .trim()
+            .to_string();
+
+        if path_str.is_empty() {
+            return Ok(ScreenAction::ShowMessage {
+                title: "Invalid Path".to_string(),
+                content: "File path cannot be empty".to_string(),
+            });
+        }
+
+        let full_path = crate::utils::expand_path(&path_str);
+        if !full_path.exists() {
+            return Ok(ScreenAction::ShowMessage {
+                title: "File Not Found".to_string(),
+                content: format!("File does not exist: {full_path:?}"),
+            });
+        }
+
+        // Calculate relative path
+        let home_dir = crate::utils::get_home_dir();
+        let relative_path = match full_path.strip_prefix(&home_dir) {
+            Ok(p) => p.to_string_lossy().to_string(),
+            Err(_) => path_str,
+        };
+
+        // Close input mode
+        self.state.adding_custom_file = false;
+        self.custom_file_form.clear();
+        self.state.focus = DotfileSelectionFocus::FilesList;
+
+        // Validate before showing confirmation
+        let repo_path = &config.repo_path;
+        let (is_safe, reason) = crate::utils::is_safe_to_add(&full_path, repo_path);
+        if !is_safe {
+            return Ok(ScreenAction::ShowMessage {
+                title: "Cannot Add File".to_string(),
+                content: format!(
+                    "{}.\n\nPath: {}",
+                    reason.unwrap_or_else(|| "Cannot add this file".to_string()),
+                    full_path.display()
+                ),
+            });
+        }
+
+        // Show confirmation modal
+        self.state.show_custom_file_confirm = true;
+        self.state.custom_file_confirm_path = Some(full_path);
+        self.state.custom_file_confirm_relative = Some(relative_path);
         Ok(ScreenAction::None)
     }
 
@@ -791,12 +809,13 @@ impl DotfileSelectionScreen {
             ])
             .split(content_chunk);
 
-        let widget = TextInputWidget::new(&self.state.custom_file_input)
-            .title("Custom File Path")
-            .placeholder("Enter file path (e.g., ~/.myconfig or /path/to/file)")
-            .title_alignment(Alignment::Center)
-            .focused(self.state.custom_file_focused);
-        frame.render_text_input_widget(widget, input_chunks[1]);
+        if self.state.custom_file_focused {
+            self.custom_file_form.focus_field("custom_path");
+        } else {
+            self.custom_file_form.unfocus();
+        }
+        self.custom_file_form
+            .render_field(frame, input_chunks[1], "custom_path");
 
         let k = |a| config.keymap.get_key_display_for_action(a);
         let footer_text = format!(
@@ -2317,17 +2336,7 @@ impl Screen for DotfileSelectionScreen {
         if self.state.adding_custom_file && !self.file_browser.is_open() {
             if let Event::Key(key) = event {
                 if key.kind == KeyEventKind::Press {
-                    // For plain character keys, ALWAYS insert the character first
-                    // This ensures vim bindings like h/l don't interfere with typing
-                    if let KeyCode::Char(c) = key.code {
-                        if !key.modifiers.intersects(
-                            KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SUPER,
-                        ) {
-                            self.state.custom_file_input.insert_char(c);
-                            return Ok(ScreenAction::Refresh);
-                        }
-                    }
-                    return self.handle_custom_file_input(key.code, ctx.config);
+                    return self.handle_custom_file_input(key, ctx.config);
                 }
             }
             return Ok(ScreenAction::None);

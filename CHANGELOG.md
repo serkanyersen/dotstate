@@ -21,6 +21,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Keymap Migration**: Migrated DotState keymap implementation to `tui-forge` keymap types and removed local duplicate keymap action/binding/preset modules
 - **UI Toolkit Migration**: Migrated help overlay rendering to `tui_forge::HelpOverlay` and removed DotState duplicate help overlay component
 - **Keymap Extensibility**: Added generic keymap extension APIs in `tui-forge` (`all_bindings_with`, `get_action_with_bindings`, `get_key_display_for_action_with_bindings`) and adapted DotState to provide app-specific bindings via `Action::Custom(...)` without adding DotState-specific actions to `tui-forge` presets
+- **Forms Migration**: Started forms migration by moving profile creation popup (`ProfileSelection`) to `tui_forge::Form` with preserved keymap-cancel precedence
+- **Forms Migration**: Migrated manage profiles create/rename/delete popups (`ManageProfilesScreen`) to `tui_forge::Form`, preserving cancel/tab/confirm behavior while removing legacy popup text-input handling for those flows
+- **Forms Migration**: Migrated storage setup text-entry flows (`StorageSetupScreen` GitHub/local fields) to `tui_forge::Form`, while preserving DotState reconfiguration token-edit behavior
+- **Forms Migration**: Fixed migrated form value reads to use `form.values().text(...)` instead of `Form::text(...)` in profile/manage-profile flows
+- **Forms Migration**: Migrated file browser path input and dotfile custom-path input to `tui_forge::Form`, preserving existing focus switching and add-file validation/confirmation behavior
 
 ### Fixed
 

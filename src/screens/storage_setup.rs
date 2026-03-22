@@ -7,8 +7,8 @@
 use crate::keymap::Action;
 use crate::screens::screen_trait::{RenderContext, Screen, ScreenAction, ScreenContext};
 use crate::ui::{GitHubSetupData, GitHubSetupStep};
-use crate::utils::{focused_border_style, unfocused_border_style, TextInput};
-use crate::widgets::{DotstateLogo, TextInputWidget, TextInputWidgetExt};
+use crate::utils::{focused_border_style, unfocused_border_style};
+use crate::widgets::DotstateLogo;
 use anyhow::Result;
 use crossterm::event::{Event, KeyEventKind, MouseButton, MouseEventKind};
 use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
@@ -21,6 +21,7 @@ use tui_forge::Footer;
 use tui_forge::Header;
 use tui_forge::Icons;
 use tui_forge::MouseRegions;
+use tui_forge::{FieldConfig, Form, FormAction};
 use tui_forge::{Menu, MenuItem, MenuState};
 
 /// Focus within the storage setup screen
@@ -126,14 +127,8 @@ pub struct StorageSetupState {
     pub menu_state: MenuState,
 
     // GitHub form fields
-    pub token_input: TextInput,
-    pub repo_name_input: TextInput,
-    pub repo_path_input: TextInput,
     pub is_private: bool,
     pub github_field: GitHubField,
-
-    // Local form field
-    pub local_path_input: TextInput,
 
     // Status
     pub status_message: Option<String>,
@@ -157,12 +152,8 @@ impl Default for StorageSetupState {
             focus: StorageSetupFocus::MethodList,
             method: StorageMethod::GitHub,
             menu_state,
-            token_input: TextInput::default(),
-            repo_name_input: TextInput::with_text(crate::config::default_repo_name()),
-            repo_path_input: TextInput::with_text("~/.config/dotstate/storage"),
             is_private: true,
             github_field: GitHubField::Token,
-            local_path_input: TextInput::with_text("~/.config/dotstate/storage"),
             status_message: None,
             error_message: None,
             is_reconfiguring: false,
@@ -176,6 +167,8 @@ impl Default for StorageSetupState {
 /// Storage setup screen controller
 pub struct StorageSetupScreen {
     state: StorageSetupState,
+    github_form: Form,
+    local_form: Form,
     /// Clickable regions for method menu items
     method_regions: MouseRegions<usize>,
     /// Area of the method list pane (for scroll hit-testing)
@@ -191,19 +184,68 @@ impl Default for StorageSetupScreen {
 }
 
 impl StorageSetupScreen {
+    fn github_form() -> Form {
+        Form::new()
+            .field(
+                "token",
+                tui_forge::TextInput::new().placeholder("ghp_..."),
+                FieldConfig::new().label("GitHub Token").required(),
+            )
+            .field(
+                "repo_name",
+                tui_forge::TextInput::new().placeholder("dotstate-dotfiles"),
+                FieldConfig::new().label("Repository Name").required(),
+            )
+            .field(
+                "repo_path",
+                tui_forge::TextInput::new().placeholder("~/.config/dotstate/storage"),
+                FieldConfig::new().label("Local Path").required(),
+            )
+    }
+
+    fn local_form() -> Form {
+        Form::new().field(
+            "repo_path",
+            tui_forge::TextInput::new().placeholder("~/.config/dotstate/storage"),
+            FieldConfig::new().label("Repository Path").required(),
+        )
+    }
+
     #[must_use]
     pub fn new() -> Self {
-        Self {
+        let mut screen = Self {
             state: StorageSetupState::default(),
+            github_form: Self::github_form(),
+            local_form: Self::local_form(),
             method_regions: MouseRegions::new(),
             method_pane_area: None,
             form_field_regions: MouseRegions::new(),
-        }
+        };
+        screen
+            .github_form
+            .set_text("repo_name", &crate::config::default_repo_name());
+        screen
+            .github_form
+            .set_text("repo_path", "~/.config/dotstate/storage");
+        screen.github_form.focus_field("token");
+        screen
+            .local_form
+            .set_text("repo_path", "~/.config/dotstate/storage");
+        screen
     }
 
     /// Reset the screen state
     pub fn reset(&mut self) {
         self.state = StorageSetupState::default();
+        self.github_form = Self::github_form();
+        self.github_form
+            .set_text("repo_name", &crate::config::default_repo_name());
+        self.github_form
+            .set_text("repo_path", "~/.config/dotstate/storage");
+        self.github_form.focus_field("token");
+        self.local_form = Self::local_form();
+        self.local_form
+            .set_text("repo_path", "~/.config/dotstate/storage");
     }
 
     /// Check if the async setup step needs processing.
@@ -222,6 +264,10 @@ impl StorageSetupScreen {
     /// Get mutable state.
     pub fn get_state_mut(&mut self) -> &mut StorageSetupState {
         &mut self.state
+    }
+
+    pub fn set_token_display_masked(&mut self) {
+        self.github_form.set_text("token", "••••••••••••••••••••");
     }
 
     /// Get icons from config
@@ -341,44 +387,31 @@ impl StorageSetupScreen {
         let fields = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Length(3), // Token
-                Constraint::Length(3), // Repo name
-                Constraint::Length(3), // Repo path
+                Constraint::Length(4), // Token
+                Constraint::Length(4), // Repo name
+                Constraint::Length(4), // Repo path
                 Constraint::Length(3), // Visibility
                 Constraint::Min(0),    // Spacer
             ])
             .split(inner);
 
-        // Token field (field index 0)
-        let token_focused = is_pane_focused && self.state.github_field == GitHubField::Token;
-        let token_disabled = self.state.is_reconfiguring && !self.state.is_editing_token;
-        let token_widget = TextInputWidget::new(&self.state.token_input)
-            .title("GitHub Token")
-            .placeholder("ghp_...")
-            .focused(token_focused)
-            .disabled(token_disabled)
-            .masked(token_disabled);
-        frame.render_text_input_widget(token_widget, fields[0]);
+        if is_pane_focused {
+            match self.state.github_field {
+                GitHubField::Token => self.github_form.focus_field("token"),
+                GitHubField::RepoName => self.github_form.focus_field("repo_name"),
+                GitHubField::RepoPath => self.github_form.focus_field("repo_path"),
+                GitHubField::Visibility => self.github_form.unfocus(),
+            }
+        } else {
+            self.github_form.unfocus();
+        }
+
+        // Token/repo fields (field indices 0-2)
+        self.github_form.render_field(frame, fields[0], "token");
         self.form_field_regions.add(fields[0], 0);
-
-        // Repo name field (field index 1)
-        let repo_name_focused = is_pane_focused && self.state.github_field == GitHubField::RepoName;
-        let repo_name_widget = TextInputWidget::new(&self.state.repo_name_input)
-            .title("Repository Name")
-            .placeholder("dotstate-dotfiles")
-            .focused(repo_name_focused)
-            .disabled(self.state.is_reconfiguring);
-        frame.render_text_input_widget(repo_name_widget, fields[1]);
+        self.github_form.render_field(frame, fields[1], "repo_name");
         self.form_field_regions.add(fields[1], 1);
-
-        // Repo path field (field index 2)
-        let repo_path_focused = is_pane_focused && self.state.github_field == GitHubField::RepoPath;
-        let repo_path_widget = TextInputWidget::new(&self.state.repo_path_input)
-            .title("Local Path")
-            .placeholder("~/.config/dotstate/storage")
-            .focused(repo_path_focused)
-            .disabled(self.state.is_reconfiguring);
-        frame.render_text_input_widget(repo_path_widget, fields[2]);
+        self.github_form.render_field(frame, fields[2], "repo_path");
         self.form_field_regions.add(fields[2], 2);
 
         // Visibility toggle
@@ -455,7 +488,7 @@ impl StorageSetupScreen {
             .constraints([
                 Constraint::Length(5), // Instructions
                 Constraint::Length(1), // Spacer
-                Constraint::Length(3), // Path input
+                Constraint::Length(4), // Path input
                 Constraint::Min(0),    // Spacer
             ])
             .split(inner);
@@ -481,13 +514,12 @@ impl StorageSetupScreen {
         let instructions_para = Paragraph::new(instructions).wrap(Wrap { trim: true });
         frame.render_widget(instructions_para, fields[0]);
 
-        // Path input (field index 0 for local)
-        let path_widget = TextInputWidget::new(&self.state.local_path_input)
-            .title("Repository Path")
-            .placeholder("~/.config/dotstate/storage")
-            .focused(is_pane_focused)
-            .disabled(self.state.is_reconfiguring);
-        frame.render_text_input_widget(path_widget, fields[2]);
+        if is_pane_focused {
+            self.local_form.focus_field("repo_path");
+        } else {
+            self.local_form.unfocus();
+        }
+        self.local_form.render_field(frame, fields[2], "repo_path");
         self.form_field_regions.add(fields[2], 0);
     }
 
@@ -849,9 +881,15 @@ impl StorageSetupScreen {
                                 _ => return Ok(ScreenAction::None),
                             };
                             self.state.github_field = field;
+                            match field {
+                                GitHubField::Token => self.github_form.focus_field("token"),
+                                GitHubField::RepoName => self.github_form.focus_field("repo_name"),
+                                GitHubField::RepoPath => self.github_form.focus_field("repo_path"),
+                                GitHubField::Visibility => self.github_form.unfocus(),
+                            }
                         }
                         StorageMethod::Local => {
-                            // Only one field in local mode
+                            self.local_form.focus_field("repo_path");
                         }
                     }
                     return Ok(ScreenAction::Refresh);
@@ -914,6 +952,15 @@ impl StorageSetupScreen {
                 }
                 Action::Confirm | Action::NextTab | Action::MoveRight => {
                     self.state.focus = StorageSetupFocus::Form;
+                    match self.state.method {
+                        StorageMethod::GitHub => match self.state.github_field {
+                            GitHubField::Token => self.github_form.focus_field("token"),
+                            GitHubField::RepoName => self.github_form.focus_field("repo_name"),
+                            GitHubField::RepoPath => self.github_form.focus_field("repo_path"),
+                            GitHubField::Visibility => self.github_form.unfocus(),
+                        },
+                        StorageMethod::Local => self.local_form.focus_field("repo_path"),
+                    }
                 }
                 Action::Cancel | Action::Quit => {
                     self.reset();
@@ -931,49 +978,6 @@ impl StorageSetupScreen {
         key: crossterm::event::KeyEvent,
         ctx: &ScreenContext,
     ) -> Result<ScreenAction> {
-        use crossterm::event::{KeyCode, KeyModifiers};
-
-        // For plain character keys (no modifiers), ALWAYS insert the character first
-        // This ensures vim bindings like h/l/q don't interfere with typing
-        if let KeyCode::Char(c) = key.code {
-            if !key
-                .modifiers
-                .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SUPER)
-            {
-                // Check if we're in an editable text field
-                let is_editable = match self.state.method {
-                    StorageMethod::GitHub => {
-                        // Visibility is a toggle, not editable
-                        if self.state.github_field == GitHubField::Visibility {
-                            false
-                        } else if self.state.is_reconfiguring {
-                            // Only token field in edit mode is editable
-                            self.state.github_field == GitHubField::Token
-                                && self.state.is_editing_token
-                        } else {
-                            // All text fields editable in fresh setup
-                            true
-                        }
-                    }
-                    StorageMethod::Local => !self.state.is_reconfiguring,
-                };
-
-                if is_editable {
-                    // Insert character into the appropriate field
-                    match self.state.method {
-                        StorageMethod::GitHub => match self.state.github_field {
-                            GitHubField::Token => self.state.token_input.insert_char(c),
-                            GitHubField::RepoName => self.state.repo_name_input.insert_char(c),
-                            GitHubField::RepoPath => self.state.repo_path_input.insert_char(c),
-                            GitHubField::Visibility => {} // Not a text field
-                        },
-                        StorageMethod::Local => self.state.local_path_input.insert_char(c),
-                    }
-                    return Ok(ScreenAction::None);
-                }
-            }
-        }
-
         let action = ctx.config.keymap.get_action(key.code, key.modifiers);
 
         // Handle form submission
@@ -986,7 +990,7 @@ impl StorageSetupScreen {
             {
                 // Enter edit token mode
                 self.state.is_editing_token = true;
-                self.state.token_input = TextInput::new(); // Clear for new input
+                self.github_form.set_text("token", "");
                 self.state.status_message = Some("Enter new token".to_string());
                 return Ok(ScreenAction::None);
             }
@@ -1001,7 +1005,7 @@ impl StorageSetupScreen {
                 self.state.status_message = None;
                 self.state.error_message = None;
                 // Restore the masked token display (we don't have original, just clear)
-                self.state.token_input = TextInput::with_text("••••••••••••••••••••");
+                self.github_form.set_text("token", "••••••••••••••••••••");
                 return Ok(ScreenAction::None);
             }
             self.state.focus = StorageSetupFocus::MethodList;
@@ -1009,36 +1013,27 @@ impl StorageSetupScreen {
             return Ok(ScreenAction::None);
         }
 
-        // Handle MoveLeft to go back to menu (only for text fields at cursor position 0)
-        // Note: Visibility field uses MoveLeft/MoveRight for toggling, so we skip it here
-        if let Some(Action::MoveLeft) = action {
-            let should_go_back = match self.state.method {
-                StorageMethod::GitHub => match self.state.github_field {
-                    GitHubField::Token => self.state.token_input.cursor() == 0,
-                    GitHubField::RepoName => self.state.repo_name_input.cursor() == 0,
-                    GitHubField::RepoPath => self.state.repo_path_input.cursor() == 0,
-                    GitHubField::Visibility => false, // MoveLeft toggles visibility, doesn't exit
-                },
-                StorageMethod::Local => self.state.local_path_input.cursor() == 0,
-            };
-
-            if should_go_back {
-                self.state.focus = StorageSetupFocus::MethodList;
-                return Ok(ScreenAction::None);
-            }
-        }
-
         match self.state.method {
-            StorageMethod::GitHub => self.handle_github_form_input(action),
-            StorageMethod::Local => self.handle_local_form_input(action),
+            StorageMethod::GitHub => self.handle_github_form_input(key, action),
+            StorageMethod::Local => self.handle_local_form_input(key, action),
         }
     }
 
-    /// Handle GitHub form input (character input handled at top of `handle_form_event`)
-    fn handle_github_form_input(&mut self, action: Option<Action>) -> Result<ScreenAction> {
+    /// Handle GitHub form input.
+    fn handle_github_form_input(
+        &mut self,
+        key: crossterm::event::KeyEvent,
+        action: Option<Action>,
+    ) -> Result<ScreenAction> {
         // Handle field navigation
         if let Some(Action::NextTab) = action {
             self.state.github_field = self.state.github_field.next();
+            match self.state.github_field {
+                GitHubField::Token => self.github_form.focus_field("token"),
+                GitHubField::RepoName => self.github_form.focus_field("repo_name"),
+                GitHubField::RepoPath => self.github_form.focus_field("repo_path"),
+                GitHubField::Visibility => self.github_form.unfocus(),
+            }
             return Ok(ScreenAction::None);
         }
 
@@ -1048,6 +1043,12 @@ impl StorageSetupScreen {
                 self.state.focus = StorageSetupFocus::MethodList;
             } else {
                 self.state.github_field = self.state.github_field.prev();
+                match self.state.github_field {
+                    GitHubField::Token => self.github_form.focus_field("token"),
+                    GitHubField::RepoName => self.github_form.focus_field("repo_name"),
+                    GitHubField::RepoPath => self.github_form.focus_field("repo_path"),
+                    GitHubField::Visibility => self.github_form.unfocus(),
+                }
             }
             return Ok(ScreenAction::None);
         }
@@ -1059,6 +1060,10 @@ impl StorageSetupScreen {
                 return Ok(ScreenAction::None);
             }
             if let Some(Action::MoveLeft | Action::MoveRight) = action {
+                self.state.is_private = !self.state.is_private;
+                return Ok(ScreenAction::None);
+            }
+            if let crossterm::event::KeyCode::Char(' ') = key.code {
                 self.state.is_private = !self.state.is_private;
                 return Ok(ScreenAction::None);
             }
@@ -1076,59 +1081,61 @@ impl StorageSetupScreen {
             return Ok(ScreenAction::None);
         }
 
-        // Handle text input for current field (character input handled at top of handle_form_event)
-        let input = match self.state.github_field {
-            GitHubField::Token => &mut self.state.token_input,
-            GitHubField::RepoName => &mut self.state.repo_name_input,
-            GitHubField::RepoPath => &mut self.state.repo_path_input,
+        match self.state.github_field {
+            GitHubField::Token => self.github_form.focus_field("token"),
+            GitHubField::RepoName => self.github_form.focus_field("repo_name"),
+            GitHubField::RepoPath => self.github_form.focus_field("repo_path"),
             GitHubField::Visibility => return Ok(ScreenAction::None),
-        };
-
-        // Handle text editing actions
-        if let Some(act) = action {
-            match act {
-                Action::Backspace => input.backspace(),
-                Action::DeleteChar => input.delete(),
-                Action::MoveLeft => input.move_left(),
-                Action::MoveRight => input.move_right(),
-                Action::Home => input.move_home(),
-                Action::End => input.move_end(),
-                _ => {}
-            }
         }
 
-        Ok(ScreenAction::None)
+        match self.github_form.handle_event(&Event::Key(key)) {
+            FormAction::Submit => self.handle_submit(),
+            FormAction::Consumed | FormAction::ValueChanged(_) => Ok(ScreenAction::None),
+            FormAction::Ignored => Ok(ScreenAction::None),
+        }
     }
 
-    /// Handle Local form input (character input handled at top of `handle_form_event`)
-    fn handle_local_form_input(&mut self, action: Option<Action>) -> Result<ScreenAction> {
+    /// Handle Local form input.
+    fn handle_local_form_input(
+        &mut self,
+        key: crossterm::event::KeyEvent,
+        action: Option<Action>,
+    ) -> Result<ScreenAction> {
         // PrevTab (Shift+Tab) goes back to menu
         if let Some(Action::PrevTab) = action {
             self.state.focus = StorageSetupFocus::MethodList;
             return Ok(ScreenAction::None);
         }
 
-        // Don't allow input on disabled fields (character input handled at top of handle_form_event)
+        // Don't allow input on disabled fields.
         if self.state.is_reconfiguring {
             return Ok(ScreenAction::None);
         }
 
-        let input = &mut self.state.local_path_input;
-
-        // Handle text editing actions
-        if let Some(act) = action {
-            match act {
-                Action::Backspace => input.backspace(),
-                Action::DeleteChar => input.delete(),
-                Action::MoveLeft => input.move_left(),
-                Action::MoveRight => input.move_right(),
-                Action::Home => input.move_home(),
-                Action::End => input.move_end(),
-                _ => {}
-            }
+        self.local_form.focus_field("repo_path");
+        match self.local_form.handle_event(&Event::Key(key)) {
+            FormAction::Submit => self.handle_submit(),
+            FormAction::Consumed | FormAction::ValueChanged(_) => Ok(ScreenAction::None),
+            FormAction::Ignored => Ok(ScreenAction::None),
         }
+    }
 
-        Ok(ScreenAction::None)
+    fn github_text(&self, field: &str) -> String {
+        self.github_form
+            .values()
+            .text(field)
+            .unwrap_or_default()
+            .trim()
+            .to_string()
+    }
+
+    fn local_text(&self, field: &str) -> String {
+        self.local_form
+            .values()
+            .text(field)
+            .unwrap_or_default()
+            .trim()
+            .to_string()
     }
 
     /// Handle form submission
@@ -1139,7 +1146,7 @@ impl StorageSetupScreen {
         if self.state.is_reconfiguring {
             if self.state.method == StorageMethod::GitHub && self.state.is_editing_token {
                 // User is updating their token
-                let token = self.state.token_input.text_trimmed().to_string();
+                let token = self.github_text("token");
 
                 // Validate token (ghp_ for classic, github_pat_ for fine-grained)
                 if !token.starts_with("ghp_") && !token.starts_with("github_pat_") {
@@ -1159,8 +1166,8 @@ impl StorageSetupScreen {
 
         match self.state.method {
             StorageMethod::GitHub => {
-                let token = self.state.token_input.text_trimmed().to_string();
-                let repo_name = self.state.repo_name_input.text_trimmed().to_string();
+                let token = self.github_text("token");
+                let repo_name = self.github_text("repo_name");
 
                 // Validate token (ghp_ for classic, github_pat_ for fine-grained)
                 if !token.starts_with("ghp_") && !token.starts_with("github_pat_") {
@@ -1182,14 +1189,14 @@ impl StorageSetupScreen {
                 })
             }
             StorageMethod::Local => {
-                let path_str = self.state.local_path_input.text_trimmed();
+                let path_str = self.local_text("repo_path");
 
                 if path_str.is_empty() {
                     self.state.error_message = Some("Path required".to_string());
                     return Ok(ScreenAction::None);
                 }
 
-                let expanded_path = crate::git::expand_path(path_str);
+                let expanded_path = crate::git::expand_path(&path_str);
                 let validation = crate::git::validate_local_repo(&expanded_path);
 
                 if !validation.is_valid {
@@ -1343,12 +1350,12 @@ impl Screen for StorageSetupScreen {
                         && self.state.is_editing_token;
                 }
 
-                // In fresh setup, all text fields are editable
-                true
+                // In fresh setup, use form's text-capture state
+                self.github_form.captures_text()
             }
             StorageMethod::Local => {
                 // Local path is editable only in fresh setup
-                !self.state.is_reconfiguring
+                !self.state.is_reconfiguring && self.local_form.captures_text()
             }
         }
     }
@@ -1372,22 +1379,26 @@ impl Screen for StorageSetupScreen {
                 if let Some(ref github) = ctx.config.github {
                     // Pre-fill token (masked display - actual token not shown)
                     if github.token.is_some() {
-                        self.state.token_input = TextInput::with_text("••••••••••••••••••••");
+                        self.github_form.set_text("token", "••••••••••••••••••••");
+                    } else {
+                        self.github_form.set_text("token", "");
                     }
                     // Pre-fill repo name
-                    self.state.repo_name_input = TextInput::with_text(github.repo.clone());
+                    self.github_form.set_text("repo_name", &github.repo);
                 }
                 // Ensure edit mode is off
                 self.state.is_editing_token = false;
                 // Pre-fill repo path
-                self.state.repo_path_input =
-                    TextInput::with_text(ctx.config.repo_path.to_string_lossy().to_string());
+                self.github_form
+                    .set_text("repo_path", ctx.config.repo_path.to_string_lossy().as_ref());
+                self.github_form.focus_field("token");
             } else {
                 // Local mode
                 self.state.method = StorageMethod::Local;
                 self.state.menu_state.select(Some(1));
-                self.state.local_path_input =
-                    TextInput::with_text(ctx.config.repo_path.to_string_lossy().to_string());
+                self.local_form
+                    .set_text("repo_path", ctx.config.repo_path.to_string_lossy().as_ref());
+                self.local_form.focus_field("repo_path");
             }
 
             self.state.error_message = None;

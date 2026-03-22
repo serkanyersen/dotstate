@@ -10,10 +10,8 @@ use crate::components::file_preview::FilePreview;
 use crate::config::Config;
 use crate::keymap::Action;
 use crate::utils::style::{focused_border_style, unfocused_border_style};
-use crate::utils::text_input::TextInput;
-use crate::widgets::text_input::{TextInputWidget, TextInputWidgetExt};
 use anyhow::Result;
-use crossterm::event::{Event, KeyCode, KeyEventKind, MouseButton, MouseEventKind};
+use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, MouseButton, MouseEventKind};
 use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use ratatui::widgets::{
     Block, Borders, List, ListItem, ListState, Paragraph, Scrollbar, ScrollbarOrientation,
@@ -25,6 +23,7 @@ use syntect::highlighting::Theme;
 use syntect::parsing::SyntaxSet;
 use tui_forge::theme as ui_theme;
 use tui_forge::Popup;
+use tui_forge::{FieldConfig, Form, FormAction};
 use tui_forge::{ListStateExt, MouseRegions};
 
 /// Focus area within the file browser
@@ -56,7 +55,6 @@ pub enum FileBrowserResult {
 }
 
 /// File browser component state
-#[derive(Debug)]
 pub struct FileBrowser {
     /// Whether the browser is currently open/active
     pub is_active: bool,
@@ -69,7 +67,7 @@ pub struct FileBrowser {
     /// Scrollbar state for the list
     pub scrollbar_state: ScrollbarState,
     /// Path input field
-    pub path_input: TextInput,
+    path_form: Form,
     /// Preview pane scroll offset
     pub preview_scroll: usize,
     /// Which pane currently has focus
@@ -100,7 +98,11 @@ impl FileBrowser {
             entries: Vec::new(),
             list_state: ListState::default(),
             scrollbar_state: ScrollbarState::new(0),
-            path_input: TextInput::new(),
+            path_form: Form::new().field(
+                "path",
+                tui_forge::TextInput::new(),
+                FieldConfig::new().label("Path Input"),
+            ),
             preview_scroll: 0,
             focus: FileBrowserFocus::List,
             mouse_regions: MouseRegions::new(),
@@ -114,7 +116,9 @@ impl FileBrowser {
     pub fn open(&mut self, path: PathBuf) {
         self.is_active = true;
         self.current_path = path.clone();
-        self.path_input.set_text(path.to_string_lossy().to_string());
+        self.path_form
+            .set_text("path", path.to_string_lossy().as_ref());
+        self.path_form.focus_field("path");
         self.list_state.select(Some(0));
         self.preview_scroll = 0;
         self.focus = FileBrowserFocus::List;
@@ -124,7 +128,7 @@ impl FileBrowser {
     /// Close the file browser
     pub fn close(&mut self) {
         self.is_active = false;
-        self.path_input.clear();
+        self.path_form.clear();
         self.entries.clear();
     }
 
@@ -204,7 +208,7 @@ impl FileBrowser {
 
                 match self.focus {
                     FileBrowserFocus::PathInput => {
-                        return self.handle_path_input(key.code, config);
+                        return self.handle_path_input(key, config);
                     }
                     FileBrowserFocus::List => {
                         return self.handle_list_navigation(key.code, config);
@@ -224,66 +228,64 @@ impl FileBrowser {
     }
 
     /// Handle path input field events
-    fn handle_path_input(
-        &mut self,
-        key_code: KeyCode,
-        _config: &Config,
-    ) -> Result<FileBrowserResult> {
-        match key_code {
-            KeyCode::Char(c) => {
-                self.path_input.insert_char(c);
-            }
-            KeyCode::Left | KeyCode::Right | KeyCode::Home | KeyCode::End => {
-                self.path_input.handle_key(key_code);
-            }
-            KeyCode::Backspace => {
-                self.path_input.backspace();
-            }
-            KeyCode::Delete => {
-                self.path_input.delete();
-            }
-            KeyCode::Enter => {
-                // Load path from input
-                let path_str = self.path_input.text_trimmed();
-                if !path_str.is_empty() {
-                    let full_path = crate::utils::expand_path(path_str);
-
-                    if full_path.exists() {
-                        if full_path.is_dir() {
-                            self.current_path = full_path.clone();
-                            self.path_input
-                                .set_text(self.current_path.to_string_lossy().to_string());
-                            self.list_state.select(Some(0));
-                            self.focus = FileBrowserFocus::List;
-                            self.refresh_entries();
-                            return Ok(FileBrowserResult::RefreshNeeded);
-                        } else {
-                            // It's a file - select it directly
-                            let home_dir = crate::utils::get_home_dir();
-                            let relative_path = full_path.strip_prefix(&home_dir).map_or_else(
-                                |_| full_path.to_string_lossy().to_string(),
-                                |p| p.to_string_lossy().to_string(),
-                            );
-
-                            self.close();
-                            return Ok(FileBrowserResult::Selected {
-                                full_path,
-                                relative_path,
-                            });
-                        }
-                    }
-                }
-            }
-            KeyCode::Tab => {
-                self.focus = FileBrowserFocus::List;
-            }
-            KeyCode::Esc => {
-                self.close();
-                return Ok(FileBrowserResult::Cancelled);
-            }
-            _ => {}
+    fn handle_path_input(&mut self, key: KeyEvent, config: &Config) -> Result<FileBrowserResult> {
+        let action = config.keymap.get_action(key.code, key.modifiers);
+        if matches!(action, Some(Action::Cancel | Action::Quit)) {
+            self.close();
+            return Ok(FileBrowserResult::Cancelled);
+        }
+        if matches!(action, Some(Action::NextTab)) {
+            self.focus = FileBrowserFocus::List;
+            return Ok(FileBrowserResult::None);
+        }
+        if matches!(action, Some(Action::Confirm)) {
+            return self.submit_path_input();
         }
 
+        match self.path_form.handle_event(&Event::Key(key)) {
+            FormAction::Submit => self.submit_path_input(),
+            FormAction::Consumed | FormAction::ValueChanged(_) | FormAction::Ignored => {
+                Ok(FileBrowserResult::None)
+            }
+        }
+    }
+
+    fn submit_path_input(&mut self) -> Result<FileBrowserResult> {
+        let path_str = self
+            .path_form
+            .values()
+            .text("path")
+            .unwrap_or_default()
+            .trim()
+            .to_string();
+        if !path_str.is_empty() {
+            let full_path = crate::utils::expand_path(&path_str);
+
+            if full_path.exists() {
+                if full_path.is_dir() {
+                    self.current_path = full_path.clone();
+                    self.path_form
+                        .set_text("path", self.current_path.to_string_lossy().as_ref());
+                    self.list_state.select(Some(0));
+                    self.focus = FileBrowserFocus::List;
+                    self.refresh_entries();
+                    return Ok(FileBrowserResult::RefreshNeeded);
+                }
+
+                // It's a file - select it directly
+                let home_dir = crate::utils::get_home_dir();
+                let relative_path = full_path.strip_prefix(&home_dir).map_or_else(
+                    |_| full_path.to_string_lossy().to_string(),
+                    |p| p.to_string_lossy().to_string(),
+                );
+
+                self.close();
+                return Ok(FileBrowserResult::Selected {
+                    full_path,
+                    relative_path,
+                });
+            }
+        }
         Ok(FileBrowserResult::None)
     }
 
@@ -350,13 +352,13 @@ impl FileBrowser {
                 // Handle special entries
                 if entry == Path::new("..") {
                     // Go to parent directory
-                    if let Some(parent) = self.current_path.parent() {
-                        self.current_path = parent.to_path_buf();
-                        self.path_input
-                            .set_text(self.current_path.to_string_lossy().to_string());
-                        self.list_state.select(Some(0));
-                        self.refresh_entries();
-                        return Ok(FileBrowserResult::RefreshNeeded);
+                        if let Some(parent) = self.current_path.parent() {
+                            self.current_path = parent.to_path_buf();
+                            self.path_form
+                                .set_text("path", self.current_path.to_string_lossy().as_ref());
+                            self.list_state.select(Some(0));
+                            self.refresh_entries();
+                            return Ok(FileBrowserResult::RefreshNeeded);
                     }
                 } else if entry == Path::new(".") {
                     // Add current folder
@@ -397,8 +399,8 @@ impl FileBrowser {
                     if full_path.is_dir() {
                         // Navigate into directory
                         self.current_path = full_path.clone();
-                        self.path_input
-                            .set_text(full_path.to_string_lossy().to_string());
+                        self.path_form
+                            .set_text("path", full_path.to_string_lossy().as_ref());
                         self.list_state.select(Some(0));
                         self.refresh_entries();
                         return Ok(FileBrowserResult::RefreshNeeded);
@@ -614,10 +616,12 @@ impl FileBrowser {
 
         // Path input field
         self.path_input_area = Some(chunks[1]);
-        let widget = TextInputWidget::new(&self.path_input)
-            .title("Path Input")
-            .focused(self.focus == FileBrowserFocus::PathInput);
-        frame.render_text_input_widget(widget, chunks[1]);
+        if self.focus == FileBrowserFocus::PathInput {
+            self.path_form.focus_field("path");
+        } else {
+            self.path_form.unfocus();
+        }
+        self.path_form.render_field(frame, chunks[1], "path");
 
         // Split list and preview horizontally
         let list_preview_chunks = Layout::default()

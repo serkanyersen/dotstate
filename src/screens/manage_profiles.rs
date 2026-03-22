@@ -4,7 +4,7 @@ use crate::screens::{ActionResult, RenderContext, Screen, ScreenAction, ScreenCo
 use crate::services::ProfileService;
 use crate::ui::Screen as ScreenId;
 use crate::utils::{focused_border_style, unfocused_border_style};
-use crate::widgets::{DotstateLogo, TextInputWidget, TextInputWidgetExt};
+use crate::widgets::DotstateLogo;
 use anyhow::Result;
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
 use ratatui::prelude::*;
@@ -17,6 +17,7 @@ use tracing::{error, info, warn};
 use tui_forge::theme;
 use tui_forge::DialogVariant;
 use tui_forge::Footer;
+use tui_forge::{FieldConfig, Form, FormAction};
 use tui_forge::Header;
 use tui_forge::MouseRegions;
 
@@ -61,15 +62,9 @@ pub struct ProfileManagerState {
     pub list_state: ListState,
     pub clickable_areas: MouseRegions<usize>,
     pub popup_type: ProfilePopupType,
-    // Create popup state
-    pub create_name_input: crate::utils::TextInput,
-    pub create_description_input: crate::utils::TextInput,
+    // Create popup state (form values are in `ManageProfilesScreen::create_form`)
     pub create_copy_from: Option<usize>, // Index of profile to copy from
     pub create_focused_field: CreateField, // Which field is focused
-    // Rename popup state
-    pub rename_input: crate::utils::TextInput,
-    // Delete popup state
-    pub delete_confirm_input: crate::utils::TextInput,
     // Clickable areas for form fields (for mouse support)
     pub create_name_area: Option<Rect>,
     pub create_description_area: Option<Rect>,
@@ -86,12 +81,8 @@ impl Default for ProfileManagerState {
             list_state: ListState::default(),
             clickable_areas: MouseRegions::new(),
             popup_type: ProfilePopupType::None,
-            create_name_input: crate::utils::TextInput::new(),
-            create_description_input: crate::utils::TextInput::new(),
             create_copy_from: None,
             create_focused_field: CreateField::Name,
-            rename_input: crate::utils::TextInput::new(),
-            delete_confirm_input: crate::utils::TextInput::new(),
             create_name_area: None,
             create_description_area: None,
             create_copy_from_area: None,
@@ -103,6 +94,9 @@ impl Default for ProfileManagerState {
 
 pub struct ManageProfilesScreen {
     pub state: ProfileManagerState,
+    create_form: Form,
+    rename_form: Form,
+    delete_form: Form,
 }
 
 impl Default for ManageProfilesScreen {
@@ -112,10 +106,43 @@ impl Default for ManageProfilesScreen {
 }
 
 impl ManageProfilesScreen {
+    fn create_popup_form() -> Form {
+        Form::new()
+            .field(
+                "name",
+                tui_forge::TextInput::new().placeholder("e.g., Personal-Mac, Work-Linux"),
+                FieldConfig::new().label("Profile Name").required(),
+            )
+            .field(
+                "description",
+                tui_forge::TextInput::new(),
+                FieldConfig::new().label("Description (optional)"),
+            )
+    }
+
+    fn rename_popup_form() -> Form {
+        Form::new().field(
+            "new_name",
+            tui_forge::TextInput::new().placeholder("Enter new profile name"),
+            FieldConfig::new().label("New Name").required(),
+        )
+    }
+
+    fn delete_popup_form() -> Form {
+        Form::new().field(
+            "confirm_name",
+            tui_forge::TextInput::new(),
+            FieldConfig::new().label("Type profile name to confirm").required(),
+        )
+    }
+
     #[must_use]
     pub fn new() -> Self {
         Self {
             state: ProfileManagerState::default(),
+            create_form: Self::create_popup_form(),
+            rename_form: Self::rename_popup_form(),
+            delete_form: Self::delete_popup_form(),
         }
     }
 
@@ -385,6 +412,7 @@ impl ManageProfilesScreen {
                             && y < area.y + area.height
                         {
                             self.state.create_focused_field = CreateField::Name;
+                            self.create_form.focus_field("name");
                             return ScreenAction::Refresh;
                         }
                     }
@@ -395,6 +423,7 @@ impl ManageProfilesScreen {
                             && y < area.y + area.height
                         {
                             self.state.create_focused_field = CreateField::Description;
+                            self.create_form.focus_field("description");
                             return ScreenAction::Refresh;
                         }
                     }
@@ -705,11 +734,7 @@ impl ManageProfilesScreen {
         self.state.create_copy_from_area = Some(chunks[3]);
 
         // Name input
-        let widget = TextInputWidget::new(&self.state.create_name_input)
-            .title("Profile Name")
-            .placeholder("e.g., Personal-Mac, Work-Linux")
-            .focused(self.state.create_focused_field == CreateField::Name);
-        frame.render_text_input_widget(widget, chunks[0]);
+        self.create_form.render_field(frame, chunks[0], "name");
 
         // Error message
         if let Some(msg) = &self.state.error_message {
@@ -720,10 +745,7 @@ impl ManageProfilesScreen {
         }
 
         // Description input
-        let widget = TextInputWidget::new(&self.state.create_description_input)
-            .title("Description (optional)")
-            .focused(self.state.create_focused_field == CreateField::Description);
-        frame.render_text_input_widget(widget, chunks[2]);
+        self.create_form.render_field(frame, chunks[2], "description");
 
         // Copy from option - show list of profiles to select from
         let is_focused = self.state.create_focused_field == CreateField::CopyFrom;
@@ -924,11 +946,7 @@ impl ManageProfilesScreen {
             .split(result.content_area);
 
         // Name input
-        let widget = TextInputWidget::new(&self.state.rename_input)
-            .title("New Name")
-            .placeholder("Enter new profile name")
-            .focused(true);
-        frame.render_text_input_widget(widget, chunks[0]);
+        self.rename_form.render_field(frame, chunks[0], "new_name");
 
         // Error message
         if let Some(msg) = &self.state.error_message {
@@ -1005,26 +1023,19 @@ impl ManageProfilesScreen {
         frame.render_widget(dialog, area);
 
         // For non-active profiles, render confirmation input below the dialog
-        if let Some(p) = profile {
-            if !is_active {
-                // Calculate dialog position to match Dialog's internal calculation
-                let dialog_height =
-                    (f32::from(area.height) * (f32::from(dialog_height) / 100.0)) as u16;
-                let dialog_y = area.y + (area.height.saturating_sub(dialog_height)) / 2;
-                let input_y = dialog_y + dialog_height + 2; // 2 lines spacing
+        if profile.is_some() && !is_active {
+            // Calculate dialog position to match Dialog's internal calculation
+            let dialog_height = (f32::from(area.height) * (f32::from(dialog_height) / 100.0)) as u16;
+            let dialog_y = area.y + (area.height.saturating_sub(dialog_height)) / 2;
+            let input_y = dialog_y + dialog_height + 2; // 2 lines spacing
 
-                if input_y + 3 <= area.height {
-                    // Center a 50-char wide input, matching dialog width approximately
-                    let input_width = 60.min(area.width);
-                    let input_x = area.x + (area.width.saturating_sub(input_width)) / 2;
-                    let input_area = Rect::new(input_x, input_y, input_width, 3);
+            if input_y + 3 <= area.height {
+                // Center a 50-char wide input, matching dialog width approximately
+                let input_width = 60.min(area.width);
+                let input_x = area.x + (area.width.saturating_sub(input_width)) / 2;
+                let input_area = Rect::new(input_x, input_y, input_width, 3);
 
-                    let widget = TextInputWidget::new(&self.state.delete_confirm_input)
-                        .title("Type profile name to confirm")
-                        .placeholder(&p.name)
-                        .focused(true);
-                    frame.render_text_input_widget(widget, input_area);
-                }
+                self.delete_form.render_field(frame, input_area, "confirm_name");
             }
         }
 
@@ -1106,30 +1117,59 @@ impl Screen for ManageProfilesScreen {
 
                     match self.state.popup_type {
                         ProfilePopupType::Create => {
-                            // For plain character keys, ALWAYS insert the character first
-                            // This ensures vim bindings like h/l don't interfere with typing
-                            if let KeyCode::Char(c) = key.code {
-                                if !key.modifiers.intersects(
-                                    KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SUPER,
-                                ) {
-                                    match self.state.create_focused_field {
-                                        CreateField::Name => {
-                                            self.state.create_name_input.insert_char(c);
-                                        }
-                                        CreateField::Description => {
-                                            self.state.create_description_input.insert_char(c);
-                                        }
-                                        _ => {}
-                                    }
+                            let submit_create = |screen: &mut Self| -> Result<ScreenAction> {
+                                let name = screen
+                                    .create_form
+                                    .values()
+                                    .text("name")
+                                    .unwrap_or_default()
+                                    .trim()
+                                    .to_string();
+                                if name.is_empty() {
+                                    return Ok(ScreenAction::None);
+                                }
+                                if name.eq_ignore_ascii_case("common") {
+                                    screen.state.error_message =
+                                        Some("Name 'common' is reserved".to_string());
                                     return Ok(ScreenAction::Refresh);
                                 }
-                            }
 
-                            // Handle actions for non-character keys (arrows, Tab, Esc, etc.)
+                                let description_text = screen
+                                    .create_form
+                                    .values()
+                                    .text("description")
+                                    .unwrap_or_default()
+                                    .trim()
+                                    .to_string();
+                                let description = if description_text.is_empty() {
+                                    None
+                                } else {
+                                    Some(description_text)
+                                };
+
+                                let copy_from = screen.state.create_copy_from;
+                                screen.state.popup_type = ProfilePopupType::None;
+                                screen.create_form.clear();
+                                screen.create_form.focus_field("name");
+                                screen.state.create_focused_field = CreateField::Name;
+                                screen.state.create_copy_from = None;
+                                screen.state.error_message = None;
+                                Ok(ScreenAction::CreateProfile {
+                                    name,
+                                    description,
+                                    copy_from,
+                                })
+                            };
+
                             if let Some(action) = action.clone() {
                                 match action {
                                     Action::Cancel => {
                                         self.state.popup_type = ProfilePopupType::None;
+                                        self.create_form.clear();
+                                        self.create_form.focus_field("name");
+                                        self.state.create_focused_field = CreateField::Name;
+                                        self.state.create_copy_from = None;
+                                        self.state.error_message = None;
                                         return Ok(ScreenAction::Refresh);
                                     }
                                     Action::NextTab => {
@@ -1139,6 +1179,13 @@ impl Screen for ManageProfilesScreen {
                                                 CreateField::Description => CreateField::CopyFrom,
                                                 CreateField::CopyFrom => CreateField::Name,
                                             };
+                                        match self.state.create_focused_field {
+                                            CreateField::Name => self.create_form.focus_field("name"),
+                                            CreateField::Description => {
+                                                self.create_form.focus_field("description");
+                                            }
+                                            CreateField::CopyFrom => {}
+                                        }
                                         return Ok(ScreenAction::Refresh);
                                     }
                                     Action::PrevTab => {
@@ -1148,360 +1195,187 @@ impl Screen for ManageProfilesScreen {
                                                 CreateField::Description => CreateField::Name,
                                                 CreateField::CopyFrom => CreateField::Description,
                                             };
+                                        match self.state.create_focused_field {
+                                            CreateField::Name => self.create_form.focus_field("name"),
+                                            CreateField::Description => {
+                                                self.create_form.focus_field("description");
+                                            }
+                                            CreateField::CopyFrom => {}
+                                        }
                                         return Ok(ScreenAction::Refresh);
                                     }
-                                    Action::Confirm => {
-                                        // Logic for CopyFrom selection vs Creation
-                                        if self.state.create_focused_field == CreateField::CopyFrom
-                                        {
-
-                                            // This logic depends on us knowing how many profiles there are to wrap/clamp.
-                                            // We probably need to fetch profiles here too to do accurate selection logic?
-                                            // Or simplified: Just handle Enter as "Create".
-                                            // The original code handled Enter as create unless in CopyFrom list partial selection?
-                                            // Actually original code (lines 1334-1353) handled detailed selection logic.
-                                            // "If Copy From is focused, select the current item first, then create"
-                                            // Wait, if we are in CopyFrom, Enter usually means "Select this option".
-                                            // But line 1355 says "Enter always creates, regardless of focus".
-                                            // So we should just proceed to create.
-                                        }
-
-                                        if !self.state.create_name_input.text().is_empty() {
-                                            let name =
-                                                self.state.create_name_input.text().to_string();
-
-                                            // Validate reserved name
-                                            if name.eq_ignore_ascii_case("common") {
-                                                self.state.error_message =
-                                                    Some("Name 'common' is reserved".to_string());
-                                                return Ok(ScreenAction::Refresh);
-                                            }
-
-                                            let description = if self
-                                                .state
-                                                .create_description_input
-                                                .text()
-                                                .is_empty()
-                                            {
-                                                None
-                                            } else {
-                                                Some(
-                                                    self.state
-                                                        .create_description_input
-                                                        .text()
-                                                        .to_string(),
-                                                )
-                                            };
-                                            let copy_from = self.state.create_copy_from;
-
-                                            // Reset state
-                                            self.state.popup_type = ProfilePopupType::None;
-                                            self.state.create_name_input.clear();
-                                            self.state.create_description_input.clear();
-                                            self.state.create_focused_field = CreateField::Name;
-                                            self.state.error_message = None;
-
-                                            return Ok(ScreenAction::CreateProfile {
-                                                name,
-                                                description,
-                                                copy_from,
-                                            });
-                                        }
-                                        return Ok(ScreenAction::None);
-                                    }
-                                    _ => {}
-                                }
-                            }
-
-                            // Handle text input and specific navigation
-                            match action {
-                                Some(Action::MoveUp) => {
-                                    if self.state.create_focused_field == CreateField::CopyFrom {
-                                        let current =
-                                            self.state.create_copy_from.map_or(0, |i| i + 1);
+                                    Action::Confirm => return submit_create(self),
+                                    Action::MoveUp if self.state.create_focused_field == CreateField::CopyFrom => {
+                                        let current = self.state.create_copy_from.map_or(0, |i| i + 1);
                                         if current > 0 {
                                             let new_val = current - 1;
-                                            self.state.create_copy_from = if new_val == 0 {
-                                                None
-                                            } else {
-                                                Some(new_val - 1)
-                                            };
+                                            self.state.create_copy_from =
+                                                if new_val == 0 { None } else { Some(new_val - 1) };
                                             return Ok(ScreenAction::Refresh);
                                         }
                                     }
-                                }
-                                Some(Action::MoveDown) => {
-                                    if self.state.create_focused_field == CreateField::CopyFrom {
-                                        // We need profile count to limit.
-                                        // We need profile count to limit.
-                                        let profiles = &self.state.profiles;
-                                        let total = profiles.len() + 1; // +1 for "Blank"
-                                        let current =
-                                            self.state.create_copy_from.map_or(0, |i| i + 1);
+                                    Action::MoveDown if self.state.create_focused_field == CreateField::CopyFrom => {
+                                        let total = self.state.profiles.len() + 1; // +1 blank
+                                        let current = self.state.create_copy_from.map_or(0, |i| i + 1);
                                         if current < total - 1 {
                                             let new_val = current + 1;
                                             self.state.create_copy_from = Some(new_val - 1);
                                             return Ok(ScreenAction::Refresh);
                                         }
                                     }
+                                    _ => {}
                                 }
-                                _ => {
-                                    if let Some(act) = action {
-                                        match act {
-                                            Action::MoveLeft => {
-                                                match self.state.create_focused_field {
-                                                    CreateField::Name => {
-                                                        self.state.create_name_input.move_left();
-                                                    }
-                                                    CreateField::Description => self
-                                                        .state
-                                                        .create_description_input
-                                                        .move_left(),
-                                                    _ => {}
-                                                }
-                                                return Ok(ScreenAction::Refresh);
-                                            }
-                                            Action::MoveRight => {
-                                                match self.state.create_focused_field {
-                                                    CreateField::Name => {
-                                                        self.state.create_name_input.move_right();
-                                                    }
-                                                    CreateField::Description => self
-                                                        .state
-                                                        .create_description_input
-                                                        .move_right(),
-                                                    _ => {}
-                                                }
-                                                return Ok(ScreenAction::Refresh);
-                                            }
-                                            Action::Home => {
-                                                match self.state.create_focused_field {
-                                                    CreateField::Name => {
-                                                        self.state.create_name_input.move_home();
-                                                    }
-                                                    CreateField::Description => self
-                                                        .state
-                                                        .create_description_input
-                                                        .move_home(),
-                                                    _ => {}
-                                                }
-                                                return Ok(ScreenAction::Refresh);
-                                            }
-                                            Action::End => {
-                                                match self.state.create_focused_field {
-                                                    CreateField::Name => {
-                                                        self.state.create_name_input.move_end();
-                                                    }
-                                                    CreateField::Description => self
-                                                        .state
-                                                        .create_description_input
-                                                        .move_end(),
-                                                    _ => {}
-                                                }
-                                                return Ok(ScreenAction::Refresh);
-                                            }
-                                            Action::Backspace => {
-                                                match self.state.create_focused_field {
-                                                    CreateField::Name => {
-                                                        self.state.create_name_input.backspace();
-                                                    }
-                                                    CreateField::Description => self
-                                                        .state
-                                                        .create_description_input
-                                                        .backspace(),
-                                                    _ => {}
-                                                }
-                                                return Ok(ScreenAction::Refresh);
-                                            }
-                                            Action::DeleteChar => {
-                                                match self.state.create_focused_field {
-                                                    CreateField::Name => {
-                                                        self.state.create_name_input.delete();
-                                                    }
-                                                    CreateField::Description => {
-                                                        self.state
-                                                            .create_description_input
-                                                            .delete();
-                                                    }
-                                                    _ => {}
-                                                }
-                                                return Ok(ScreenAction::Refresh);
-                                            }
-                                            _ => {}
-                                        }
-                                    }
+                            }
 
-                                    // Char input
-                                    if let KeyCode::Char(c) = key.code {
-                                        if !key.modifiers.intersects(
-                                            KeyModifiers::CONTROL
-                                                | KeyModifiers::ALT
-                                                | KeyModifiers::SUPER,
-                                        ) {
-                                            match self.state.create_focused_field {
-                                                CreateField::Name => {
-                                                    self.state.create_name_input.insert_char(c);
-                                                }
-                                                CreateField::Description => {
-                                                    self.state
-                                                        .create_description_input
-                                                        .insert_char(c);
-                                                }
-                                                _ => {}
-                                            }
-                                            return Ok(ScreenAction::Refresh);
-                                        }
+                            if matches!(
+                                self.state.create_focused_field,
+                                CreateField::Name | CreateField::Description
+                            ) {
+                                match self.create_form.handle_event(&Event::Key(key)) {
+                                    FormAction::Submit => return submit_create(self),
+                                    FormAction::Consumed | FormAction::ValueChanged(_) => {
+                                        return Ok(ScreenAction::Refresh);
                                     }
+                                    FormAction::Ignored => {}
                                 }
                             }
                         }
                         ProfilePopupType::Rename => {
-                            // For plain character keys, ALWAYS insert the character first
-                            // This ensures vim bindings like h/l don't interfere with typing
-                            if let KeyCode::Char(c) = key.code {
-                                if !key.modifiers.intersects(
-                                    KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SUPER,
-                                ) {
-                                    self.state.rename_input.insert_char(c);
-                                    return Ok(ScreenAction::Refresh);
-                                }
-                            }
-
-                            // Handle actions for non-character keys (arrows, Tab, Esc, etc.)
                             if let Some(action) = action.clone() {
                                 match action {
                                     Action::Cancel => {
                                         self.state.popup_type = ProfilePopupType::None;
+                                        self.rename_form.clear();
+                                        self.state.error_message = None;
                                         return Ok(ScreenAction::Refresh);
                                     }
                                     Action::Confirm => {
-                                        if !self.state.rename_input.text().is_empty() {
-                                            let new_name =
-                                                self.state.rename_input.text().to_string();
-
-                                            // Validate reserved name
-                                            if new_name.eq_ignore_ascii_case("common") {
-                                                self.state.error_message =
-                                                    Some("Name 'common' is reserved".to_string());
-                                                return Ok(ScreenAction::Refresh);
-                                            }
-
-                                            if let Some(idx) = self.state.list_state.selected() {
-                                                let profiles = &self.state.profiles;
-                                                if let Some(profile) = profiles.get(idx) {
-                                                    let old_name = profile.name.clone();
-                                                    self.state.popup_type = ProfilePopupType::None;
-                                                    self.state.rename_input.clear();
-                                                    self.state.error_message = None;
-                                                    return Ok(ScreenAction::RenameProfile {
-                                                        old_name,
-                                                        new_name,
-                                                    });
-                                                }
+                                        let new_name = self
+                                            .rename_form
+                                            .values()
+                                            .text("new_name")
+                                            .unwrap_or_default()
+                                            .trim()
+                                            .to_string();
+                                        if new_name.is_empty() {
+                                            return Ok(ScreenAction::None);
+                                        }
+                                        if new_name.eq_ignore_ascii_case("common") {
+                                            self.state.error_message =
+                                                Some("Name 'common' is reserved".to_string());
+                                            return Ok(ScreenAction::Refresh);
+                                        }
+                                        if let Some(idx) = self.state.list_state.selected() {
+                                            if let Some(profile) = self.state.profiles.get(idx) {
+                                                let old_name = profile.name.clone();
+                                                self.state.popup_type = ProfilePopupType::None;
+                                                self.rename_form.clear();
+                                                self.state.error_message = None;
+                                                return Ok(ScreenAction::RenameProfile {
+                                                    old_name,
+                                                    new_name,
+                                                });
                                             }
                                         }
                                         return Ok(ScreenAction::None);
                                     }
-                                    Action::Backspace => {
-                                        self.state.rename_input.backspace();
-                                        return Ok(ScreenAction::Refresh);
-                                    }
-                                    Action::DeleteChar => {
-                                        self.state.rename_input.delete();
-                                        return Ok(ScreenAction::Refresh);
-                                    }
-                                    Action::MoveLeft => {
-                                        self.state.rename_input.move_left();
-                                        return Ok(ScreenAction::Refresh);
-                                    }
-                                    Action::MoveRight => {
-                                        self.state.rename_input.move_right();
-                                        return Ok(ScreenAction::Refresh);
-                                    }
-                                    Action::Home => {
-                                        self.state.rename_input.move_home();
-                                        return Ok(ScreenAction::Refresh);
-                                    }
-                                    Action::End => {
-                                        self.state.rename_input.move_end();
-                                        return Ok(ScreenAction::Refresh);
-                                    }
                                     _ => {}
                                 }
+                            }
+
+                            match self.rename_form.handle_event(&Event::Key(key)) {
+                                FormAction::Submit => {
+                                    let new_name = self
+                                        .rename_form
+                                        .values()
+                                        .text("new_name")
+                                        .unwrap_or_default()
+                                        .trim()
+                                        .to_string();
+                                    if new_name.is_empty() {
+                                        return Ok(ScreenAction::None);
+                                    }
+                                    if new_name.eq_ignore_ascii_case("common") {
+                                        self.state.error_message =
+                                            Some("Name 'common' is reserved".to_string());
+                                        return Ok(ScreenAction::Refresh);
+                                    }
+                                    if let Some(idx) = self.state.list_state.selected() {
+                                        if let Some(profile) = self.state.profiles.get(idx) {
+                                            let old_name = profile.name.clone();
+                                            self.state.popup_type = ProfilePopupType::None;
+                                            self.rename_form.clear();
+                                            self.state.error_message = None;
+                                            return Ok(ScreenAction::RenameProfile {
+                                                old_name,
+                                                new_name,
+                                            });
+                                        }
+                                    }
+                                }
+                                FormAction::Consumed | FormAction::ValueChanged(_) => {
+                                    return Ok(ScreenAction::Refresh);
+                                }
+                                FormAction::Ignored => {}
                             }
                         }
                         ProfilePopupType::Delete => {
-                            // For plain character keys, ALWAYS insert the character first
-                            // This ensures vim bindings like h/l don't interfere with typing
-                            if let KeyCode::Char(c) = key.code {
-                                if !key.modifiers.intersects(
-                                    KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SUPER,
-                                ) {
-                                    self.state.delete_confirm_input.insert_char(c);
-                                    return Ok(ScreenAction::Refresh);
-                                }
-                            }
-
-                            // Handle actions for non-character keys (arrows, Tab, Esc, etc.)
-                            if let Some(action) = action.clone() {
-                                match action {
-                                    Action::Cancel => {
-                                        self.state.popup_type = ProfilePopupType::None;
-                                        return Ok(ScreenAction::Refresh);
-                                    }
-                                    Action::Confirm => {
-                                        if let Some(idx) = self.state.list_state.selected() {
-                                            let profiles = &self.state.profiles;
-                                            if let Some(profile) = profiles.get(idx) {
-                                                if self.state.delete_confirm_input.text()
-                                                    == profile.name
-                                                {
+                            if let Some(idx) = self.state.list_state.selected() {
+                                if let Some(profile) = self.state.profiles.get(idx) {
+                                    let is_active = profile.name == ctx.config.active_profile;
+                                    if let Some(action) = action.clone() {
+                                        match action {
+                                            Action::Cancel => {
+                                                self.state.popup_type = ProfilePopupType::None;
+                                                self.delete_form.clear();
+                                                return Ok(ScreenAction::Refresh);
+                                            }
+                                            Action::Confirm => {
+                                                if is_active {
+                                                    self.state.popup_type = ProfilePopupType::None;
+                                                    return Ok(ScreenAction::Refresh);
+                                                }
+                                                let typed = self
+                                                    .delete_form
+                                                    .values()
+                                                    .text("confirm_name")
+                                                    .unwrap_or_default()
+                                                    .trim()
+                                                    .to_string();
+                                                if typed == profile.name {
                                                     let name = profile.name.clone();
                                                     self.state.popup_type = ProfilePopupType::None;
-                                                    self.state.delete_confirm_input.clear();
-                                                    return Ok(ScreenAction::DeleteProfile {
-                                                        name,
-                                                    });
+                                                    self.delete_form.clear();
+                                                    return Ok(ScreenAction::DeleteProfile { name });
+                                                }
+                                                return Ok(ScreenAction::None);
+                                            }
+                                            _ => {}
+                                        }
+                                    }
+                                    if !is_active {
+                                        match self.delete_form.handle_event(&Event::Key(key)) {
+                                            FormAction::Submit => {
+                                                let typed = self
+                                                    .delete_form
+                                                    .values()
+                                                    .text("confirm_name")
+                                                    .unwrap_or_default()
+                                                    .trim()
+                                                    .to_string();
+                                                if typed == profile.name {
+                                                    let name = profile.name.clone();
+                                                    self.state.popup_type = ProfilePopupType::None;
+                                                    self.delete_form.clear();
+                                                    return Ok(ScreenAction::DeleteProfile { name });
                                                 }
                                             }
+                                            FormAction::Consumed | FormAction::ValueChanged(_) => {
+                                                return Ok(ScreenAction::Refresh);
+                                            }
+                                            FormAction::Ignored => {}
                                         }
-                                        // If input doesn't match or whatever, maybe shake or just do nothing?
-                                        // Original just did nothing.
-                                        return Ok(ScreenAction::None);
                                     }
-                                    Action::Backspace => {
-                                        self.state.delete_confirm_input.backspace();
-                                        return Ok(ScreenAction::Refresh);
-                                    }
-                                    Action::DeleteChar => {
-                                        self.state.delete_confirm_input.delete();
-                                        return Ok(ScreenAction::Refresh);
-                                    }
-                                    Action::MoveLeft => {
-                                        self.state.delete_confirm_input.move_left();
-                                        return Ok(ScreenAction::Refresh);
-                                    }
-                                    Action::MoveRight => {
-                                        self.state.delete_confirm_input.move_right();
-                                        return Ok(ScreenAction::Refresh);
-                                    }
-                                    Action::Home => {
-                                        self.state.delete_confirm_input.move_home();
-                                        return Ok(ScreenAction::Refresh);
-                                    }
-                                    Action::End => {
-                                        self.state.delete_confirm_input.move_end();
-                                        return Ok(ScreenAction::Refresh);
-                                    }
-                                    _ => {}
-                                }
-                            }
-                            if let KeyCode::Char(c) = key.code {
-                                if !key.modifiers.intersects(
-                                    KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SUPER,
-                                ) {
-                                    self.state.delete_confirm_input.insert_char(c);
-                                    return Ok(ScreenAction::Refresh);
                                 }
                             }
                         }
@@ -1565,10 +1439,11 @@ impl Screen for ManageProfilesScreen {
                         }
                         Action::Create => {
                             self.state.popup_type = ProfilePopupType::Create;
-                            self.state.create_name_input.clear();
-                            self.state.create_description_input.clear();
+                            self.create_form.clear();
+                            self.create_form.focus_field("name");
                             self.state.create_focused_field = CreateField::Name;
                             self.state.create_copy_from = None;
+                            self.state.error_message = None;
                             return Ok(ScreenAction::Refresh);
                         }
                         Action::Edit => {
@@ -1577,8 +1452,10 @@ impl Screen for ManageProfilesScreen {
                                 let profiles = &self.state.profiles;
                                 if let Some(profile) = profiles.get(idx) {
                                     self.state.popup_type = ProfilePopupType::Rename;
-                                    self.state.rename_input =
-                                        crate::utils::TextInput::with_text(&profile.name);
+                                    self.rename_form.clear();
+                                    self.rename_form.set_text("new_name", &profile.name);
+                                    self.rename_form.focus_field("new_name");
+                                    self.state.error_message = None;
                                     return Ok(ScreenAction::Refresh);
                                 }
                             }
@@ -1588,7 +1465,7 @@ impl Screen for ManageProfilesScreen {
                                 let profiles = &self.state.profiles;
                                 if profiles.get(idx).is_some() {
                                     self.state.popup_type = ProfilePopupType::Delete;
-                                    self.state.delete_confirm_input.clear();
+                                    self.delete_form.clear();
                                     return Ok(ScreenAction::Refresh);
                                 }
                             }
