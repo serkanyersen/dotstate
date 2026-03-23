@@ -625,12 +625,13 @@ impl ProfileManifest {
     /// Set the `inherits` field for a profile.
     pub fn set_inherits(&mut self, profile_name: &str, inherits: Option<String>) -> Result<()> {
         if let Some(profile) = self.profiles.iter_mut().find(|p| p.name == profile_name) {
+            let old_inherits = profile.inherits.clone();
             profile.inherits = inherits;
             // Validate the whole manifest to catch cycles
             if let Err(e) = self.validate_inheritance() {
                 // Revert
                 if let Some(p) = self.profiles.iter_mut().find(|p| p.name == profile_name) {
-                    p.inherits = None;
+                    p.inherits = old_inherits;
                 }
                 return Err(e);
             }
