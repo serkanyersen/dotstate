@@ -17,6 +17,7 @@ use ratatui::widgets::{
     Block, Borders, Clear, List, ListItem, ListState, Paragraph, Scrollbar, ScrollbarOrientation,
     Wrap,
 };
+use std::collections::HashMap;
 use std::path::Path;
 use tracing::{error, info, warn};
 
@@ -80,6 +81,8 @@ pub struct ProfileManagerState {
     pub create_copy_from_area: Option<Rect>,
     // Cached profiles to reduce disk I/O
     pub profiles: Vec<crate::utils::ProfileInfo>,
+    // Cached resolved files per profile (includes inherited + common)
+    pub resolved_files: HashMap<String, Vec<crate::utils::ResolvedFile>>,
     // Validation error message
     pub error_message: Option<String>,
 }
@@ -102,6 +105,7 @@ impl Default for ProfileManagerState {
             create_inherits_from_area: None,
             create_copy_from_area: None,
             profiles: Vec::new(),
+            resolved_files: HashMap::new(),
             error_message: None,
         }
     }
@@ -129,6 +133,19 @@ impl ManageProfilesScreen {
     pub fn refresh_profiles(&mut self, repo_path: &std::path::Path) -> Result<()> {
         let profiles = crate::services::ProfileService::get_profiles(repo_path)?;
         self.state.profiles = profiles;
+
+        // Cache resolved files for each profile
+        self.state.resolved_files.clear();
+        if let Ok(manifest) = crate::utils::ProfileManifest::load_or_backfill(repo_path) {
+            for profile in &self.state.profiles {
+                if let Ok(resolved) = manifest.resolve_files(&profile.name) {
+                    self.state
+                        .resolved_files
+                        .insert(profile.name.clone(), resolved);
+                }
+            }
+        }
+
         // Initialize list selection to first item if profiles exist
         if !self.state.profiles.is_empty() {
             self.state.list_state.select(Some(0));
@@ -580,21 +597,17 @@ impl ManageProfilesScreen {
 
             let description = profile.description.as_deref().unwrap_or("No description");
 
-            // Resolve files for display (includes inherited + common)
-            let manifest = crate::utils::ProfileManifest::load_or_backfill(&config.repo_path);
-            let resolved = manifest
-                .as_ref()
-                .ok()
-                .and_then(|m| m.resolve_files(&profile.name).ok());
+            // Use cached resolved files (populated in refresh_profiles)
+            let resolved = self.state.resolved_files.get(&profile.name);
 
             let own_files_count = profile.synced_files.len();
-            let total_files_count = resolved.as_ref().map_or(own_files_count, Vec::len);
+            let total_files_count = resolved.map_or(own_files_count, Vec::len);
             let inherited_count = total_files_count.saturating_sub(own_files_count);
 
             let files_text = if total_files_count == 0 {
                 "No files synced".to_string()
             } else if inherited_count > 0 {
-                let common_count = resolved.as_ref().map_or(0, |r| {
+                let common_count = resolved.map_or(0, |r| {
                     r.iter().filter(|f| f.source_profile == "common").count()
                 });
                 let from_parents = inherited_count.saturating_sub(common_count);
@@ -611,7 +624,7 @@ impl ManageProfilesScreen {
             };
 
             // Show resolved file list with source annotations for inherited files
-            let display_files: Vec<String> = if let Some(ref resolved) = resolved {
+            let display_files: Vec<String> = if let Some(resolved) = resolved {
                 resolved
                     .iter()
                     .take(10)
