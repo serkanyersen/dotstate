@@ -230,7 +230,7 @@ impl ProfileSelectionScreen {
         match action {
             ProfileSelectionAction::CreateAndActivateProfile { name } => {
                 // First create the profile
-                match ProfileService::create_profile(&config.repo_path, &name, None, None) {
+                match ProfileService::create_profile(&config.repo_path, &name, None, None, None) {
                     Ok(sanitized_name) => {
                         info!("Created profile '{}' during setup", sanitized_name);
                         // Then activate it

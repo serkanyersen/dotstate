@@ -108,6 +108,7 @@ impl ProfileService {
         name: &str,
         description: Option<String>,
         copy_from: Option<usize>,
+        inherits: Option<String>,
     ) -> Result<String> {
         // Validate and sanitize profile name
         let sanitized_name = sanitize_profile_name(name);
@@ -177,8 +178,8 @@ impl ProfileService {
             Vec::new()
         };
 
-        // Add profile to manifest with synced_files
-        manifest.add_profile(sanitized_name.clone(), description);
+        // Add profile to manifest with synced_files and optional inheritance
+        manifest.add_profile_with_inherits(sanitized_name.clone(), description, inherits);
         // Update synced_files for the newly added profile
         manifest.update_synced_files(&sanitized_name, synced_files)?;
         Self::save_manifest(repo_path, &manifest)?;
@@ -602,7 +603,7 @@ mod tests {
 
     #[test]
     fn test_sanitize_empty_name() {
-        let result = ProfileService::create_profile(&PathBuf::from("/tmp"), "", None, None);
+        let result = ProfileService::create_profile(&PathBuf::from("/tmp"), "", None, None, None);
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("cannot be empty"));
     }

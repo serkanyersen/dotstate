@@ -174,22 +174,14 @@ impl ManageProfilesScreen {
     ) -> Result<ActionResult> {
         info!("Creating profile: {} (inherits: {:?})", name, inherits);
 
-        match ProfileService::create_profile(&config.repo_path, name, description, copy_from) {
+        match ProfileService::create_profile(
+            &config.repo_path,
+            name,
+            description,
+            copy_from,
+            inherits.clone(),
+        ) {
             Ok(sanitized_name) => {
-                // Set inherits if specified
-                if let Some(parent) = &inherits {
-                    if let Ok(mut manifest) = ProfileService::load_manifest(&config.repo_path) {
-                        if let Err(e) = manifest.set_inherits(&sanitized_name, Some(parent.clone()))
-                        {
-                            warn!("Failed to set inheritance for '{}': {}", sanitized_name, e);
-                        } else if let Err(e) =
-                            ProfileService::save_manifest(&config.repo_path, &manifest)
-                        {
-                            warn!("Failed to save manifest after setting inheritance: {}", e);
-                        }
-                    }
-                }
-
                 info!("Profile '{}' created successfully", sanitized_name);
 
                 // Refresh the profiles list
