@@ -347,6 +347,16 @@ impl Icons {
     }
 
     #[must_use]
+    pub fn inherits(&self) -> &'static str {
+        match self.icon_set {
+            IconSet::NerdFonts => "\u{f062}", // Arrow up
+            IconSet::Unicode => "↑",
+            IconSet::Emoji => "↑",
+            IconSet::Ascii => "^",
+        }
+    }
+
+    #[must_use]
     pub fn cog(&self) -> &'static str {
         match self.icon_set {
             IconSet::NerdFonts => "\u{f013}", // Cog/gear icon

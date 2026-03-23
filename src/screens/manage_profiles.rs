@@ -503,7 +503,11 @@ impl ManageProfilesScreen {
                     format!("{file_count} files")
                 };
 
-                let inherit_text = if profile.inherits.is_some() { " *" } else { "" };
+                let inherit_text = if profile.inherits.is_some() {
+                    format!(" {}", icons.inherits())
+                } else {
+                    String::new()
+                };
 
                 let text = format!("{} {}{} ({})", icon, profile.name, inherit_text, file_text);
                 ListItem::new(text).style(name_style)
