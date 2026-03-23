@@ -22,7 +22,7 @@ pub struct ResolvedFile {
 }
 
 /// Package manager types
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "lowercase")]
 pub enum PackageManager {
     Brew,   // Homebrew (macOS/Linux)
@@ -570,12 +570,12 @@ impl ProfileManifest {
 
         // Walk from root ancestor to child so child overrides parent
         // Key: (package_name, manager) -> Package
-        let mut pkg_map: HashMap<(String, String), Package> = HashMap::new();
+        let mut pkg_map: HashMap<(String, PackageManager), Package> = HashMap::new();
 
         for profile_name in chain.iter().rev() {
             if let Some(profile) = self.profiles.iter().find(|p| &p.name == profile_name) {
                 for pkg in &profile.packages {
-                    let key = (pkg.name.clone(), format!("{:?}", pkg.manager));
+                    let key = (pkg.name.clone(), pkg.manager.clone());
                     pkg_map.insert(key, pkg.clone());
                 }
             }
