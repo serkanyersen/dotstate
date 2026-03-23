@@ -332,12 +332,6 @@ impl ProfileService {
 
         // Update profile manifest (name + any inherits references)
         manifest.rename_profile(old_name, &sanitized_name)?;
-        // Update any profiles that inherit from the old name
-        for profile in &mut manifest.profiles {
-            if profile.inherits.as_deref() == Some(old_name) {
-                profile.inherits = Some(sanitized_name.clone());
-            }
-        }
         Self::save_manifest(repo_path, &manifest)?;
 
         // Update symlinks if profile is active

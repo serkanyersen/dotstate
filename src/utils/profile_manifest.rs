@@ -359,8 +359,18 @@ impl ProfileManifest {
 
     /// Update a profile's name (for rename)
     pub fn rename_profile(&mut self, old_name: &str, new_name: &str) -> Result<()> {
-        if let Some(profile) = self.profiles.iter_mut().find(|p| p.name == old_name) {
-            profile.name = new_name.to_string();
+        let mut found = false;
+        for profile in &mut self.profiles {
+            if profile.name == old_name {
+                profile.name = new_name.to_string();
+                found = true;
+            }
+            // Update any inherits references pointing to the old name
+            if profile.inherits.as_deref() == Some(old_name) {
+                profile.inherits = Some(new_name.to_string());
+            }
+        }
+        if found {
             Ok(())
         } else {
             Err(anyhow::anyhow!(
