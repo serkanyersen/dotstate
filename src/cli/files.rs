@@ -127,23 +127,25 @@ fn print_file_info(
     let repo_file_path = repo_path.join(source_profile).join(relative_path);
 
     if verbose {
-        let symlink_exists = symlink_path.exists();
         let repo_file_exists = repo_file_path.exists();
 
         println!("  {relative_path}");
         println!("    Symlink:   {}", symlink_path.display());
-        if symlink_exists {
-            if let Ok(metadata) = symlink_path.symlink_metadata() {
-                if metadata.is_symlink() {
-                    println!("      Status:  ✓ Active symlink");
+        match symlink_path.symlink_metadata() {
+            Ok(metadata) => {
+                if metadata.file_type().is_symlink() {
+                    if symlink_path.exists() {
+                        println!("      Status:  ✓ Active symlink");
+                    } else {
+                        println!("      Status:  ⚠ Broken symlink");
+                    }
                 } else {
                     println!("      Status:  ⚠ File exists but is not a symlink");
                 }
-            } else {
-                println!("      Status:  ✓ Exists");
             }
-        } else {
-            println!("      Status:  ✗ Not found");
+            Err(_) => {
+                println!("      Status:  ✗ Not found");
+            }
         }
         println!("    Storage:   {}", repo_file_path.display());
         if repo_file_exists {
