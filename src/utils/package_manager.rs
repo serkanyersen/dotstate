@@ -294,11 +294,9 @@ impl PackageManagerImpl {
 
         // Always available (OS-specific)
         match os {
-            "macos" => {
+            "macos" if Self::is_manager_installed(&PackageManager::Brew) => {
                 // macOS: brew is common, others are possible
-                if Self::is_manager_installed(&PackageManager::Brew) {
-                    available.push(PackageManager::Brew);
-                }
+                available.push(PackageManager::Brew);
             }
             "linux" => {
                 // Linux: detect which package manager is available

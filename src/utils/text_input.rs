@@ -234,10 +234,8 @@ fn handle_char_insertion(text: &mut String, cursor_pos: &mut usize, c: char) {
 /// * `key_code` - Key code (Left, Right, Home, End)
 fn handle_cursor_movement(text: &str, cursor_pos: &mut usize, key_code: KeyCode) {
     match key_code {
-        KeyCode::Left => {
-            if *cursor_pos > 0 {
-                *cursor_pos -= 1;
-            }
+        KeyCode::Left if *cursor_pos > 0 => {
+            *cursor_pos -= 1;
         }
         KeyCode::Right => {
             let char_count = text.chars().count();

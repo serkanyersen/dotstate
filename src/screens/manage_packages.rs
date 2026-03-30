@@ -787,121 +787,104 @@ impl ManagePackagesScreen {
     fn handle_main_list_action(&mut self, action: Action) -> Result<ScreenAction> {
         let state = &mut self.state;
         match action {
-            Action::MoveUp => {
-                if !state.is_checking {
-                    state.list_state.select_previous();
-                    return Ok(ScreenAction::Refresh);
-                }
+            Action::MoveUp if !state.is_checking => {
+                state.list_state.select_previous();
+                return Ok(ScreenAction::Refresh);
             }
-            Action::MoveDown => {
-                if !state.is_checking {
-                    state.list_state.select_next();
-                    return Ok(ScreenAction::Refresh);
-                }
+            Action::MoveDown if !state.is_checking => {
+                state.list_state.select_next();
+                return Ok(ScreenAction::Refresh);
             }
-            Action::Refresh => {
-                // Check All
+            Action::Refresh
                 if state.popup_type == PackagePopupType::None
                     && !state.is_checking
-                    && !state.packages.is_empty()
-                {
-                    // Initialize check all
-                    if state.package_statuses.len() != state.packages.len() {
-                        state.package_statuses = vec![PackageStatus::Unknown; state.packages.len()];
-                    }
+                    && !state.packages.is_empty() =>
+            {
+                // Check All
+                // Initialize check all
+                if state.package_statuses.len() != state.packages.len() {
                     state.package_statuses = vec![PackageStatus::Unknown; state.packages.len()];
-                    state.is_checking = true;
-                    state.checking_index = None;
-                    state.checking_delay_until =
-                        Some(std::time::Instant::now() + Duration::from_millis(100));
-                    return Ok(ScreenAction::Refresh);
                 }
+                state.package_statuses = vec![PackageStatus::Unknown; state.packages.len()];
+                state.is_checking = true;
+                state.checking_index = None;
+                state.checking_delay_until =
+                    Some(std::time::Instant::now() + Duration::from_millis(100));
+                return Ok(ScreenAction::Refresh);
             }
-            Action::CheckStatus => {
+            Action::CheckStatus
+                if state.popup_type == PackagePopupType::None && !state.is_checking =>
+            {
                 // Check Selected
-                if state.popup_type == PackagePopupType::None && !state.is_checking {
-                    if let Some(idx) = state.list_state.selected() {
-                        if idx < state.packages.len() {
-                            // Reset status for this one
-                            if state.package_statuses.len() != state.packages.len() {
-                                state.package_statuses =
-                                    vec![PackageStatus::Unknown; state.packages.len()];
-                            }
-                            state.package_statuses[idx] = PackageStatus::Unknown;
-                            state.is_checking = true;
-                            state.checking_index = Some(idx);
-                            // Mark that we're checking only the selected package (not all)
-                            // We'll use checking_index = Some(idx) to indicate "check selected" mode
-                            state.checking_delay_until =
-                                Some(std::time::Instant::now() + Duration::from_millis(100));
-                            return Ok(ScreenAction::Refresh);
+                if let Some(idx) = state.list_state.selected() {
+                    if idx < state.packages.len() {
+                        // Reset status for this one
+                        if state.package_statuses.len() != state.packages.len() {
+                            state.package_statuses =
+                                vec![PackageStatus::Unknown; state.packages.len()];
                         }
+                        state.package_statuses[idx] = PackageStatus::Unknown;
+                        state.is_checking = true;
+                        state.checking_index = Some(idx);
+                        // Mark that we're checking only the selected package (not all)
+                        // We'll use checking_index = Some(idx) to indicate "check selected" mode
+                        state.checking_delay_until =
+                            Some(std::time::Instant::now() + Duration::from_millis(100));
+                        return Ok(ScreenAction::Refresh);
                     }
                 }
             }
-            Action::Install => {
+            Action::Install if state.popup_type == PackagePopupType::None && !state.is_checking => {
                 // Install Missing
-                if state.popup_type == PackagePopupType::None && !state.is_checking {
-                    // Logic usually just starts installing.
-                    // We can check if any are missing and trigger the InstallMissingPackages action
-                    // which App will handle (or we handle internally if we can).
-                    // Wait, we moved 'process_installation_step' here. So we can start it here!
-                    // But we need to detect WHICH packages are missing.
+                // Logic usually just starts installing.
+                // We can check if any are missing and trigger the InstallMissingPackages action
+                // which App will handle (or we handle internally if we can).
+                // Wait, we moved 'process_installation_step' here. So we can start it here!
+                // But we need to detect WHICH packages are missing.
 
-                    let missing_count = state
-                        .package_statuses
-                        .iter()
-                        .filter(|s| matches!(s, PackageStatus::NotInstalled))
-                        .count();
-                    if missing_count > 0 {
-                        // Trigger installation logic
-                        return Ok(ScreenAction::InstallMissingPackages);
+                let missing_count = state
+                    .package_statuses
+                    .iter()
+                    .filter(|s| matches!(s, PackageStatus::NotInstalled))
+                    .count();
+                if missing_count > 0 {
+                    // Trigger installation logic
+                    return Ok(ScreenAction::InstallMissingPackages);
+                }
+            }
+            Action::Create if state.popup_type == PackagePopupType::None && !state.is_checking => {
+                self.start_add_package()?;
+                return Ok(ScreenAction::Refresh);
+            }
+            Action::Edit if state.popup_type == PackagePopupType::None && !state.is_checking => {
+                if let Some(idx) = state.list_state.selected() {
+                    if idx < state.packages.len() {
+                        self.start_edit_package(idx)?;
+                        return Ok(ScreenAction::Refresh);
                     }
                 }
             }
-            Action::Create => {
-                if state.popup_type == PackagePopupType::None && !state.is_checking {
-                    self.start_add_package()?;
-                    return Ok(ScreenAction::Refresh);
-                }
-            }
-            Action::Edit => {
-                if state.popup_type == PackagePopupType::None && !state.is_checking {
-                    if let Some(idx) = state.list_state.selected() {
-                        if idx < state.packages.len() {
-                            self.start_edit_package(idx)?;
-                            return Ok(ScreenAction::Refresh);
-                        }
+            Action::Delete if state.popup_type == PackagePopupType::None && !state.is_checking => {
+                if let Some(idx) = state.list_state.selected() {
+                    if idx < state.packages.len() {
+                        state.delete_index = Some(idx);
+                        state.popup_type = PackagePopupType::Delete;
+                        state.delete_confirm_input.clear();
+                        return Ok(ScreenAction::Refresh);
                     }
                 }
             }
-            Action::Delete => {
-                if state.popup_type == PackagePopupType::None && !state.is_checking {
-                    if let Some(idx) = state.list_state.selected() {
-                        if idx < state.packages.len() {
-                            state.delete_index = Some(idx);
-                            state.popup_type = PackagePopupType::Delete;
-                            state.delete_confirm_input.clear();
-                            return Ok(ScreenAction::Refresh);
-                        }
-                    }
-                }
+            Action::Cancel | Action::Quit if !state.is_checking => {
+                return Ok(ScreenAction::Navigate(ScreenEnum::MainMenu));
             }
-            Action::Cancel | Action::Quit => {
-                if !state.is_checking {
-                    return Ok(ScreenAction::Navigate(ScreenEnum::MainMenu));
-                }
+            Action::Cancel | Action::Quit if state.is_checking => {
                 // If checking, maybe cancel check?
-                if state.is_checking {
-                    state.is_checking = false;
-                    return Ok(ScreenAction::Refresh);
-                }
+                state.is_checking = false;
+                return Ok(ScreenAction::Refresh);
             }
-            Action::Import => {
-                if state.popup_type == PackagePopupType::None && !state.is_checking {
-                    self.start_import()?;
-                    return Ok(ScreenAction::Refresh);
-                }
+            Action::Import if state.popup_type == PackagePopupType::None && !state.is_checking => {
+                self.start_import()?;
+                return Ok(ScreenAction::Refresh);
             }
             _ => {}
         }
@@ -1411,32 +1394,31 @@ impl ManagePackagesScreen {
                     }
                     return Ok(ScreenAction::Refresh);
                 }
-                Action::MoveUp | Action::MoveDown | Action::MoveLeft | Action::MoveRight => {
-                    if state.add_focused_field == AddPackageField::Manager {
-                        let count = state.available_managers.len();
-                        if count > 0 {
-                            if matches!(action, Action::MoveDown | Action::MoveRight) {
-                                state.add_manager_selected =
-                                    (state.add_manager_selected + 1) % count;
+                Action::MoveUp | Action::MoveDown | Action::MoveLeft | Action::MoveRight
+                    if state.add_focused_field == AddPackageField::Manager =>
+                {
+                    let count = state.available_managers.len();
+                    if count > 0 {
+                        if matches!(action, Action::MoveDown | Action::MoveRight) {
+                            state.add_manager_selected = (state.add_manager_selected + 1) % count;
+                        } else {
+                            state.add_manager_selected = if state.add_manager_selected == 0 {
+                                count - 1
                             } else {
-                                state.add_manager_selected = if state.add_manager_selected == 0 {
-                                    count - 1
-                                } else {
-                                    state.add_manager_selected - 1
-                                };
-                            }
-                            state.add_manager =
-                                Some(state.available_managers[state.add_manager_selected].clone());
-                            state.add_is_custom = matches!(
-                                state.available_managers[state.add_manager_selected],
-                                crate::utils::profile_manifest::PackageManager::Custom
-                            );
-                            state
-                                .manager_list_state
-                                .select(Some(state.add_manager_selected));
+                                state.add_manager_selected - 1
+                            };
                         }
-                        return Ok(ScreenAction::Refresh);
+                        state.add_manager =
+                            Some(state.available_managers[state.add_manager_selected].clone());
+                        state.add_is_custom = matches!(
+                            state.available_managers[state.add_manager_selected],
+                            crate::utils::profile_manifest::PackageManager::Custom
+                        );
+                        state
+                            .manager_list_state
+                            .select(Some(state.add_manager_selected));
                     }
+                    return Ok(ScreenAction::Refresh);
                 }
                 Action::Home | Action::End | Action::Backspace | Action::DeleteChar => {
                     // Handled below with text input helpers
@@ -1648,33 +1630,31 @@ impl ManagePackagesScreen {
                     self.reset_state();
                     return Ok(ScreenAction::Refresh);
                 }
-                Action::Confirm => {
-                    if state.delete_confirm_input.text().trim() == "DELETE" {
-                        if let Some(idx) = state.delete_index {
-                            // Get package name before deletion to remove from cache
-                            let package_name = state.packages.get(idx).map(|p| p.name.clone());
+                Action::Confirm if state.delete_confirm_input.text().trim() == "DELETE" => {
+                    if let Some(idx) = state.delete_index {
+                        // Get package name before deletion to remove from cache
+                        let package_name = state.packages.get(idx).map(|p| p.name.clone());
 
-                            let packages = PackageService::delete_package(
-                                &config.repo_path,
-                                &config.active_profile,
-                                idx,
-                            )?;
+                        let packages = PackageService::delete_package(
+                            &config.repo_path,
+                            &config.active_profile,
+                            idx,
+                        )?;
 
-                            // Remove from cache
-                            if let Some(name) = package_name {
-                                if let Err(e) = self
-                                    .state
-                                    .cache
-                                    .remove_status(&config.active_profile, &name)
-                                {
-                                    warn!("Failed to remove package from cache: {}", e);
-                                }
+                        // Remove from cache
+                        if let Some(name) = package_name {
+                            if let Err(e) = self
+                                .state
+                                .cache
+                                .remove_status(&config.active_profile, &name)
+                            {
+                                warn!("Failed to remove package from cache: {}", e);
                             }
-
-                            self.update_packages(packages, &config.active_profile);
-                            self.reset_state();
-                            return Ok(ScreenAction::Refresh);
                         }
+
+                        self.update_packages(packages, &config.active_profile);
+                        self.reset_state();
+                        return Ok(ScreenAction::Refresh);
                     }
                 }
                 Action::Backspace => {
@@ -1736,10 +1716,8 @@ impl ManagePackagesScreen {
                     self.state.import_filter.clear();
                     return Ok(ScreenAction::Refresh);
                 }
-                Action::Confirm => {
-                    if !self.state.import_selected.is_empty() {
-                        return self.import_selected_packages(config);
-                    }
+                Action::Confirm if !self.state.import_selected.is_empty() => {
+                    return self.import_selected_packages(config);
                 }
                 Action::SelectAll => {
                     let filtered = self.get_filtered_import_packages();

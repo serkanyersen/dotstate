@@ -207,20 +207,14 @@ impl ProfileSelectionPopup {
                         return Some(ProfileSelectionResult::Cancelled);
                     }
                 }
-                Action::Backspace => {
-                    if self.is_create_new_selected() {
-                        self.create_input.handle_action(Action::Backspace);
-                    }
+                Action::Backspace if self.is_create_new_selected() => {
+                    self.create_input.handle_action(Action::Backspace);
                 }
-                Action::MoveLeft => {
-                    if self.is_create_new_selected() {
-                        self.create_input.handle_action(Action::MoveLeft);
-                    }
+                Action::MoveLeft if self.is_create_new_selected() => {
+                    self.create_input.handle_action(Action::MoveLeft);
                 }
-                Action::MoveRight => {
-                    if self.is_create_new_selected() {
-                        self.create_input.handle_action(Action::MoveRight);
-                    }
+                Action::MoveRight if self.is_create_new_selected() => {
+                    self.create_input.handle_action(Action::MoveRight);
                 }
                 _ => {}
             }

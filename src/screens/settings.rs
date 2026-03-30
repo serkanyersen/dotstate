@@ -679,15 +679,14 @@ impl Screen for SettingsScreen {
                         SettingsFocus::Options => {
                             let options = self.get_options(ctx.config);
                             match action {
-                                Action::MoveUp => {
-                                    if self.state.option_index > 0 {
-                                        self.state.option_index -= 1;
-                                    }
+                                Action::MoveUp if self.state.option_index > 0 => {
+                                    self.state.option_index -= 1;
                                 }
-                                Action::MoveDown => {
-                                    if self.state.option_index < options.len().saturating_sub(1) {
-                                        self.state.option_index += 1;
-                                    }
+                                Action::MoveDown
+                                    if self.state.option_index
+                                        < options.len().saturating_sub(1) =>
+                                {
+                                    self.state.option_index += 1;
                                 }
                                 Action::Confirm => {
                                     return Ok(ScreenAction::UpdateSetting {
