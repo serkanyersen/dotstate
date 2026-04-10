@@ -164,6 +164,15 @@ dotstate activate
 # Deactivate symlinks (restore original files)
 dotstate deactivate
 
+# Show the current profile
+dotstate profile
+
+# List all profiles
+dotstate profile list
+
+# Switch to another profile
+dotstate profile switch work
+
 # Package management
 dotstate packages list                    # List packages with status
 dotstate packages add -n ripgrep -m brew -b rg  # Add a package
