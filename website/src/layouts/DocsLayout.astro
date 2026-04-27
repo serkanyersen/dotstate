@@ -1,0 +1,29 @@
+---
+import Layout from './Layout.astro';
+import TopNav from '../components/TopNav.astro';
+import DocsSidebar from '../components/DocsSidebar.astro';
+
+interface Props {
+    title?: string;
+    description?: string;
+    page: 'install' | 'setup' | 'quickstart' | 'profiles' | 'common-files' | 'packages' | 'themes' | 'keymaps' | 'cli' | 'changelog';
+}
+
+const { title, description, page } = Astro.props;
+---
+
+<Layout title={title} description={description}>
+    <TopNav active="docs" context="docs" />
+
+    <div class="wrap">
+        <DocsSidebar page={page} />
+        <article>
+            <slot />
+        </article>
+    </div>
+
+    <footer class="foot">
+        <span>MIT · SERKAN YERSEN · 2026</span>
+        <span><a href="/">← BACK TO LANDING</a></span>
+    </footer>
+</Layout>

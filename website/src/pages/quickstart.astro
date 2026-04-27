@@ -1,0 +1,77 @@
+---
+import DocsLayout from '../layouts/DocsLayout.astro';
+---
+
+<DocsLayout
+    page="quickstart"
+    title="dotstate — quick start"
+    description="From install to synced dotfiles in five minutes."
+>
+    <div class="breadcrumbs reveal"><a href="/">dotstate</a> / docs / <span>quick start</span></div>
+    <h1 class="reveal">Five <span class="moss">minutes,</span><br /><span class="quiet">start to synced.</span></h1>
+    <p class="lede reveal">
+        The shortest path from zero to a dotfile repo you can pull down on any other machine. Assumes you've already
+        <a href="/install">installed dotstate</a>.
+    </p>
+
+    <div class="qs-step reveal">
+        <div class="num">1</div>
+        <div class="body">
+            <h3>Launch</h3>
+            <p>Open the TUI:</p>
+<pre><code><span class="p">$</span> dotstate</code></pre>
+        </div>
+    </div>
+
+    <div class="qs-step reveal">
+        <div class="num">2</div>
+        <div class="body">
+            <h3>Pick a repository mode</h3>
+            <p>Let dotstate create a GitHub repo for you, or point it at an existing one. See <a href="/setup">first-time setup</a> if you want the long version.</p>
+        </div>
+    </div>
+
+    <div class="qs-step reveal">
+        <div class="num">3</div>
+        <div class="body">
+            <h3>Name your first profile</h3>
+            <p>Anything works — <code>personal</code>, <code>work</code>, <code>laptop</code>. You can have more than one later.</p>
+        </div>
+    </div>
+
+    <div class="qs-step reveal">
+        <div class="num">4</div>
+        <div class="body">
+            <h3>Adopt files</h3>
+            <p>Go to <strong>Manage Files</strong> and pick anything you'd like version-controlled — <code>.zshrc</code>, <code>.vimrc</code>, <code>.gitconfig</code>, the usual. Originals are backed up automatically before each file is moved into the repo.</p>
+        </div>
+    </div>
+
+    <div class="qs-step reveal">
+        <div class="num">5</div>
+        <div class="body">
+            <h3>Sync</h3>
+            <p>From the main menu, <strong>Sync with Remote</strong> — or from the shell:</p>
+<pre><code><span class="p">$</span> dotstate sync
+<span class="c">→ committed 6 files</span>
+<span class="c">→ pulled (nothing new)</span>
+<span class="c">→ pushed to origin/main</span></code></pre>
+        </div>
+    </div>
+
+    <h2 class="reveal">On another machine</h2>
+    <p class="reveal">Install dotstate there, then:</p>
+<pre class="reveal"><code><span class="p">$</span> dotstate
+<span class="c"># Choose "Use my own repository" and paste the same clone URL.</span>
+<span class="p">$</span> dotstate activate
+<span class="c">→ linked 6 files for profile "personal"</span></code></pre>
+    <p class="reveal">Your dotfiles appear at the paths they expect to live at, as symlinks into the repo. Edits on either machine flow through <code>sync</code>.</p>
+
+    <h2 class="reveal">Where to go next</h2>
+    <ul class="reveal">
+        <li><a href="/profiles">Profiles &amp; inheritance</a> — organize for multiple machines or contexts.</li>
+        <li><a href="/packages">Package management</a> — track the CLI tools your dotfiles depend on.</li>
+        <li><a href="/common-files">Common files</a> — files that should be identical on every machine.</li>
+        <li><a href="/cli">CLI reference</a> — every command, with flags and examples.</li>
+    </ul>
+</DocsLayout>

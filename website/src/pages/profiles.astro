@@ -1,0 +1,84 @@
+---
+import DocsLayout from '../layouts/DocsLayout.astro';
+---
+
+<DocsLayout
+    page="profiles"
+    title="dotstate — profiles & inheritance"
+    description="Profiles let dotstate organize dotfiles per machine or context. Inheritance lets them layer. Common files cut across all of it."
+>
+    <div class="breadcrumbs reveal"><a href="/">dotstate</a> / docs / concepts / <span>profiles</span></div>
+    <h1 class="reveal">Profiles, <span class="quiet">and how they</span><br /><span class="moss">inherit</span>.</h1>
+    <p class="lede reveal">
+        A profile is a named set of dotfiles and packages. You can have several — for work, personal use, a server,
+        or any context you care about — and switch between them in one keystroke.
+    </p>
+
+    <h2 class="reveal">The short version</h2>
+    <ul class="reveal">
+        <li><strong>Profiles</strong> are independent sets of files. Switch between them and your environment reshapes itself.</li>
+        <li><strong>Inheritance</strong> lets a profile extend a parent. Children only override what's different.</li>
+        <li><strong>Common files</strong> are shared across every profile automatically.</li>
+        <li>Cycles are detected and rejected. Parent profiles can't be deleted while a child still inherits from them.</li>
+    </ul>
+
+    <h2 class="reveal">Resolution <span class="moss">order</span></h2>
+    <p class="reveal">When you activate a profile, dotstate walks the inheritance chain and resolves files in this order — highest priority first:</p>
+    <div class="inherit-diagram reveal">
+        <div class="inherit-row active">
+            <span class="label">01 · active</span>
+            <div class="bar"><span><strong>work-laptop</strong></span><span class="files">.ssh/config</span></div>
+        </div>
+        <div class="arrow-col">↑ overrides</div>
+        <div class="inherit-row">
+            <span class="label">02 · parent</span>
+            <div class="bar"><span>work</span><span class="files">.zshrc · .ssh/config</span></div>
+        </div>
+        <div class="arrow-col">↑ overrides</div>
+        <div class="inherit-row">
+            <span class="label">03 · grandparent</span>
+            <div class="bar"><span>base</span><span class="files">.vimrc · .zshrc · .tmux.conf</span></div>
+        </div>
+        <div class="arrow-col">↑ fallback</div>
+        <div class="inherit-row">
+            <span class="label">04 · common</span>
+            <div class="bar"><span>common</span><span class="files">.gitconfig</span></div>
+        </div>
+    </div>
+    <p class="reveal">
+        In the example above, <code>work-laptop</code> ends up with: its own <code>.ssh/config</code>,
+        <code>work</code>'s <code>.zshrc</code>, <code>base</code>'s <code>.vimrc</code> and <code>.tmux.conf</code>,
+        and <code>common</code>'s <code>.gitconfig</code>.
+    </p>
+
+    <h2 class="reveal">Inherit vs. copy</h2>
+    <p class="reveal">When you create a profile, you can either inherit or copy from an existing one:</p>
+    <ul class="reveal">
+        <li><strong>Inherit</strong> is a live relationship. Changes to the parent flow down to every child.</li>
+        <li><strong>Copy</strong> is a one-time fork. After creation, the two profiles are independent.</li>
+    </ul>
+    <blockquote class="reveal">
+        A good rule: use <strong>inherit</strong> for long-lived relationships (a "base" profile that every machine extends),
+        and <strong>copy</strong> for quick one-off duplicates when setting up a similar machine.
+    </blockquote>
+
+    <h2 class="reveal">Switching profiles</h2>
+    <p class="reveal">Open <strong>Manage Profiles</strong> in the TUI, select a profile, and press <kbd>Enter</kbd>. dotstate removes the old symlinks and creates new ones — including any inherited files. Common files stay linked across every switch.</p>
+    <p class="reveal">From a fresh shell on a new machine, <code>dotstate activate</code> re-creates the symlinks for the profile recorded in your config — no flags needed.</p>
+    <p class="reveal">If activation fails for any reason, the previous profile is restored automatically.</p>
+
+    <h2 class="reveal">When to use <span class="moss">common</span> files</h2>
+    <p class="reveal">Put a file in <strong>common</strong> when it should be identical on every machine, regardless of the active profile — like <code>.gitconfig</code>, <code>.tmux.conf</code>, or editor config files you never vary.</p>
+    <p class="reveal">Move files in and out of common from <strong>Manage Files</strong> by selecting a file and pressing <kbd>M</kbd>. See <a href="/common-files">common files</a> for details.</p>
+
+    <h2 class="reveal">Use cases</h2>
+    <ul class="reveal">
+        <li><strong>Multi-machine.</strong> <code>personal</code> on your laptop, <code>work</code> on your work machine, <code>server</code> on headless boxes. Keep shared configs (<code>.gitconfig</code>, <code>.tmux.conf</code>) in common.</li>
+        <li><strong>Same computer, different contexts.</strong> Create <code>day</code>, <code>night</code>, or <code>focus</code> profiles with different terminal themes and editor settings, and switch in a keystroke.</li>
+        <li><strong>Layered configs.</strong> A <code>base</code> profile defines your core setup; <code>work</code> and <code>personal</code> inherit from it and override only what's different.</li>
+        <li><strong>Quick duplication.</strong> When setting up a second machine, create a new profile by copying from an existing one, then tweak the small things.</li>
+    </ul>
+
+    <h2 class="reveal">Next</h2>
+    <p class="reveal">Profiles also track packages — CLI tools to install per context. Read <a href="/packages">package management</a> to learn how.</p>
+</DocsLayout>

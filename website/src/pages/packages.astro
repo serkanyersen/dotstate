@@ -1,0 +1,74 @@
+---
+import DocsLayout from '../layouts/DocsLayout.astro';
+---
+
+<DocsLayout
+    page="packages"
+    title="dotstate — package management"
+    description="Track CLI tools per profile. Works with Homebrew, Cargo, npm, pip, and custom scripts."
+>
+    <div class="breadcrumbs reveal"><a href="/">dotstate</a> / docs / features / <span>packages</span></div>
+    <h1 class="reveal">Packages, <span class="quiet">not just</span><br /><span class="moss">dotfiles</span>.</h1>
+    <p class="lede reveal">
+        Your shell config is only half the story — the other half is the CLI tools it expects to find.
+        dotstate tracks packages <strong>per profile</strong> and installs what's missing in one command.
+    </p>
+
+    <h2 class="reveal">How it works</h2>
+    <p class="reveal">
+        A package is a tuple: a <strong>name</strong>, a <strong>manager</strong> (how to install it), and optionally a
+        <strong>binary name</strong> (how to detect it, if different from the package name — e.g. Homebrew's <code>ripgrep</code> ships <code>rg</code>).
+        Each profile keeps its own list. <a href="/profiles">Inheritance</a> applies: a child profile automatically
+        includes its parent's packages.
+    </p>
+
+    <h2 class="reveal">Supported <span class="moss">managers</span></h2>
+    <div class="card-grid reveal">
+        <div class="card"><div class="ico">◐</div><h3>Homebrew</h3><p>macOS and Linux. <code>brew</code> must be on the <code>$PATH</code>.</p></div>
+        <div class="card"><div class="ico">◒</div><h3>Cargo</h3><p>Rust packages from crates.io. <code>cargo install &lt;pkg&gt;</code>.</p></div>
+        <div class="card"><div class="ico">◓</div><h3>npm</h3><p>Global npm packages. <code>npm install -g &lt;pkg&gt;</code>.</p></div>
+        <div class="card"><div class="ico">◑</div><h3>pip</h3><p>Python packages. <code>pip install --user &lt;pkg&gt;</code>.</p></div>
+        <div class="card"><div class="ico">◈</div><h3>apt · dnf · pacman</h3><p>System packages on common Linux distributions.</p></div>
+        <div class="card"><div class="ico">◇</div><h3>Custom</h3><p>Any shell command. Use for tools with bespoke installers (<code>mise</code>, <code>rustup</code>, <code>nvm</code>, …).</p></div>
+    </div>
+
+    <h2 class="reveal">Adding a package</h2>
+    <p class="reveal">From the TUI, open <strong>Packages</strong>, choose a manager, and type the name. From the command line:</p>
+<pre class="reveal"><code><span class="c"># Interactive — prompts for manager and binary name:</span>
+<span class="p">$</span> dotstate packages add
+
+<span class="c"># Or inline:</span>
+<span class="p">$</span> dotstate packages add -n ripgrep -m brew -b rg
+<span class="p">$</span> dotstate packages add -n eza -m cargo
+<span class="p">$</span> dotstate packages add -n prettier -m npm</code></pre>
+
+    <h2 class="reveal">Checking what's <span class="moss">missing</span></h2>
+    <p class="reveal">On a fresh machine, check everything the current profile expects:</p>
+<pre class="reveal"><code><span class="p">$</span> dotstate packages check
+<span class="c">→ brew  · ripgrep (rg)     ✓ installed</span>
+<span class="c">→ cargo · eza              ✗ missing</span>
+<span class="c">→ npm   · prettier         ✓ installed</span>
+<span class="c">→ 1 package missing.</span></code></pre>
+
+    <h2 class="reveal">Installing in bulk</h2>
+    <p class="reveal"><code>install</code> only touches packages that are actually missing — it's safe to run repeatedly.</p>
+<pre class="reveal"><code><span class="p">$</span> dotstate packages install
+<span class="c">→ cargo install eza</span>
+<span class="c">→ done · 1 package installed.</span></code></pre>
+
+    <h2 class="reveal">Custom packages</h2>
+    <p class="reveal">When a tool doesn't fit a standard manager, register a custom package with its own install command and a detection command:</p>
+<pre class="reveal"><code><span class="p">$</span> dotstate packages add <span class="k">\</span>
+    -n mise -m custom <span class="k">\</span>
+    --install-command  "curl https://mise.run | sh" <span class="k">\</span>
+    --existence-check  "command -v mise"</code></pre>
+    <p class="reveal">The existence check is anything that exits <code>0</code> when the tool is present. The install command is run in a subshell — <strong>not</strong> interpreted by your login shell — so there's no shell-injection surface.</p>
+
+    <blockquote class="reveal">
+        <strong>Security note.</strong> dotstate never runs install commands automatically. You explicitly opt in by running
+        <code>dotstate packages install</code>. Before install, the exact commands that will run are printed, and you can cancel.
+    </blockquote>
+
+    <h2 class="reveal">Next</h2>
+    <p class="reveal">See the <a href="/cli">CLI reference</a> for all package commands, or <a href="/profiles">profiles</a> for how per-profile package lists inherit.</p>
+</DocsLayout>

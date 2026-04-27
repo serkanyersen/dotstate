@@ -1,0 +1,72 @@
+---
+import DocsLayout from '../layouts/DocsLayout.astro';
+---
+
+<DocsLayout
+    page="keymaps"
+    title="dotstate — keymaps"
+    description="Customize the TUI keys. Presets for Standard, Vim, and Emacs, plus per-action overrides."
+>
+    <div class="breadcrumbs reveal"><a href="/">dotstate</a> / docs / features / <span>keymaps</span></div>
+    <h1 class="reveal">Your fingers <br /><span class="quiet">know</span> the <span class="moss">way.</span></h1>
+    <p class="lede reveal">
+        dotstate supports three keymap presets — <strong>Standard</strong>, <strong>Vim</strong>, and <strong>Emacs</strong> —
+        plus per-action overrides. Press <kbd>?</kbd> in the TUI at any time to see the full key binding for the current view.
+    </p>
+
+    <h2 class="reveal">Pick a preset</h2>
+    <p class="reveal">In <code>~/.config/dotstate/config.toml</code>:</p>
+<pre class="reveal"><code><span class="k">[keymap]</span>
+preset = <span class="k">"vim"</span>  <span class="c"># "standard" | "vim" | "emacs"</span></code></pre>
+
+    <h2 class="reveal">Presets at a <span class="moss">glance</span></h2>
+    <table class="reveal">
+        <thead><tr><th>Action</th><th>Standard</th><th>Vim</th><th>Emacs</th></tr></thead>
+        <tbody>
+            <tr><td>Move down</td><td><kbd>↓</kbd></td><td><kbd>j</kbd></td><td><kbd>Ctrl</kbd>+<kbd>N</kbd></td></tr>
+            <tr><td>Move up</td><td><kbd>↑</kbd></td><td><kbd>k</kbd></td><td><kbd>Ctrl</kbd>+<kbd>P</kbd></td></tr>
+            <tr><td>Move right / next pane</td><td><kbd>→</kbd></td><td><kbd>l</kbd></td><td><kbd>Ctrl</kbd>+<kbd>F</kbd></td></tr>
+            <tr><td>Move left / prev pane</td><td><kbd>←</kbd></td><td><kbd>h</kbd></td><td><kbd>Ctrl</kbd>+<kbd>B</kbd></td></tr>
+            <tr><td>Confirm</td><td><kbd>Enter</kbd></td><td><kbd>Enter</kbd></td><td><kbd>Enter</kbd></td></tr>
+            <tr><td>Cancel / back</td><td><kbd>Esc</kbd></td><td><kbd>Esc</kbd></td><td><kbd>Ctrl</kbd>+<kbd>G</kbd></td></tr>
+            <tr><td>Quit</td><td><kbd>q</kbd></td><td><kbd>q</kbd></td><td><kbd>Ctrl</kbd>+<kbd>X</kbd> <kbd>Ctrl</kbd>+<kbd>C</kbd></td></tr>
+        </tbody>
+    </table>
+
+    <h2 class="reveal">Global keys</h2>
+    <p class="reveal">These work in every preset and every view:</p>
+    <table class="reveal">
+        <tbody>
+            <tr><td><kbd>?</kbd></td><td>Toggle contextual help overlay</td></tr>
+            <tr><td><kbd>/</kbd></td><td>Search the current list</td></tr>
+            <tr><td><kbd>r</kbd></td><td>Reload from disk</td></tr>
+            <tr><td><kbd>q</kbd></td><td>Quit (also <kbd>Ctrl</kbd>+<kbd>C</kbd>)</td></tr>
+        </tbody>
+    </table>
+    <p class="reveal">Reach <strong>Settings</strong> from the main menu — there's no global hotkey for it.</p>
+
+    <h2 class="reveal">Custom <span class="moss">overrides</span></h2>
+    <p class="reveal">Any preset can be partially overridden. Specify the preset, then redefine only the actions you want to change:</p>
+<pre class="reveal"><code><span class="k">[keymap]</span>
+preset = <span class="k">"vim"</span>
+
+<span class="k">[keymap.bindings]</span>
+<span class="c"># keep vim's hjkl, but rebind quit to Ctrl+Q</span>
+quit = <span class="k">"ctrl+q"</span>
+<span class="c"># multiple keys can bind to the same action</span>
+toggle_help = [<span class="k">"?"</span>, <span class="k">"F1"</span>]</code></pre>
+
+    <h2 class="reveal">Supported key <span class="moss">syntax</span></h2>
+    <ul class="reveal">
+        <li><strong>Single characters:</strong> <code>"j"</code>, <code>"G"</code>, <code>"/"</code></li>
+        <li><strong>Named keys:</strong> <code>"enter"</code>, <code>"esc"</code>, <code>"tab"</code>, <code>"up"</code>, <code>"down"</code>, <code>"home"</code>, <code>"end"</code>, <code>"pgup"</code>, <code>"pgdn"</code>, <code>"space"</code>, <code>"backspace"</code>, <code>"delete"</code>, <code>"F1"</code>–<code>"F12"</code></li>
+        <li><strong>Modifiers:</strong> <code>ctrl+</code>, <code>alt+</code>, <code>shift+</code> — combine with a character or named key</li>
+        <li><strong>Lists:</strong> pass an array of keys to bind several at once</li>
+    </ul>
+
+    <h2 class="reveal">See what's bound right now</h2>
+    <p class="reveal">Inside the TUI, press <kbd>?</kbd>. The help overlay shows every binding active in the current view, adjusted for your preset and overrides.</p>
+
+    <h2 class="reveal">Next</h2>
+    <p class="reveal">Pair keymaps with a matching <a href="/themes">theme</a>, or see the <a href="/cli">CLI reference</a>.</p>
+</DocsLayout>

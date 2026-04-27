@@ -1,0 +1,42 @@
+---
+import DocsLayout from '../layouts/DocsLayout.astro';
+---
+
+<DocsLayout
+    page="common-files"
+    title="dotstate — common files"
+    description="Files shared across every profile. Defined once, linked everywhere."
+>
+    <div class="breadcrumbs reveal"><a href="/">dotstate</a> / docs / concepts / <span>common files</span></div>
+    <h1 class="reveal"><span class="moss">Common</span> files,<br /><span class="quiet">defined once.</span></h1>
+    <p class="lede reveal">
+        Some dotfiles should never vary — <code>.gitconfig</code>, <code>.tmux.conf</code>, maybe your editor colors.
+        <strong>Common files</strong> are stored outside any single profile and linked into all of them. Defined once, linked everywhere.
+    </p>
+
+    <h2 class="reveal">What counts as common</h2>
+    <p class="reveal">A good candidate is anything that:</p>
+    <ul class="reveal">
+        <li>Should be identical on every machine, regardless of the active profile.</li>
+        <li>You never want to "accidentally miss" when switching profiles.</li>
+        <li>Isn't tied to a specific context — your git identity, your tmux keybindings, your editor theme.</li>
+    </ul>
+    <p class="reveal">If a file <em>does</em> vary by machine — say, an <code>.ssh/config</code> that differs between work and personal — keep it in the profile, not in common.</p>
+
+    <h2 class="reveal">Moving files to &amp; from <span class="moss">common</span></h2>
+    <p class="reveal">In the TUI, open <strong>Manage Files</strong>, select any file, and press <kbd>M</kbd> to toggle it between the active profile and common. From the CLI:</p>
+<pre class="reveal"><code><span class="c"># Adopt directly into common:</span>
+<span class="p">$</span> dotstate add --common ~/.gitconfig
+
+<span class="c"># Later, if you change your mind:</span>
+<span class="p">$</span> dotstate remove --common .gitconfig</code></pre>
+
+    <h2 class="reveal">How they're resolved</h2>
+    <p class="reveal">Common files live at the bottom of the <a href="/profiles">resolution order</a> — profile files always win. If both the active profile and common define the same path, the profile's version is linked and common's is ignored for that profile.</p>
+
+    <h2 class="reveal">Switching profiles</h2>
+    <p class="reveal">When you switch profiles in <strong>Manage Profiles</strong> (select → <kbd>Enter</kbd>), common files stay linked — only profile-specific symlinks are swapped out.</p>
+
+    <h2 class="reveal">Next</h2>
+    <p class="reveal">Read about <a href="/profiles">profiles &amp; inheritance</a> for the full resolution picture.</p>
+</DocsLayout>

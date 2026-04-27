@@ -1,0 +1,120 @@
+---
+import fs from 'node:fs';
+import path from 'node:path';
+
+let version = '0.0.0';
+try {
+    const cargoContent = fs.readFileSync(path.resolve('../Cargo.toml'), 'utf-8');
+    const m = cargoContent.match(/^version\s*=\s*"([^"]+)"/m);
+    if (m) version = m[1];
+} catch {}
+
+const menu = [
+    { icon: '□', label: 'Manage Files', hint: 'your dotfiles' },
+    { icon: '↻', label: 'Sync with Remote', hint: 'commit, pull, push' },
+    { icon: '◎', label: 'Manage Profiles', hint: 'work, personal, server' },
+    { icon: '▦', label: 'Manage Packages', hint: 'brew, cargo, npm' },
+    { icon: '≡', label: 'Setup git repository', hint: 'github or bring your own' },
+    { icon: '◦', label: 'Settings', hint: 'themes, keymaps' },
+];
+
+const infoMap = [
+    { h: 'Manage Your Dotfiles', body: [
+        "Keep your configuration files (like .zshrc, .vimrc, .gitconfig) synchronized across all your machines.",
+        "When you select a file, it's copied to your repository and a symlink is created in its place. Your files stay safely backed up and version controlled.",
+        "Add custom files via the file browser, or use the CLI: dotstate add ~/.myconfig",
+    ]},
+    { h: 'Sync with Remote', body: [
+        "Commit, pull, and push your dotfiles to your remote repository — all in a single step.",
+        "A clear log shows what changed and what was pushed. Conflicts are surfaced immediately, never silently merged.",
+    ]},
+    { h: 'Manage Profiles', body: [
+        "Create, switch, or inherit profiles. Children override parents; common files are shared across every profile automatically.",
+        "Switch with Enter. Old symlinks are removed; new ones are created. If activation fails, the previous profile is restored.",
+    ]},
+    { h: 'Manage Packages', body: [
+        "Track CLI tools per profile. Works with Homebrew, Cargo, npm, pip, and custom installation scripts.",
+        "Check what's missing on this machine, then install everything that's not yet installed.",
+    ]},
+    { h: 'Setup git repository', body: [
+        "Let dotstate create a GitHub repository for you, or bring your own on GitLab, Bitbucket, or any git host.",
+        "Repository setup is a one-time thing. After this, you won't need to think about it again.",
+    ]},
+    { h: 'Settings', body: [
+        "Pick a theme from eleven built-ins. Configure your keymap — Standard, Vim, or Emacs presets — or override individual keys.",
+        "Toggle update checks, backup behavior, and more. Every setting is stored in ~/.config/dotstate/config.toml.",
+    ]},
+];
+---
+
+<div class="tui-wrap">
+    <div class="tui-frame">
+        <div class="tui-chrome">
+            <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+            <span class="title">dotstate · v{version} · ~/.config/dotstate</span>
+        </div>
+        <div class="tui-stage">
+            <div class="tui-hdr">
+                <div class="tui-brand">D O T S T A T E</div>
+                <div class="tui-tag">
+                    Manage your dotfiles with ease. Sync to any git host, organize by profiles, and keep your configuration files safe.
+                </div>
+            </div>
+            <div class="tui-body">
+                <div class="tui-panel">
+                    <div class="tui-panel-title">Menu</div>
+                    <div class="tui-menu" data-tui-menu>
+                        {menu.map((m, i) => (
+                            <div class={`tui-menu-item ${i === 0 ? 'active' : ''}`} data-tui-index={i}>
+                                <span class="icon">{m.icon}</span>
+                                <span class="label">{m.label}</span>
+                                <span class="hint">{m.hint}</span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+                <div class="tui-right">
+                    <div class="tui-panel tui-info">
+                        <div class="tui-panel-title">What does this do?</div>
+                        {infoMap.map((info, i) => (
+                            <div class={`tui-info-panel ${i === 0 ? 'active' : ''}`} data-tui-info={i}>
+                                <h4>{info.h}</h4>
+                                {info.body.map((p) => <p>{p}</p>)}
+                            </div>
+                        ))}
+                    </div>
+                    <div class="tui-panel tui-status">
+                        <div class="tui-panel-title">Status</div>
+                        <div class="tui-status-row"><span class="k">Synced Files</span><span class="v">8</span></div>
+                        <div class="tui-status-row"><span class="k">Profiles</span><span class="v">5 · active: <span class="accent">Personal</span></span></div>
+                        <div class="tui-status-row"><span class="k">Repository</span><span class="v">dotstate-storage</span></div>
+                    </div>
+                </div>
+            </div>
+            <div class="tui-footer">
+                <span class="tui-key"><kbd>↑</kbd><kbd>↓</kbd> Navigate</span>
+                <span class="tui-key"><kbd>⏎</kbd> Select</span>
+                <span class="tui-key"><kbd>Q</kbd> Back</span>
+                <span class="tui-key"><kbd>?</kbd> Help</span>
+                <span class="tui-key spacer">Theme · <b>linen-light</b> (t)</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    (function () {
+        const menu = document.querySelector<HTMLElement>('[data-tui-menu]');
+        if (!menu) return;
+        const items = menu.querySelectorAll<HTMLElement>('.tui-menu-item');
+        const panels = document.querySelectorAll<HTMLElement>('[data-tui-info]');
+        items.forEach((item) => {
+            item.addEventListener('click', () => {
+                const i = item.dataset.tuiIndex;
+                if (i == null) return;
+                items.forEach((el) => el.classList.toggle('active', el === item));
+                panels.forEach((el) => el.classList.toggle('active', el.dataset.tuiInfo === i));
+            });
+        });
+    })();
+</script>

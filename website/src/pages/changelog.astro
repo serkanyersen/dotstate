@@ -1,0 +1,129 @@
+---
+import DocsLayout from '../layouts/DocsLayout.astro';
+import fs from 'node:fs';
+import path from 'node:path';
+
+const cargoPath = path.resolve('../Cargo.toml');
+let version = '0.0.0';
+try {
+    const content = fs.readFileSync(cargoPath, 'utf-8');
+    const m = content.match(/^version\s*=\s*"([^"]+)"/m);
+    if (m) version = m[1];
+} catch {}
+---
+
+<DocsLayout
+    page="changelog"
+    title="dotstate — changelog"
+    description="What's new in dotstate. Release notes, per version."
+>
+    <div class="breadcrumbs reveal"><a href="/">dotstate</a> / <span>changelog</span></div>
+    <h1 class="reveal">Releases.</h1>
+    <p class="lede reveal">
+        Semantic versioning. Releases land on GitHub first, then Homebrew and crates.io within a few hours.
+        For the source of truth, see <a href="https://github.com/serkanyersen/dotstate/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">CHANGELOG.md</a>.
+    </p>
+
+    <div class="release reveal">
+        <div class="ver">
+            <div class="tag current">v{version}</div>
+            <div class="date">2026-03-30</div>
+            <div class="badge">current</div>
+        </div>
+        <div>
+            <h3>Profile inheritance lands</h3>
+            <p>Profiles can now extend a parent profile. Changes to the parent flow down to every child; children only override what's different. Cycle detection prevents loops, and parent profiles are locked while children depend on them. The manifest auto-migrates from v1 to v2.</p>
+            <h4>Added</h4>
+            <ul>
+                <li>Profile inheritance with child-wins override semantics, multi-level chaining, cycle detection, and rename propagation</li>
+                <li><strong>Manage Profiles</strong> create popup: <em>Inherits From</em> field with live parent selection</li>
+                <li>Profile details show resolved file counts with source annotations (own / inherited / common)</li>
+                <li><code>dotstate list</code> groups files by source and prints the inheritance chain; <code>dotstate activate</code> resolves the full chain</li>
+            </ul>
+            <h4>Changed</h4>
+            <ul>
+                <li><em>Inherits From</em> and <em>Copy From</em> are mutually exclusive — "live link to parent profile" vs "one-time file copy"</li>
+                <li>Docs: README, website, and CONTRIBUTING.md updated with inheritance documentation</li>
+            </ul>
+            <h4>Fixed</h4>
+            <ul>
+                <li>Atomic profile switching with rollback — if activation fails, the previous profile's symlinks are restored</li>
+                <li>Deduplicated symlink-manager paths, eliminating parallel code branches</li>
+                <li><code>NavigateWithMessage</code> payloads now surface in a dialog instead of being dropped</li>
+                <li>Backup session timestamps use a filesystem-safe format</li>
+                <li>Backup/symlink tests made sandbox-safe with test-local paths</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="release reveal">
+        <div class="ver">
+            <div class="tag">v0.3.0</div>
+            <div class="date">2026-02-05</div>
+        </div>
+        <div>
+            <h3>Mouse support and six new themes</h3>
+            <p>Comprehensive mouse interactions across every screen — click to select, focus panes, scroll lists and previews, and interact with popup dialogs. Six new themes round out the palette.</p>
+            <h4>Added</h4>
+            <ul>
+                <li>Mouse across all screens: Manage Files, Profiles, Packages, Sync, and popup dialogs</li>
+                <li>Six new themes: Gruvbox Dark/Light, Catppuccin Mocha/Latte, Tokyo Night Dark/Light</li>
+            </ul>
+            <h4>Fixed</h4>
+            <ul>
+                <li>Focus-based pane switching on the Sync screen (Tab key + mouse-targeted scrolling)</li>
+                <li>Preview panes and dialogs clamp scroll offset to prevent infinite scrolling past content</li>
+            </ul>
+            <h4>Changed</h4>
+            <ul>
+                <li>Settings: renamed "Embed Credentials in URL" to "Token in Remote URL"; hidden in local repo mode</li>
+                <li>Simplified theme cycling logic</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="release reveal">
+        <div class="ver">
+            <div class="tag">v0.2.0</div>
+            <div class="date">AUTUMN 2025</div>
+        </div>
+        <div>
+            <h3>Package management</h3>
+            <p>Track CLI tools per profile and install what's missing on a new machine with one command. Support for Homebrew, Cargo, npm, pip, and custom install scripts.</p>
+            <h4>Added</h4>
+            <ul>
+                <li><code>dotstate packages</code> subcommand family</li>
+                <li>Per-profile package lists, stored alongside profile files</li>
+                <li>Custom-script packages with user-defined install and check commands</li>
+                <li>Solarized themes</li>
+            </ul>
+            <h4>Changed</h4>
+            <ul>
+                <li>Configuration moved to <code>~/.config/dotstate/config.toml</code></li>
+                <li>Repository storage moved to <code>~/.local/share/dotstate</code></li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="release reveal">
+        <div class="ver">
+            <div class="tag">v0.1.0</div>
+            <div class="date">SUMMER 2025</div>
+        </div>
+        <div>
+            <h3>Initial release</h3>
+            <p>The first public version. dotstate can manage dotfiles across machines using a git repository of your choice, with automatic backups and safe symlink management.</p>
+            <h4>Added</h4>
+            <ul>
+                <li>TUI built with Ratatui — keyboard navigation</li>
+                <li>CLI for every TUI action, for automation</li>
+                <li>GitHub-managed and bring-your-own repository modes</li>
+                <li>Profile system — switch sets of dotfiles in a keystroke</li>
+                <li>Common files — shared across every profile</li>
+                <li>Automatic backups before every file operation</li>
+                <li>Three built-in themes: Light, Dark, Midnight</li>
+                <li>Three keymap presets: Standard, Vim, Emacs</li>
+            </ul>
+        </div>
+    </div>
+</DocsLayout>

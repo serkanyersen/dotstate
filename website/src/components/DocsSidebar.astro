@@ -1,0 +1,33 @@
+---
+interface Props {
+    page: 'install' | 'setup' | 'quickstart' | 'profiles' | 'common-files' | 'packages' | 'themes' | 'keymaps' | 'cli' | 'changelog';
+}
+
+const { page } = Astro.props;
+const on = (p: string) => (p === page ? 'on' : '');
+---
+
+<aside class="sidebar">
+    <div class="group">
+        <h5>Getting started</h5>
+        <a href="/install" class={on('install')}>Installation</a>
+        <a href="/setup" class={on('setup')}>First-time setup</a>
+        <a href="/quickstart" class={on('quickstart')}>Quick start</a>
+    </div>
+    <div class="group">
+        <h5>Concepts</h5>
+        <a href="/profiles" class={on('profiles')}>Profiles &amp; inheritance</a>
+        <a href="/common-files" class={on('common-files')}>Common files</a>
+    </div>
+    <div class="group">
+        <h5>Features</h5>
+        <a href="/packages" class={on('packages')}>Package management</a>
+        <a href="/themes" class={on('themes')}>Themes</a>
+        <a href="/keymaps" class={on('keymaps')}>Keymaps</a>
+    </div>
+    <div class="group">
+        <h5>Reference</h5>
+        <a href="/cli" class={on('cli')}>CLI commands</a>
+        <a href="/changelog" class={on('changelog')}>Changelog</a>
+    </div>
+</aside>

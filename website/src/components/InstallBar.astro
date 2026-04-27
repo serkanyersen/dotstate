@@ -1,0 +1,69 @@
+---
+// Install-method tabs + copy button. Vanilla JS.
+---
+
+<div class="linen-bar-row reveal delay-2" id="install">
+    <div class="linen-install" data-install-bar>
+        <div class="linen-install-head">
+            <div class="linen-tabs" role="tablist">
+                <button type="button" class="linen-tab on" data-tab="curl" role="tab" aria-selected="true">Install script</button>
+                <button type="button" class="linen-tab" data-tab="cargo" role="tab" aria-selected="false">Cargo</button>
+                <button type="button" class="linen-tab" data-tab="brew" role="tab" aria-selected="false">Homebrew</button>
+            </div>
+            <div class="hint">macOS · Linux</div>
+        </div>
+        <div class="linen-cmd">
+            <span class="prompt">~</span>
+            <span class="txt" data-install-cmd data-curl="curl -fsSL https://dotstate.serkan.dev/install.sh | bash" data-cargo="cargo install dotstate" data-brew="brew install serkanyersen/dotstate/dotstate">curl -fsSL https://dotstate.serkan.dev/install.sh | bash</span>
+            <button type="button" class="linen-copy" data-install-copy>copy</button>
+        </div>
+    </div>
+
+    <div class="linen-facts">
+        <div class="title">At a glance</div>
+        <div>
+            <div class="big">~8 MB</div>
+            <div class="small">a single Rust binary · zero runtime dependencies</div>
+        </div>
+    </div>
+</div>
+
+<script>
+    (function () {
+        const bar = document.querySelector<HTMLElement>('[data-install-bar]');
+        if (!bar) return;
+        const tabs = bar.querySelectorAll<HTMLButtonElement>('.linen-tab');
+        const txt = bar.querySelector<HTMLElement>('[data-install-cmd]');
+        const copyBtn = bar.querySelector<HTMLButtonElement>('[data-install-copy]');
+        if (!txt || !copyBtn) return;
+
+        const commands: Record<string, string> = {
+            curl: txt.dataset.curl || '',
+            cargo: txt.dataset.cargo || '',
+            brew: txt.dataset.brew || '',
+        };
+
+        tabs.forEach((tab) => {
+            tab.addEventListener('click', () => {
+                const key = tab.dataset.tab || 'curl';
+                tabs.forEach((t) => {
+                    t.classList.toggle('on', t === tab);
+                    t.setAttribute('aria-selected', t === tab ? 'true' : 'false');
+                });
+                txt.textContent = commands[key] || '';
+            });
+        });
+
+        let resetTimer: number | undefined;
+        copyBtn.addEventListener('click', async () => {
+            try {
+                await navigator.clipboard.writeText(txt.textContent || '');
+                copyBtn.textContent = 'copied ✓';
+                if (resetTimer) window.clearTimeout(resetTimer);
+                resetTimer = window.setTimeout(() => {
+                    copyBtn.textContent = 'copy';
+                }, 1400);
+            } catch {}
+        });
+    })();
+</script>

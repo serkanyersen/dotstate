@@ -1,0 +1,82 @@
+---
+import DocsLayout from '../layouts/DocsLayout.astro';
+---
+
+<DocsLayout
+    page="setup"
+    title="dotstate — first-time setup"
+    description="Walk through first-time setup — choose a repository mode (GitHub-managed or bring-your-own) and adopt your first files."
+>
+    <div class="breadcrumbs reveal"><a href="/">dotstate</a> / docs / <span>first-time setup</span></div>
+    <h1 class="reveal">First-time setup.<br /><span class="quiet">A single</span> <span class="moss">evening</span>.</h1>
+    <p class="lede reveal">
+        Run <code>dotstate</code> with no arguments and it launches into a guided setup. This page walks through the same
+        flow — useful if you'd rather understand the choices before you make them.
+    </p>
+
+    <h2 class="reveal">Launch</h2>
+<pre class="reveal"><code><span class="p">$</span> dotstate</code></pre>
+    <p class="reveal">The TUI opens in welcome mode. There's one important decision to make up front: <strong>how do you want to store your dotfiles?</strong></p>
+
+    <h2 class="reveal">Choose a <span class="moss">repository mode</span></h2>
+    <div class="card-grid reveal">
+        <div class="card">
+            <div class="ico">◐</div>
+            <h3>Create for me (GitHub)</h3>
+            <p>dotstate creates a private <code>dotstate-storage</code> repo on your GitHub account and manages it for you. Requires a GitHub token. The easiest path if you don't already have a dotfiles repo.</p>
+        </div>
+        <div class="card">
+            <div class="ico">◒</div>
+            <h3>Use my own repository</h3>
+            <p>Point dotstate at any existing git repo you own — on GitHub, GitLab, Bitbucket, self-hosted Gitea, or anywhere else. Uses your system's git credentials. No token required.</p>
+        </div>
+    </div>
+
+    <h2 class="reveal">GitHub-managed mode</h2>
+    <p class="reveal">Pick this if you want dotstate to handle the repo creation. You'll be asked for a GitHub token — dotstate supports both fine-grained and classic tokens.</p>
+
+    <h3 class="reveal">Fine-grained tokens (recommended)</h3>
+    <p class="reveal">Create one at <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener noreferrer">github.com/settings/personal-access-tokens/new</a>.</p>
+    <table class="reveal">
+        <thead><tr><th>Permission</th><th>Access</th><th>Why</th></tr></thead>
+        <tbody>
+            <tr><td>Administration</td><td>Read &amp; write</td><td>To create the <code>dotstate-storage</code> repository</td></tr>
+            <tr><td>Contents</td><td>Read &amp; write</td><td>To sync your dotfiles to and from the repository</td></tr>
+            <tr><td><em>Metadata</em></td><td>Read-only</td><td><em>Included automatically by GitHub</em></td></tr>
+        </tbody>
+    </table>
+    <blockquote class="reveal">
+        For initial setup, grant access to <strong>All repositories</strong>. Once dotstate has created the storage repo,
+        regenerate the token and restrict it to that repo only.
+    </blockquote>
+
+    <h3 class="reveal">Classic tokens</h3>
+    <p class="reveal">Create one at <a href="https://github.com/settings/tokens" target="_blank" rel="noopener noreferrer">github.com/settings/tokens</a>. Required scope: <code>repo</code> (full control of private repositories).</p>
+
+    <h3 class="reveal">Storing the token</h3>
+    <p class="reveal">You can provide the token in two ways:</p>
+    <ul class="reveal">
+        <li><strong>Environment variable:</strong> <code>export DOTSTATE_GITHUB_TOKEN=your_token</code> — useful in CI and dotfiles scripts.</li>
+        <li><strong>Config file:</strong> pasted during setup and stored in <code>~/.config/dotstate/config.toml</code> with user-only permissions.</li>
+    </ul>
+
+    <h2 class="reveal">Bring-your-own mode</h2>
+    <p class="reveal">Pick this if you already have a dotfiles repo anywhere, or if you'd rather not give dotstate a token. Provide the clone URL — SSH or HTTPS — and dotstate clones into <code>~/.config/dotstate/storage/</code>.</p>
+<pre class="reveal"><code><span class="c"># Any of these work:</span>
+git@github.com:you/dotfiles.git
+https://gitlab.com/you/dotfiles.git
+https://git.selfhosted.example/you/dotfiles.git</code></pre>
+    <p class="reveal">Your system's git credentials are used for push and pull, just as they are for any other repo.</p>
+
+    <h2 class="reveal">Create your first <span class="moss">profile</span></h2>
+    <p class="reveal">After the repo is ready, dotstate prompts for a profile name. Pick something descriptive — <code>personal</code>, <code>work</code>, or the hostname of this machine. You can always add more later. See <a href="/profiles">profiles &amp; inheritance</a> for how to organize multiple.</p>
+
+    <h2 class="reveal">Adopt your first files</h2>
+    <p class="reveal">The main menu opens. Navigate to <strong>Manage Files</strong>, and pick the dotfiles you want to adopt. dotstate moves each into the repo and creates a symlink in its place — so your tools keep finding them at the usual paths, and version control watches for changes.</p>
+
+    <h2 class="reveal">Sync</h2>
+    <p class="reveal">Go to <strong>Sync with Remote</strong> — or run <code>dotstate sync</code> — to commit, pull, and push. That's it. Your dotfiles are now backed up and ready to be pulled down on another machine with <code>dotstate activate</code>.</p>
+
+    <h2 class="reveal">Next</h2>
+    <p class="reveal">Read the <a href="/quickstart">quick start</a> for a five-minute tour, or jump to <a href="/packages">package management</a> to track CLI tools alongside your dotfiles.</p>
+</DocsLayout>

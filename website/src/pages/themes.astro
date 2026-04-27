@@ -1,0 +1,61 @@
+---
+import DocsLayout from '../layouts/DocsLayout.astro';
+
+const swatches = [
+    { bg: '#f6f2e8', fg: '#22271f', name: 'Light',              key: 'light' },
+    { bg: '#1f242b', fg: '#d5dde5', name: 'Dark',               key: 'dark', tag: 'default' },
+    { bg: '#0b1020', fg: '#a0b3ff', name: 'Midnight',           key: 'midnight' },
+    { bg: '#002b36', fg: '#93a1a1', name: 'Solarized Dark',     key: 'solarized-dark' },
+    { bg: '#fdf6e3', fg: '#586e75', name: 'Solarized Light',    key: 'solarized-light' },
+    { bg: '#282828', fg: '#ebdbb2', name: 'Gruvbox Dark',       key: 'gruvbox-dark' },
+    { bg: '#fbf1c7', fg: '#3c3836', name: 'Gruvbox Light',      key: 'gruvbox-light' },
+    { bg: '#1e1e2e', fg: '#cdd6f4', name: 'Catppuccin Mocha',   key: 'catppuccin-mocha' },
+    { bg: '#eff1f5', fg: '#4c4f69', name: 'Catppuccin Latte',   key: 'catppuccin-latte' },
+    { bg: '#1a1b26', fg: '#a9b1d6', name: 'Tokyo Night',        key: 'tokyonight-dark' },
+    { bg: '#e1e2e7', fg: '#3760bf', name: 'Tokyo Night Light',  key: 'tokyonight-light' },
+    { bg: '#ffffff', fg: '#000000', name: 'No Color',           key: 'nocolor' },
+];
+---
+
+<DocsLayout
+    page="themes"
+    title="dotstate — themes"
+    description="Eleven built-in themes for the dotstate TUI — light, dark, Solarized, Gruvbox, Catppuccin, Tokyo Night, and more."
+>
+    <div class="breadcrumbs reveal"><a href="/">dotstate</a> / docs / features / <span>themes</span></div>
+    <h1 class="reveal"><span class="quiet">Eleven</span> <span class="moss">themes</span>,<br />one restrained TUI.</h1>
+    <p class="lede reveal">
+        dotstate ships with eleven built-in themes that cover most terminal tastes — from soft light to deep
+        dark, and the familiar community palettes. Pick one in <strong>Settings → Theme</strong>, or set it in your config.
+    </p>
+
+    <h2 class="reveal">Set a theme</h2>
+    <p class="reveal">In <code>~/.config/dotstate/config.toml</code>:</p>
+<pre class="reveal"><code>theme = <span class="k">"tokyonight-dark"</span></code></pre>
+    <p class="reveal">Or change it from the TUI: press <kbd>,</kbd> to open settings, then select a theme — changes apply instantly.</p>
+
+    <h2 class="reveal">Built-in <span class="moss">themes</span></h2>
+    <div class="swatch-grid reveal">
+        {swatches.map((s) => (
+            <div class="swatch">
+                <div class="preview" style={`background: ${s.bg}; color: ${s.fg};`}>dotstate ~ sync</div>
+                <div class="meta">
+                    <span class="name">{s.name}</span>
+                    <span class="key">
+                        {s.key}
+                        {s.tag && <span style="color: var(--moss); margin-left: 4px;">· {s.tag}</span>}
+                    </span>
+                </div>
+            </div>
+        ))}
+    </div>
+
+    <h2 class="reveal">Accessibility</h2>
+    <p class="reveal">
+        The <code>nocolor</code> theme strips all color — useful on monochrome terminals, in screenshots for documentation,
+        or when working in a color-critical environment where the TUI's palette would interfere.
+    </p>
+
+    <h2 class="reveal">Next</h2>
+    <p class="reveal">See <a href="/keymaps">keymaps</a> for the keyboard side of the interface.</p>
+</DocsLayout>

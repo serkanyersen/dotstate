@@ -1,0 +1,138 @@
+---
+import DocsLayout from '../layouts/DocsLayout.astro';
+---
+
+<DocsLayout
+    page="cli"
+    title="dotstate — CLI reference"
+    description="Every dotstate command, with its flags and examples."
+>
+    <div class="breadcrumbs reveal"><a href="/">dotstate</a> / docs / reference / <span>cli</span></div>
+    <h1 class="reveal">The <span class="moss">command</span> line, <br /><span class="quiet">in one place.</span></h1>
+    <p class="lede reveal">
+        Everything the interactive TUI does, <code>dotstate</code> can do as a script. Good for CI,
+        bootstrapping machines, or staying on the home row.
+    </p>
+
+    <h2 class="reveal">Files</h2>
+    <div class="cmdlist reveal">
+        <div class="grp">
+            <h4>Core</h4>
+            <div class="row">
+                <code>dotstate</code>
+                <div class="desc">Open the interactive TUI.</div>
+            </div>
+            <div class="row">
+                <code>dotstate list</code>
+                <div class="desc">List every synced file in the active profile, grouped by source (own, inherited, common) with symlink and storage locations.<span class="flag"><code>-v, --verbose</code> show detailed information</span></div>
+            </div>
+            <div class="row">
+                <code>dotstate add &lt;path&gt;</code>
+                <div class="desc">Adopt a file. Moves it into the repo and creates a symlink in its place. Example: <code>dotstate add ~/.zshrc</code>.<span class="flag"><code>--common</code> add as a common file shared across all profiles</span></div>
+            </div>
+            <div class="row">
+                <code>dotstate remove &lt;path&gt;</code>
+                <div class="desc">Remove a file from sync. Restores the original and removes the symlink.<span class="flag"><code>--common</code> remove from common files</span></div>
+            </div>
+            <div class="row">
+                <code>dotstate activate</code>
+                <div class="desc">Re-create symlinks and restore app state. Essential after cloning your dotfiles on a new machine.</div>
+            </div>
+            <div class="row">
+                <code>dotstate deactivate</code>
+                <div class="desc">Restore original files and remove symlinks — useful when uninstalling.</div>
+            </div>
+        </div>
+    </div>
+
+    <h2 class="reveal">Sync</h2>
+    <div class="cmdlist reveal">
+        <div class="grp">
+            <h4>Remote</h4>
+            <div class="row">
+                <code>dotstate sync</code>
+                <div class="desc">Commit local changes, pull with rebase, and push.<span class="flag"><code>-m, --message</code> custom commit message</span></div>
+            </div>
+            <div class="row">
+                <code>dotstate sync -m "Update zshrc"</code>
+                <div class="desc">Sync with a custom commit message.</div>
+            </div>
+            <div class="row">
+                <code>dotstate upgrade</code>
+                <div class="desc">Check for updates and optionally upgrade dotstate itself.</div>
+            </div>
+        </div>
+    </div>
+
+    <h2 class="reveal">Packages</h2>
+    <div class="cmdlist reveal">
+        <div class="grp">
+            <h4>Per-profile packages</h4>
+            <div class="row">
+                <code>dotstate packages list</code>
+                <div class="desc">List packages for a profile with installation status.<span class="flag"><code>-p, --profile</code> target profile &nbsp; <code>-v, --verbose</code> detailed info</span></div>
+            </div>
+            <div class="row">
+                <code>dotstate packages add</code>
+                <div class="desc">Add a package to a profile. Interactive, or via flags. Example: <code>dotstate packages add -n ripgrep -m brew -b rg</code>.<span class="flag"><code>-n, --name</code> package name &nbsp; <code>-m, --manager</code> package manager &nbsp; <code>-b, --binary</code> binary name</span></div>
+            </div>
+            <div class="row">
+                <code>dotstate packages remove</code>
+                <div class="desc">Remove a package from a profile.<span class="flag"><code>-p, --profile</code> target profile &nbsp; <code>-y, --yes</code> skip confirmation</span></div>
+            </div>
+            <div class="row">
+                <code>dotstate packages check</code>
+                <div class="desc">Check installation status of all tracked packages.<span class="flag"><code>-p, --profile</code> target profile</span></div>
+            </div>
+            <div class="row">
+                <code>dotstate packages install</code>
+                <div class="desc">Install all missing packages for a profile.<span class="flag"><code>-p, --profile</code> target profile &nbsp; <code>-v, --verbose</code> show install output</span></div>
+            </div>
+        </div>
+    </div>
+
+    <h2 class="reveal">Diagnostics &amp; <span class="moss">info</span></h2>
+    <div class="cmdlist reveal">
+        <div class="grp">
+            <h4>Utility</h4>
+            <div class="row">
+                <code>dotstate doctor</code>
+                <div class="desc">Run diagnostics to check the health of your dotstate setup.<span class="flag"><code>-v, --verbose</code> detailed &nbsp; <code>--fix</code> auto-fix issues &nbsp; <code>--json</code> JSON output</span></div>
+            </div>
+            <div class="row">
+                <code>dotstate config</code>
+                <div class="desc">Print the configuration file location.</div>
+            </div>
+            <div class="row">
+                <code>dotstate repository</code>
+                <div class="desc">Print the dotfiles repository location.</div>
+            </div>
+            <div class="row">
+                <code>dotstate logs</code>
+                <div class="desc">Print logs location and how to view them.</div>
+            </div>
+            <div class="row">
+                <code>dotstate completions &lt;shell&gt;</code>
+                <div class="desc">Emit shell completions for bash, zsh, or fish.</div>
+            </div>
+            <div class="row">
+                <code>dotstate help</code>
+                <div class="desc">Full command reference.</div>
+            </div>
+        </div>
+    </div>
+
+    <h2 class="reveal">Exit codes</h2>
+    <table class="reveal">
+        <thead><tr><th>Code</th><th>Meaning</th></tr></thead>
+        <tbody>
+            <tr><td><code>0</code></td><td>Success.</td></tr>
+            <tr><td><code>1</code></td><td>General error (invalid arguments, missing file, etc).</td></tr>
+            <tr><td><code>2</code></td><td>Configuration or repository error.</td></tr>
+            <tr><td><code>3</code></td><td>Network or git remote error.</td></tr>
+        </tbody>
+    </table>
+
+    <h2 class="reveal">Next</h2>
+    <p class="reveal">See <a href="/profiles">profiles &amp; inheritance</a> for how files resolve across profiles, or <a href="/packages">package management</a> for the bigger picture on packages.</p>
+</DocsLayout>

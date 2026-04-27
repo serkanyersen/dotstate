@@ -1,855 +1,205 @@
 ---
 import Layout from '../layouts/Layout.astro';
-import SectionHeader from '../components/SectionHeader.astro';
-import InstallWidget from '../components/InstallWidget.astro';
-import Comparison from '../components/Comparison.astro';
-import Tip from '../components/Tip.astro';
-import StatusGrid from '../components/StatusGrid.astro';
-import FeatureGrid from '../components/FeatureGrid.astro';
-import FeatureCard from '../components/FeatureCard.astro';
-import CodeBlock from '../components/CodeBlock.astro';
-import Step from '../components/Step.astro';
-import CommandCard from '../components/CommandCard.astro';
-import ExampleCard from '../components/ExampleCard.astro';
-import SecurityCard from '../components/SecurityCard.astro';
-import ContribGrid from '../components/ContribGrid.astro';
-import ContribCard from '../components/ContribCard.astro';
-import fs from 'node:fs';
-import path from 'node:path';
+import TopNav from '../components/TopNav.astro';
+import InstallBar from '../components/InstallBar.astro';
+import TuiPreview from '../components/TuiPreview.astro';
 
-// Read version from Cargo.toml at build time
-const cargoPath = path.resolve('../Cargo.toml');
-const cargoContent = fs.readFileSync(cargoPath, 'utf-8');
-const versionMatch = cargoContent.match(/^version\s*=\s*"([^"]+)"/m);
-const version = versionMatch ? versionMatch[1] : '0.0.0';
+const features = [
+    { i: '◐', t: 'Profiles', d: 'Separate sets of files for work, personal, servers, or any context you care about.' },
+    { i: '⧉', t: 'Inheritance', d: "A child profile extends a parent and only overrides what's different. Changes flow down." },
+    { i: '▦', t: 'Packages', d: 'Track CLI tools per profile. Works with brew, cargo, npm, pip, or any custom script.' },
+    { i: '◯', t: 'Safe by design', d: 'Automatic backups before every operation. No shell injection. Validated paths.' },
+];
 
-const sections = [
-    { id: 'overview', icon: '[~]', title: 'Overview' },
-    { id: 'features', icon: '[*]', title: 'Features' },
-    { id: 'installation', icon: '[+]', title: 'Installation' },
-    { id: 'quickstart', icon: '[>]', title: 'Quick Start' },
-    { id: 'cli', icon: '[$]', title: 'CLI Commands' },
-    { id: 'examples', icon: '[#]', title: 'Examples' },
-    { id: 'configuration', icon: '[%]', title: 'Configuration' },
-    { id: 'security', icon: '[!]', title: 'Security' },
-    { id: 'contributing', icon: '[&]', title: 'Contributing' },
+const steps = [
+    { t: 'Install', d: 'One line in your terminal. A single binary lands in your path; nothing else changes.' },
+    { t: 'Connect a repo', d: 'Let dotstate create one on GitHub, or point it at any existing git repository you already own.' },
+    { t: 'Adopt dotfiles', d: 'Pick files from your home directory in the TUI. Originals are backed up before anything moves.' },
+    { t: 'Sync & switch', d: 'One command to push and pull. Switch profiles to reshape your environment on the fly.' },
+];
+
+const cliGroups = [
+    {
+        title: 'Files',
+        rows: [
+            ['dotstate', 'Open the interactive TUI'],
+            ['dotstate list', 'List every synced file in the active profile'],
+            ['dotstate add ~/.myconfig', 'Adopt a file into the active profile'],
+            ['dotstate activate', 'Re-create symlinks (useful after cloning on a new machine)'],
+            ['dotstate deactivate', 'Restore original files and remove symlinks'],
+        ],
+    },
+    {
+        title: 'Sync',
+        rows: [
+            ['dotstate sync', 'Commit, pull, and push in one step'],
+            ['dotstate sync -m "message"', 'Sync with a custom commit message'],
+            ['dotstate upgrade', 'Check for, and optionally install, updates'],
+        ],
+    },
+    {
+        title: 'Packages',
+        rows: [
+            ['dotstate packages list', 'Show tracked packages and their installation state'],
+            ['dotstate packages add -n ripgrep -m brew -b rg', 'Track a new package for this profile'],
+            ['dotstate packages check', "Check what's missing on this machine"],
+            ['dotstate packages install', 'Install every missing package'],
+        ],
+    },
+    {
+        title: 'Shell',
+        rows: [
+            ['dotstate completions zsh', 'Emit zsh completions (also: bash, fish)'],
+            ['dotstate help', 'Full command reference'],
+        ],
+    },
 ];
 ---
 
 <Layout>
-    <div class="container">
-        <!-- Header -->
-        <header class="header" role="banner">
-            <div class="header-chrome" aria-hidden="true">┌─ DOTSTATE v{version} ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐</div>
-            <div class="header-content">
-                <h1 class="logo">DOTSTATE</h1>
-                <p class="tagline">Manage your dotfiles with ease. Sync to any git host, organize by profiles, and keep your configuration files safe.</p>
-            </div>
-        </header>
-
-        <!-- Main Content -->
-        <div class="main-content">
-            <!-- Left Pane - Navigation -->
-            <aside class="sidebar" role="complementary" aria-label="Navigation menu">
-                <nav class="menu" role="navigation" aria-label="Main navigation">
-                    <div class="menu-label">
-                        <span class="menu-icon" aria-hidden="true">☰</span> Menu
-                    </div>
-                    <ul class="menu-list">
-                        {sections.map((section, index) => (
-                            <li class={`menu-item ${index === 0 ? 'active' : ''}`} data-section={section.id}>
-                                <span class="menu-arrow" aria-hidden="true">{index === 0 ? '>' : ' '}</span>
-                                <span class="menu-icon" aria-hidden="true">{section.icon}</span>
-                                <span class="menu-text">{section.title}</span>
-                            </li>
-                        ))}
-                    </ul>
-                </nav>
-            </aside>
-
-            <!-- Right Pane - Content -->
-            <main class="content" role="main">
-
-                <!-- Overview Section -->
-                <article class="content-section active" id="overview">
-                    <SectionHeader icon="[~]" title="What is DotState? - Modern Dotfile Manager for Developers" />
-                    <div class="section-content">
-                        <p><strong>DotState</strong> is a terminal-based <strong>dotfile manager</strong> that helps you manage your dotfiles effortlessly. Whether you're syncing your configuration across multiple machines or setting up a new development environment, DotState makes it simple, safe, and fast.</p>
-
-                        <img src="/screenshot.png" alt="DotState TUI screenshot showing the main menu with Tokyo Night dark theme" class="screenshot" width="1130" height="868" loading="eager" />
-
-                        <InstallWidget />
-
-                        <h3>Why Use a Dotfile Manager?</h3>
-                        <p>Managing dotfiles can be a pain. You want your <code>.zshrc</code>, <code>.vimrc</code>, <code>.gitconfig</code>, <code>.bashrc</code>, and other config files synced across machines, but traditional solutions are either too complex, insecure, or require too much manual work.</p>
-
-                        <p><strong>DotState solves this by being:</strong></p>
-                        <ul>
-                            <li><span class="icon-rust">[rs]</span> <strong>Built with Rust</strong> - Fast, memory-safe, and reliable dotfile management</li>
-                            <li><span class="icon-security">[!]</span> <strong>Secure by design</strong> - No shell injection vulnerabilities, safe file operations</li>
-                            <li><span class="icon-tui">[#]</span> <strong>Beautiful TUI</strong> - Intuitive interface that doesn't require learning Git</li>
-                            <li><span class="icon-fast">[>]</span> <strong>Lightning fast</strong> - Non-blocking operations, instant feedback</li>
-                            <li><span class="icon-safe">[+]</span> <strong>Safe</strong> - Automatic backups before any file operations</li>
-                            <li><span class="icon-git">[g]</span> <strong>Git-powered</strong> - Store dotfiles in GitHub, GitLab, Bitbucket, or any git host</li>
-                        </ul>
-
-                        <Comparison leftTitle="Manual Dotfile Management" rightTitle="DotState">
-                            <ul slot="left">
-                                <li>Requires Git knowledge</li>
-                                <li>Manual symlink setup</li>
-                                <li>No automatic backups</li>
-                                <li>DIY scripting needed</li>
-                            </ul>
-                            <ul slot="right">
-                                <li>Beautiful TUI interface</li>
-                                <li>Automatic symlink management</li>
-                                <li>Built-in backup system</li>
-                                <li>Profile-based organization</li>
-                            </ul>
-                        </Comparison>
-
-                        <Tip>
-                            <strong>Note:</strong> There are many great dotfile managers out there like <a href="https://www.chezmoi.io/" target="_blank">chezmoi</a>, <a href="https://yadm.io/" target="_blank">yadm</a>, and <a href="https://www.gnu.org/software/stow/" target="_blank">GNU Stow</a>. DotState focuses on providing a friendly TUI experience with minimal setup.
-                        </Tip>
-
-                        <h3>Perfect For</h3>
-                        <ul>
-                            <li>Developers who work on multiple machines</li>
-                            <li>Teams sharing configuration files</li>
-                            <li>Anyone who wants to backup their dotfiles</li>
-                            <li>Users switching between macOS and Linux</li>
-                            <li>Developers who want a modern Rust-based solution</li>
-                        </ul>
-
-                        <Tip>
-                            <strong>Tip:</strong> When you select a file, it's automatically copied to your repository and a symlink is created in its place. This means your files are safely backed up and version controlled.
-                        </Tip>
-
-                        <h3>Profiles, Inheritance & Common Files</h3>
-                        <p>Organize your dotfiles with <strong>profiles</strong> for different machines or contexts. Profiles can <strong>inherit</strong> from a parent — child files override parent files, so you only define what's different. Files you mark as <strong>common</strong> are shared across all profiles. See <a href="#examples" class="section-link" data-section="examples">Examples</a> for workflows.</p>
-                        <CodeBlock code={"Common Files (shared)     Profile-specific\n─────────────────────    ─────────────────\n .gitconfig               Personal/\n .tmux.conf      ───►      .zshrc\n .vimrc                    .ssh/config\n                          Work/\n                           .zshrc\n                           work-scripts/"} />
-                    </div>
-
-                    <StatusGrid />
-                </article>
-
-                <!-- Features Section -->
-                <article class="content-section" id="features">
-                    <SectionHeader icon="[*]" title="DotState Features - Complete Dotfile Management Solution" />
-                    <div class="section-content">
-                        <p>DotState provides everything you need for <strong>dotfile management</strong>, <strong>configuration sync</strong>, and <strong>profile organization</strong>.</p>
-
-                        <h3>Core Features</h3>
-                        <FeatureGrid>
-                            <FeatureCard icon="[@]" title="Profile Management">
-                                Create separate profiles for different contexts (work, personal, Mac, Linux, etc.).
-                            </FeatureCard>
-                            <FeatureCard icon="[~]" title="Flexible Git Sync">
-                                Sync with any git host: GitHub, GitLab, Bitbucket, or self-hosted.
-                            </FeatureCard>
-                            <FeatureCard icon="[?]" title="Smart File Detection">
-                                Automatically finds common dotfiles in your home directory.
-                            </FeatureCard>
-                            <FeatureCard icon="[+]" title="Safe Operations">
-                                Automatic backups before any file modification.
-                            </FeatureCard>
-                            <FeatureCard icon="[=]" title="Symlink Management">
-                                Automatic creation and management of symlinks.
-                            </FeatureCard>
-                            <FeatureCard icon="[*]" title="Common Files Support">
-                                Share dotfiles across all profiles automatically.
-                            </FeatureCard>
-                            <FeatureCard icon="[^]" title="Profile Inheritance">
-                                Extend a parent profile and override only what differs. Changes to the parent flow to all children automatically.
-                            </FeatureCard>
-                        </FeatureGrid>
-
-                        <h3>Package Management</h3>
-                        <p>DotState includes built-in <strong>package management</strong> to track and install CLI tools per profile:</p>
-                        <FeatureGrid>
-                            <FeatureCard icon="[#]" title="CLI Tool Tracking">
-                                Define and track CLI tools and dependencies per profile.
-                            </FeatureCard>
-                            <FeatureCard icon="[%]" title="Multi-Manager Support">
-                                Works with Homebrew, Cargo, npm, pip, and more.
-                            </FeatureCard>
-                            <FeatureCard icon="[$]" title="Installation Flow">
-                                Check what's missing and install with one command.
-                            </FeatureCard>
-                            <FeatureCard icon="[&]" title="Custom Packages">
-                                Support for custom installation scripts.
-                            </FeatureCard>
-                        </FeatureGrid>
-
-                        <h3>User Experience</h3>
-                        <FeatureGrid>
-                            <FeatureCard icon="[>]" title="Beautiful TUI">
-                                Modern terminal interface built with Ratatui.
-                            </FeatureCard>
-                            <FeatureCard icon="[^]" title="Mouse Support">
-                                Click to navigate and interact.
-                            </FeatureCard>
-                            <FeatureCard icon="[!]" title="Real-time Feedback">
-                                See what's happening as it happens.
-                            </FeatureCard>
-                            <FeatureCard icon="[$]" title="CLI & TUI">
-                                Full-featured CLI for automation, beautiful TUI for interactive use.
-                            </FeatureCard>
-                            <FeatureCard icon="[:]" title="Customizable Keymaps">
-                                Preset support (Standard, Vim, Emacs) and custom overrides.
-                            </FeatureCard>
-                        </FeatureGrid>
-                    </div>
-                </article>
-
-                <!-- Installation Section -->
-                <article class="content-section" id="installation">
-                    <SectionHeader icon="[+]" title="Install DotState - Installation Guide" />
-                    <div class="section-content">
-                        <p>Install DotState using one of these methods:</p>
-
-                        <h3>From Cargo (Recommended)</h3>
-                        <p>The easiest way to install DotState is via Cargo:</p>
-                        <CodeBlock code="cargo install dotstate" />
-
-                        <h3>From Source</h3>
-                        <p>Build DotState from source for the latest features:</p>
-                        <CodeBlock code="git clone https://github.com/serkanyersen/dotstate.git\ncd dotstate\ncargo install --path ." />
-
-                        <h3>Using Homebrew (macOS)</h3>
-                        <p>Install DotState via Homebrew on macOS:</p>
-                        <CodeBlock code="brew tap serkanyersen/dotstate\nbrew install dotstate" />
-
-                        <h3>System Requirements</h3>
-                        <ul class="requirements-list">
-                            <li><strong>Rust:</strong> Latest stable version (for building from source)</li>
-                            <li><strong>Git:</strong> For repository operations</li>
-                            <li><strong>Git Host Account:</strong> GitHub, GitLab, Bitbucket, or any git host (optional)</li>
-                            <li><strong>Operating System:</strong> Linux, macOS, or Windows</li>
-                            <li><strong>(Recommended) Nerd Fonts:</strong> For the best visual experience</li>
-                        </ul>
-                    </div>
-                </article>
-
-                <!-- Quick Start Section -->
-                <article class="content-section" id="quickstart">
-                    <SectionHeader icon="[>]" title="Quick Start Guide - Get Started with DotState in Minutes" />
-                    <div class="section-content">
-                        <p>Get started with DotState, the fastest way to manage your dotfiles:</p>
-
-                        <Step number={1} title="Launch DotState">
-                            <p>Start the DotState terminal UI:</p>
-                            <CodeBlock code="dotstate" />
-                        </Step>
-
-                        <Step number={2} title="First-time Setup">
-                            <p>Choose how to manage your dotfiles repository:</p>
-                            <ul>
-                                <li><strong>Option A: Create for me (GitHub)</strong> - DotState creates a repository on your GitHub account</li>
-                                <li><strong>Option B: Use my own repository</strong> - Use any git host with your own credentials</li>
-                            </ul>
-                        </Step>
-
-                        <Step number={3} title="Add Your Files">
-                            <p>Start syncing your dotfiles:</p>
-                            <ul>
-                                <li>Navigate to "Manage Files"</li>
-                                <li>Select files to sync (they're automatically added)</li>
-                                <li>Files are moved to the repo and symlinked automatically</li>
-                            </ul>
-                        </Step>
-
-                        <Step number={4} title="Sync with Remote">
-                            <p>Push your dotfiles to your git remote:</p>
-                            <ul>
-                                <li>Go to "Sync with Remote"</li>
-                                <li>Your files are committed, pulled, and pushed automatically</li>
-                            </ul>
-                        </Step>
-
-                        <Tip type="success">
-                            <strong>That's it!</strong> Your dotfiles are now synced and ready to use on any machine.
-                        </Tip>
-                    </div>
-                </article>
-
-                <!-- CLI Commands Section -->
-                <article class="content-section" id="cli">
-                    <SectionHeader icon="[$]" title="DotState CLI Commands - Complete Command Reference" />
-                    <div class="section-content">
-                        <p>DotState provides a powerful CLI for automation and scripting:</p>
-
-                        <CommandCard
-                            command="dotstate sync"
-                            description="Sync with remote: commit, pull (with rebase), and push."
-                            options="<code>-m, --message</code> Custom commit message"
-                            example="dotstate sync -m 'Update zshrc aliases'"
-                        />
-
-                        <CommandCard
-                            command="dotstate list"
-                            description="List all synced files grouped by source (own, inherited, common) with symlink and storage locations."
-                            options="<code>-v, --verbose</code> Show detailed information"
-                        />
-
-                        <CommandCard
-                            command="dotstate add <path>"
-                            description="Add a file to sync. Moves the file to the repo and creates a symlink."
-                            options="<code>--common</code> Add as a common file (shared across all profiles)"
-                            example="dotstate add ~/.zshrc"
-                        />
-
-                        <CommandCard
-                            command="dotstate remove <path>"
-                            description="Remove a file from sync. Restores the original file and removes the symlink."
-                            options="<code>--common</code> Remove from common files"
-                            example="dotstate remove .zshrc"
-                        />
-
-                        <CommandCard
-                            command="dotstate activate"
-                            description="Activate symlinks and restore app state. Use after cloning your dotfiles on a new machine."
-                            note="Essential for setting up a new machine with your existing dotfiles."
-                        />
-
-                        <CommandCard
-                            command="dotstate deactivate"
-                            description="Deactivate symlinks. Useful when uninstalling or needing the original files."
-                            options="<code>--completely</code> Remove symlinks without restoring files"
-                        />
-
-                        <CommandCard
-                            command="dotstate doctor"
-                            description="Run diagnostics to check the health of your DotState setup."
-                            options="<code>-v, --verbose</code> Detailed diagnostics<br><code>--fix</code> Auto-fix issues<br><code>--json</code> JSON output for scripting"
-                        />
-
-                        <CommandCard
-                            command="dotstate upgrade"
-                            description="Check for updates and optionally upgrade DotState."
-                        />
-
-                        <CommandCard
-                            command="dotstate config"
-                            description="Show the configuration file location."
-                        />
-
-                        <CommandCard
-                            command="dotstate repository"
-                            description="Show the repository location."
-                        />
-
-                        <CommandCard
-                            command="dotstate logs"
-                            description="Show logs location and how to view them."
-                        />
-
-                        <h3>Package Management</h3>
-                        <p>Manage packages per profile from the command line:</p>
-
-                        <CommandCard
-                            command="dotstate packages list"
-                            description="List packages for a profile with installation status."
-                            options="<code>-p, --profile</code> Target profile<br><code>-v, --verbose</code> Show detailed info"
-                        />
-
-                        <CommandCard
-                            command="dotstate packages add"
-                            description="Add a package to a profile. Interactive or via flags."
-                            options="<code>-n, --name</code> Package name<br><code>-m, --manager</code> Package manager<br><code>-b, --binary</code> Binary name"
-                            example="dotstate packages add -n ripgrep -m brew -b rg"
-                        />
-
-                        <CommandCard
-                            command="dotstate packages remove"
-                            description="Remove a package from a profile."
-                            options="<code>-p, --profile</code> Target profile<br><code>-y, --yes</code> Skip confirmation"
-                            example="dotstate packages remove ripgrep"
-                        />
-
-                        <CommandCard
-                            command="dotstate packages check"
-                            description="Check installation status of all packages."
-                            options="<code>-p, --profile</code> Target profile"
-                        />
-
-                        <CommandCard
-                            command="dotstate packages install"
-                            description="Install all missing packages for a profile."
-                            options="<code>-p, --profile</code> Target profile<br><code>-v, --verbose</code> Show install output"
-                        />
-                    </div>
-                </article>
-
-                <!-- Examples Section -->
-                <article class="content-section" id="examples">
-                    <SectionHeader icon="[#]" title="DotState Examples - Common Use Cases and Workflows" />
-                    <div class="section-content">
-                        <p>Learn how to use DotState with these practical examples:</p>
-
-                        <h3>Common Workflows</h3>
-
-                        <ExampleCard title="Setting up a new machine">
-                            <ol>
-                                <li>Install DotState: <code>cargo install dotstate</code></li>
-                                <li>Launch TUI: <code>dotstate</code></li>
-                                <li>Choose your setup mode (GitHub or Local)</li>
-                                <li>Select your profile</li>
-                                <li>Check if any packages need to be installed</li>
-                            </ol>
-                        </ExampleCard>
-
-                        <ExampleCard title="Adding a new dotfile">
-                            <CodeBlock code="# Using CLI\ndotstate add ~/.mynewconfig\n\n# Or using TUI\ndotstate\n# Navigate to 'Manage Files' → Select file" />
-                            <p>Both methods automatically move the file to the repo and create a symlink.</p>
-                        </ExampleCard>
-
-                        <ExampleCard title="Syncing changes across machines">
-                            <CodeBlock code="# Using CLI\ndotstate sync\ndotstate sync -m 'Custom commit message'\n\n# Or using TUI: Navigate to 'Sync with Remote'" />
-                        </ExampleCard>
-
-                        <ExampleCard title="Managing multiple profiles">
-                            <p>Profiles let you organize dotfiles for different machines or contexts. Each profile has its own files, while <strong>Common Files</strong> are shared across all profiles.</p>
-                            <ul>
-                                <li><strong>Create a profile:</strong> Press <kbd>C</kbd> in Manage Profiles</li>
-                                <li><strong>Inherit from existing:</strong> Set a parent profile — the child gets all parent files and you only override what's different (live link)</li>
-                                <li><strong>Copy from existing:</strong> One-time snapshot of an existing profile's files and packages</li>
-                                <li><strong>Switch profiles:</strong> Select a profile and press <kbd>Enter</kbd> — symlinks are swapped automatically</li>
-                            </ul>
-                            <p><strong>Example setups:</strong></p>
-                            <ul>
-                                <li><strong>Multi-machine:</strong> <code>Personal</code> on your laptop, <code>Work</code> on your work machine, <code>Server</code> for headless setups</li>
-                                <li><strong>Same computer:</strong> <code>day</code>, <code>night</code>, or <code>focus</code> profiles with different terminal themes</li>
-                                <li><strong>Layered configs:</strong> <code>base</code> with core setup, then <code>work</code> and <code>personal</code> inherit from it — each only overrides what's different</li>
-                            </ul>
-                        </ExampleCard>
-
-                        <ExampleCard title="Sharing common files">
-                            <p>You decide which files are shared. Move any file to <strong>Common</strong> and it will be symlinked in every profile. Files stay in Common when you switch profiles.</p>
-                            <ol>
-                                <li>Go to <strong>Manage Files</strong></li>
-                                <li>Select a file from your profile</li>
-                                <li>Press <kbd>M</kbd> to move it to Common</li>
-                            </ol>
-                            <p>Press <kbd>M</kbd> again on a common file to move it back to the active profile.</p>
-                            <CodeBlock code={"Common Files (you choose)   Profiles (per-machine)\n─────────────────────────  ──────────────────────\n .gitconfig       ┌──────► Personal/.zshrc\n .tmux.conf  ─────┤        Personal/.ssh/config\n .vimrc           └──────► Work/.zshrc\n                           Work/work-scripts/"} />
-                        </ExampleCard>
-                    </div>
-                </article>
-
-                <!-- Configuration Section -->
-                <article class="content-section" id="configuration">
-                    <SectionHeader icon="[%]" title="DotState Configuration - Repository Modes and Settings" />
-                    <div class="section-content">
-                        <p>DotState supports two repository modes:</p>
-
-                        <ExampleCard title="[g] GitHub Mode (DotState-managed)">
-                            <p>DotState creates and manages a repository on your GitHub account.</p>
-                            <p><strong>Token options:</strong></p>
-                            <ul>
-                                <li>Environment variable: <code>export DOTSTATE_GITHUB_TOKEN=your_token</code></li>
-                                <li>Config file (set during first-time setup)</li>
-                            </ul>
-                            <p><strong>Supported token types:</strong></p>
-                            <ul>
-                                <li><strong>Fine-grained tokens</strong> (recommended): <code>github_pat_...</code></li>
-                                <li><strong>Classic tokens</strong>: <code>ghp_...</code></li>
-                            </ul>
-                            <p>See <a href="#security">Security section</a> for detailed permission requirements.</p>
-                        </ExampleCard>
-
-                        <ExampleCard title="[~] Local Mode (User-provided)">
-                            <p>Use your own pre-existing git repository. Works with any git host.</p>
-                            <p><strong>No token required!</strong> Uses your system's git credentials.</p>
-                        </ExampleCard>
-
-                        <h3>Configuration File</h3>
-                        <p>DotState stores configuration at:</p>
-                        <CodeBlock code="~/.config/dotstate/config.toml" />
-
-                        <h3>Keymap Configuration</h3>
-                        <p>DotState supports customizable keyboard shortcuts with presets:</p>
-                        <ul>
-                            <li><strong>Standard:</strong> Arrow keys, Enter, Esc</li>
-                            <li><strong>Vim:</strong> hjkl navigation, q to quit</li>
-                            <li><strong>Emacs:</strong> Ctrl+N/P for up/down</li>
-                        </ul>
-
-                        <CodeBlock code='[keymap]\npreset = "vim"  # Options: "standard", "vim", "emacs"' />
-
-                        <h3>Theme Configuration</h3>
-                        <p>DotState includes 11 built-in themes:</p>
-                        <CodeBlock code='theme = "dark"              # Default\ntheme = "light"             # Light terminals\ntheme = "midnight"          # Deep dark blue\ntheme = "solarized-dark"    # Solarized Dark\ntheme = "solarized-light"   # Solarized Light\ntheme = "gruvbox-dark"      # Gruvbox (warm, retro)\ntheme = "gruvbox-light"     # Gruvbox Light\ntheme = "catppuccin-mocha"  # Catppuccin (pastel dark)\ntheme = "catppuccin-latte"  # Catppuccin (pastel light)\ntheme = "tokyonight-dark"   # Tokyo Night\ntheme = "tokyonight-light"  # Tokyo Night Light\ntheme = "nocolor"           # No colors (accessibility)' />
-
-                        <Tip>
-                            <strong>Tip:</strong> Press <code>?</code> in the TUI to see all current key bindings.
-                        </Tip>
-                    </div>
-                </article>
-
-                <!-- Security Section -->
-                <article class="content-section" id="security">
-                    <SectionHeader icon="[!]" title="DotState Security - Secure Dotfile Management" />
-                    <div class="section-content">
-                        <p>Security is a top priority for DotState:</p>
-
-                        <h3>Security Features</h3>
-
-                        <SecurityCard title="[!] No Shell Injection">
-                            All commands use direct execution, not shell interpretation.
-                        </SecurityCard>
-
-                        <SecurityCard title="[+] Path Validation">
-                            Dangerous paths are blocked. All paths are validated before operations.
-                        </SecurityCard>
-
-                        <SecurityCard title="[?] Git Repository Detection">
-                            Prevents nested Git repositories to avoid configuration conflicts.
-                        </SecurityCard>
-
-                        <SecurityCard title="[=] Backup System">
-                            Automatic backups before any file operation.
-                        </SecurityCard>
-
-                        <SecurityCard title="[*] Token Security">
-                            Tokens can be provided via environment variables. Local mode requires no tokens.
-                        </SecurityCard>
-
-                        <h3>GitHub Token Permissions</h3>
-                        <p>DotState supports both <strong>Fine-grained tokens</strong> (recommended) and <strong>Classic tokens</strong>.</p>
-
-                        <h4>[>] Fine-grained Tokens (Recommended)</h4>
-                        <p>Create at <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener noreferrer">github.com/settings/personal-access-tokens</a></p>
-                        <p><strong>Required permissions:</strong></p>
-                        <ul>
-                            <li><strong>Administration</strong>: Read & write — to create your <code>dotstate-storage</code> repository</li>
-                            <li><strong>Contents</strong>: Read & write — to sync your dotfiles to/from the repository</li>
-                        </ul>
-                        <p><em>Note: Metadata (read-only) is automatically included by GitHub.</em></p>
-                        <Tip>
-                            <strong>Tip:</strong> For initial setup, grant access to "All repositories". After setup, you can regenerate a token restricted to only your <code>dotstate-storage</code> repository.
-                        </Tip>
-
-                        <h4>[>] Classic Tokens</h4>
-                        <p>Create at <a href="https://github.com/settings/tokens" target="_blank" rel="noopener noreferrer">github.com/settings/tokens</a></p>
-                        <p>Required scope: <code>repo</code> (full control of private repositories)</p>
-
-                        <h3>Security Best Practices</h3>
-                        <ul class="best-practices">
-                            <li>Prefer fine-grained tokens for minimal permissions</li>
-                            <li>Restrict token scope to your dotstate repository after initial setup</li>
-                            <li>Rotate tokens regularly</li>
-                            <li>Never commit tokens to version control</li>
-                            <li>Review files before syncing</li>
-                            <li>Keep backups enabled (default: enabled)</li>
-                            <li>Use private repositories for sensitive configurations</li>
-                        </ul>
-                    </div>
-                </article>
-
-                <!-- Contributing Section -->
-                <article class="content-section" id="contributing">
-                    <SectionHeader icon="[&]" title="Contributing to DotState - Open Source Dotfile Manager" />
-                    <div class="section-content">
-                        <p>We welcome contributions! DotState is an open-source project built with ❤️ and Rust.</p>
-
-                        <h3>How to Contribute</h3>
-                        <ol>
-                            <li>Fork the repository on GitHub</li>
-                            <li>Create a branch from <code>main</code></li>
-                            <li>Make your changes</li>
-                            <li>Test thoroughly</li>
-                            <li>Submit a pull request</li>
-                        </ol>
-
-                        <h3>Areas for Contribution</h3>
-                        <ContribGrid>
-                            <ContribCard title="[#] Documentation">Improving README, adding examples, writing guides</ContribCard>
-                            <ContribCard title="[?] Testing">Adding tests, improving test coverage</ContribCard>
-                            <ContribCard title="[>] UI/UX">Improving the TUI interface, adding features</ContribCard>
-                            <ContribCard title="[!] Performance">Optimizing operations, reducing memory usage</ContribCard>
-                            <ContribCard title="[~] Platform Support">Improving cross-platform compatibility</ContribCard>
-                            <ContribCard title="[+] Package Managers">Adding support for more package managers</ContribCard>
-                        </ContribGrid>
-
-                        <Tip icon="[i]">
-                            <strong>Read More:</strong> See <a href="https://github.com/serkanyersen/dotstate/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener noreferrer">CONTRIBUTING.md</a> for detailed guidelines.
-                        </Tip>
-                    </div>
-                </article>
-
-            </main>
+    <TopNav active={null} context="landing" />
+
+    <section class="linen-hero">
+        <div class="linen-hero-top">
+            <h1 class="linen-h1 reveal">
+                <span class="quiet">A calmer home</span><br />
+                for the <span class="moss">files</span> that<br />
+                configure <span class="quiet">everything.</span>
+            </h1>
+            <p class="linen-lead reveal delay-1">
+                <b>dotstate</b> is a dotfile manager for people who'd rather stop thinking about dotfiles.
+                It keeps your shell, editor, and terminal configs synced across every machine — through profiles,
+                inheritance, and one command to sync.
+            </p>
         </div>
 
-        <!-- Footer -->
-        <footer class="footer" role="contentinfo">
-            <div class="footer-content">
-                <div class="footer-links">
-                    <a href="https://github.com/serkanyersen/dotstate" target="_blank" rel="noopener noreferrer">GitHub</a> |
-                    <a href="https://crates.io/crates/dotstate" target="_blank" rel="noopener noreferrer">Crates.io</a> |
-                    <a href="https://github.com/serkanyersen/dotstate/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener noreferrer">Contributing</a> |
-                    <a href="https://github.com/serkanyersen/dotstate/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">License</a>
-                </div>
-                <p class="footer-license">Made with ❤️ and Rust | MIT License</p>
-                <p class="footer-nav">j/k ↑↓: Navigate | 1-9: Jump | ?: Help</p>
+        <InstallBar />
+    </section>
+
+    <section class="linen-tui-section">
+        <div class="linen-tui-head reveal">
+            <div>
+                <div class="k">The interface</div>
+                <h2>Quiet, <span class="moss">by design.</span></h2>
             </div>
-        </footer>
-    </div>
+            <p>
+                A restrained TUI with mouse support, keyboard shortcuts, and eleven themes — from this soft light palette
+                to Tokyo Night, Gruvbox, and Catppuccin.
+            </p>
+        </div>
+        <TuiPreview />
+    </section>
 
-    <script>
-        // Navigation functionality
-        document.addEventListener('DOMContentLoaded', () => {
-            const menuItems = document.querySelectorAll<HTMLElement>('.menu-item');
-            const contentSections = document.querySelectorAll('.content-section');
+    <section class="linen-features">
+        <div class="linen-feat-grid">
+            {features.map((f, i) => (
+                <div class={`linen-feat reveal delay-${(i % 3) + 1}`}>
+                    <div class="ico">{f.i}</div>
+                    <h3>{f.t}</h3>
+                    <p>{f.d}</p>
+                </div>
+            ))}
+        </div>
+    </section>
 
-            // Menu item click handlers
-            menuItems.forEach(item => {
-                item.addEventListener('click', () => {
-                    const sectionId = item.getAttribute('data-section');
-                    if (!sectionId) return;
-
-                    // Update active menu item
-                    menuItems.forEach(mi => {
-                        mi.classList.remove('active');
-                        const arrow = mi.querySelector('.menu-arrow');
-                        if (arrow) arrow.textContent = ' ';
-                    });
-                    item.classList.add('active');
-                    const arrow = item.querySelector('.menu-arrow');
-                    if (arrow) arrow.textContent = '>';
-
-                    // Update active content section
-                    contentSections.forEach(section => section.classList.remove('active'));
-                    const targetSection = document.getElementById(sectionId);
-                    if (targetSection) {
-                        targetSection.classList.add('active');
-
-                        // Update URL without reload
-                        if (history.pushState) {
-                            history.pushState(null, '', '#' + sectionId);
-                        }
-
-                        // Scroll to top
-                        const content = document.querySelector('.content');
-                        if (content) content.scrollTop = 0;
-                        window.scrollTo({ top: 0, behavior: 'smooth' });
-                    }
-                });
-            });
-
-            // Keyboard navigation
-            let currentIndex = 0;
-            let helpVisible = false;
-
-            // Create help overlay
-            const helpOverlay = document.createElement('div');
-            helpOverlay.className = 'keyboard-help-overlay';
-            helpOverlay.innerHTML = `
-                <div class="keyboard-help">
-                    <div class="help-header">
-                        <span class="help-icon">[?]</span>
-                        <h3>Keyboard Navigation</h3>
-                        <button class="help-close">[x]</button>
+    <section class="linen-section" id="how">
+        <div class="linen-sec-head reveal">
+            <div>
+                <div class="num">SECTION 01</div>
+                <h2>Four steps, <span class="moss">then it's quiet.</span></h2>
+            </div>
+            <div>
+                <p>
+                    Setup is a single evening — sometimes less. Afterwards, dotstate sits in the background and only
+                    asks for your attention when you want it to.
+                </p>
+                <a class="linen-deep" href="/install">Read the full install guide →</a>
+            </div>
+        </div>
+        <div class="linen-steps">
+            {steps.map((s, i) => (
+                <div class={`linen-step reveal delay-${(i % 3) + 1}`}>
+                    <div class="nrow">
+                        <span>STEP {String(i + 1).padStart(2, '0')}</span>
+                        <span class="pip">
+                            {[0, 1, 2, 3].map((j) => <span class={j <= i ? 'on' : ''}></span>)}
+                        </span>
                     </div>
-                    <div class="help-content">
-                        <div class="help-section">
-                            <h4>Navigation</h4>
-                            <div class="help-item"><kbd>j</kbd> <kbd>↓</kbd> Next section</div>
-                            <div class="help-item"><kbd>k</kbd> <kbd>↑</kbd> Previous section</div>
-                            <div class="help-item"><kbd>g</kbd> First section</div>
-                            <div class="help-item"><kbd>G</kbd> Last section</div>
-                            <div class="help-item"><kbd>1-9</kbd> Jump to section</div>
-                        </div>
-                        <div class="help-section">
-                            <h4>Actions</h4>
-                            <div class="help-item"><kbd>Enter</kbd> Select section</div>
-                            <div class="help-item"><kbd>?</kbd> Toggle this help</div>
-                            <div class="help-item"><kbd>Esc</kbd> Close help</div>
-                        </div>
+                    <div>
+                        <h3>{s.t}</h3>
+                        <p>{s.d}</p>
                     </div>
                 </div>
-            `;
-            document.body.appendChild(helpOverlay);
+            ))}
+        </div>
+    </section>
 
-            const closeHelp = () => {
-                helpOverlay.classList.remove('visible');
-                helpVisible = false;
-            };
+    <section class="linen-section" id="cli">
+        <div class="linen-sec-head reveal">
+            <div>
+                <div class="num">SECTION 02</div>
+                <h2>The <span class="moss">command line</span>,<br />for when the TUI isn't enough.</h2>
+            </div>
+            <div>
+                <p>
+                    Everything the interactive TUI can do, dotstate can do as a script. Good for CI, bootstrapping a new
+                    machine, or staying on the home row.
+                </p>
+                <a class="linen-deep" href="/profiles">Learn about profiles &amp; inheritance →</a>
+            </div>
+        </div>
+        <div class="linen-cli reveal">
+            {cliGroups.map((grp) => (
+                <div class="linen-cli-group">
+                    <h4>{grp.title}</h4>
+                    {grp.rows.map(([c, d]) => (
+                        <div class="linen-cli-row">
+                            <code>{c}</code>
+                            <div class="desc">{d}</div>
+                        </div>
+                    ))}
+                </div>
+            ))}
+        </div>
+    </section>
 
-            helpOverlay.querySelector('.help-close')?.addEventListener('click', closeHelp);
-            helpOverlay.addEventListener('click', (e) => {
-                if (e.target === helpOverlay) closeHelp();
-            });
-
-            document.addEventListener('keydown', (e) => {
-                // Don't handle if typing in an input
-                if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
-                    return;
-                }
-
-                // Help toggle
-                if (e.key === '?') {
-                    e.preventDefault();
-                    helpVisible = !helpVisible;
-                    helpOverlay.classList.toggle('visible', helpVisible);
-                    return;
-                }
-
-                // Close help with Escape
-                if (e.key === 'Escape' && helpVisible) {
-                    closeHelp();
-                    return;
-                }
-
-                // Navigation: j/k or arrow keys
-                if (e.key === 'ArrowDown' || e.key === 'j') {
-                    e.preventDefault();
-                    currentIndex = (currentIndex + 1) % menuItems.length;
-                    menuItems[currentIndex]?.click();
-                    return;
-                }
-
-                if (e.key === 'ArrowUp' || e.key === 'k') {
-                    e.preventDefault();
-                    currentIndex = (currentIndex - 1 + menuItems.length) % menuItems.length;
-                    menuItems[currentIndex]?.click();
-                    return;
-                }
-
-                // Go to first (g) or last (G) section
-                if (e.key === 'g' && !e.shiftKey) {
-                    e.preventDefault();
-                    currentIndex = 0;
-                    menuItems[currentIndex]?.click();
-                    return;
-                }
-
-                if (e.key === 'G') {
-                    e.preventDefault();
-                    currentIndex = menuItems.length - 1;
-                    menuItems[currentIndex]?.click();
-                    return;
-                }
-
-                // Number keys 1-9 to jump to sections
-                const num = parseInt(e.key);
-                if (num >= 1 && num <= 9 && num <= menuItems.length) {
-                    e.preventDefault();
-                    currentIndex = num - 1;
-                    menuItems[currentIndex]?.click();
-                    return;
-                }
-            });
-
-            // Install widget tab functionality
-            const installTabs = document.querySelectorAll<HTMLElement>('.install-tab');
-            const installTabContents = document.querySelectorAll('.install-tab-content');
-
-            installTabs.forEach(tab => {
-                tab.addEventListener('click', () => {
-                    const targetTab = tab.getAttribute('data-tab');
-                    if (!targetTab) return;
-
-                    installTabs.forEach(t => t.classList.remove('active'));
-                    tab.classList.add('active');
-
-                    installTabContents.forEach(content => content.classList.remove('active'));
-                    const targetContent = document.getElementById(`install-${targetTab}`);
-                    if (targetContent) {
-                        targetContent.classList.add('active');
-                    }
-
-                    if (targetTab === 'more') {
-                        setTimeout(() => {
-                            (document.querySelector('[data-section="installation"]') as HTMLElement)?.click();
-                        }, 300);
-                    }
-                });
-            });
-
-            // Copy button functionality
-            document.querySelectorAll<HTMLElement>('.copy-btn').forEach(btn => {
-                btn.addEventListener('click', async () => {
-                    const textToCopy = btn.getAttribute('data-copy');
-                    if (!textToCopy) return;
-                    try {
-                        await navigator.clipboard.writeText(textToCopy);
-                        const originalText = btn.textContent;
-                        btn.textContent = '✓';
-                        btn.classList.add('copied');
-                        setTimeout(() => {
-                            btn.textContent = originalText;
-                            btn.classList.remove('copied');
-                        }, 2000);
-                    } catch (err) {
-                        console.error('Failed to copy:', err);
-                    }
-                });
-            });
-
-            // Handle hash on load
-            const hash = window.location.hash.substring(1);
-            if (hash) {
-                const hashMenuItem = document.querySelector<HTMLElement>(`[data-section="${hash}"]`);
-                hashMenuItem?.click();
-            }
-
-            // Handle browser back/forward
-            window.addEventListener('popstate', () => {
-                const hash = window.location.hash.substring(1);
-                if (hash) {
-                    (document.querySelector(`[data-section="${hash}"]`) as HTMLElement)?.click();
-                }
-            });
-
-            // Fade in animation
-            document.body.style.opacity = '0';
-            setTimeout(() => {
-                document.body.style.transition = 'opacity 0.3s ease-in';
-                document.body.style.opacity = '1';
-            }, 10);
-        });
-    </script>
+    <footer class="linen-foot" id="gh">
+        <div class="linen-foot-top">
+            <div>
+                <p class="mark-big">dotstate</p>
+                <p>Bring order to the files that quietly shape your workday. Open source, MIT-licensed, and built with Rust.</p>
+                <a class="linen-badge" href="https://terminaltrove.com/dotstate/" target="_blank" rel="noopener noreferrer" title="This tool is Tool of The Week on Terminal Trove, The $HOME of all things in the terminal">
+                    <span class="leaf"></span> Terminal Trove · Tool of the Week
+                </a>
+            </div>
+            <div>
+                <h4>Project</h4>
+                <a href="https://github.com/serkanyersen/dotstate" target="_blank" rel="noopener noreferrer">GitHub</a>
+                <a href="/changelog">Changelog</a>
+                <a href="https://github.com/serkanyersen/dotstate/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener noreferrer">Contributing</a>
+                <a href="https://github.com/serkanyersen/dotstate/blob/main/SECURITY.md" target="_blank" rel="noopener noreferrer">Security policy</a>
+            </div>
+            <div>
+                <h4>Documentation</h4>
+                <a href="/install">Installation guide</a>
+                <a href="/quickstart">Quick start</a>
+                <a href="/profiles">Profiles &amp; inheritance</a>
+                <a href="/packages">Package management</a>
+                <a href="/themes">Themes</a>
+                <a href="/keymaps">Keymaps</a>
+                <a href="/cli">CLI reference</a>
+            </div>
+            <div>
+                <h4>Community</h4>
+                <a href="https://github.com/serkanyersen/dotstate/discussions" target="_blank" rel="noopener noreferrer">Discussions</a>
+                <a href="https://github.com/serkanyersen/dotstate/issues" target="_blank" rel="noopener noreferrer">Issues</a>
+                <a href="https://github.com/serkanyersen/dotstate/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener noreferrer">Contributing</a>
+                <a href="https://github.com/serkanyersen/dotstate/blob/main/CODE_OF_CONDUCT.md" target="_blank" rel="noopener noreferrer">Code of Conduct</a>
+            </div>
+        </div>
+        <div class="linen-foot-bot">
+            <span>MIT · SERKAN YERSEN · 2026</span>
+            <span>BUILT WITH RATATUI, GIT2, CLAP</span>
+        </div>
+    </footer>
 </Layout>
-
-<style>
-    .screenshot {
-        width: 100%;
-        height: auto;
-    }
-
-    .requirements-list {
-        list-style: none;
-        margin-left: 0;
-    }
-
-    .requirements-list li {
-        padding: 10px;
-        margin-bottom: 8px;
-        background-color: rgba(0, 212, 255, 0.05);
-        border-left: 3px solid var(--border-color);
-    }
-
-    .requirements-list strong {
-        color: var(--accent-cyan);
-    }
-
-    .best-practices {
-        list-style: none;
-        margin-left: 0;
-    }
-
-    .best-practices li {
-        padding-left: 25px;
-        position: relative;
-        margin-bottom: 10px;
-    }
-
-    .best-practices li::before {
-        content: "✓";
-        position: absolute;
-        left: 0;
-        color: var(--text-green);
-        font-weight: bold;
-    }
-</style>

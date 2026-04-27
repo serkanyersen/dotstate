@@ -1,0 +1,35 @@
+---
+import fs from 'node:fs';
+import path from 'node:path';
+
+interface Props {
+    active?: 'install' | 'how' | 'cli' | 'profiles' | 'docs' | null;
+    context?: 'landing' | 'docs';
+}
+
+const { active = null, context = 'landing' } = Astro.props;
+
+const cargoPath = path.resolve('../Cargo.toml');
+let version = '0.0.0';
+try {
+    const cargoContent = fs.readFileSync(cargoPath, 'utf-8');
+    const m = cargoContent.match(/^version\s*=\s*"([^"]+)"/m);
+    if (m) version = m[1];
+} catch {}
+
+const installHref = context === 'landing' ? '#install' : '/#install';
+const howHref = context === 'landing' ? '#how' : '/#how';
+const githubHref = 'https://github.com/serkanyersen/dotstate';
+---
+
+<nav class="top">
+    <a class="mark" href="/">dotstate <span class="v">v{version}</span></a>
+    <div class="nav">
+        <a href={installHref} class={active === 'install' ? 'on' : ''}>Install</a>
+        <a href={howHref} class={active === 'how' ? 'on' : ''}>How it works</a>
+        <a href="/cli" class={active === 'cli' ? 'on' : ''}>CLI</a>
+        <a href="/profiles" class={active === 'profiles' ? 'on' : ''}>Profiles</a>
+        <a href="/install" class={active === 'docs' ? 'on' : ''}>Docs</a>
+        <a href={githubHref} target="_blank" rel="noopener noreferrer" class="cta">GitHub ↗</a>
+    </div>
+</nav>

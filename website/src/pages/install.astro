@@ -1,0 +1,75 @@
+---
+import DocsLayout from '../layouts/DocsLayout.astro';
+---
+
+<DocsLayout
+    page="install"
+    title="dotstate — installation guide"
+    description="Install dotstate with the install script, Homebrew, or Cargo. A single Rust binary, no runtime dependencies."
+>
+    <div class="breadcrumbs reveal"><a href="/">dotstate</a> / docs / <span>installation</span></div>
+    <h1 class="reveal">Installation.<br /><span class="quiet">Takes under a minute.</span></h1>
+    <p class="lede reveal">
+        dotstate ships as a single Rust binary — about eight megabytes, no runtime dependencies.
+        Pick whichever installation method you prefer; they all land at the same place.
+    </p>
+
+    <h2 class="reveal">Install <span class="moss">script</span></h2>
+    <p class="reveal">
+        The fastest path. Downloads the latest release and drops the binary into <code>~/.local/bin</code> —
+        no <code>sudo</code>, no system paths touched. Falls back to a <code>cargo install</code> if no
+        prebuilt binary is available for your platform.
+    </p>
+<pre class="reveal"><code><span class="p">$</span> curl -fsSL https://dotstate.serkan.dev/install.sh | bash</code></pre>
+
+    <h2 class="reveal">Homebrew</h2>
+    <p class="reveal">On macOS or Linux with Homebrew:</p>
+<pre class="reveal"><code><span class="p">$</span> brew tap serkanyersen/dotstate
+<span class="p">$</span> brew install dotstate
+<span class="c"># or in one line:</span>
+<span class="p">$</span> brew install serkanyersen/dotstate/dotstate</code></pre>
+
+    <h2 class="reveal">Cargo</h2>
+    <p class="reveal">If you have the Rust toolchain installed:</p>
+<pre class="reveal"><code><span class="p">$</span> cargo install dotstate</code></pre>
+
+    <h2 class="reveal">From source</h2>
+    <p class="reveal">Clone and build with the latest changes:</p>
+<pre class="reveal"><code><span class="p">$</span> git clone https://github.com/serkanyersen/dotstate.git
+<span class="p">$</span> cd dotstate
+<span class="p">$</span> cargo install --path .</code></pre>
+
+    <h2 class="reveal">Verify the <span class="moss">install</span></h2>
+    <p class="reveal">Confirm the binary is available and print its version:</p>
+<pre class="reveal"><code><span class="p">$</span> dotstate --version</code></pre>
+
+    <h2 class="reveal">System requirements</h2>
+    <ul class="reveal">
+        <li><strong>Operating system.</strong> macOS, Linux, or Windows.</li>
+        <li><strong>Git.</strong> Used for all repository operations.</li>
+        <li><strong>A git host account</strong> (optional). GitHub, GitLab, Bitbucket, or any self-hosted git. Not required for local-only use.</li>
+        <li><strong>Rust toolchain</strong> (optional). Only if you're building from source.</li>
+        <li><strong>A Nerd Font</strong> (recommended). Gives the TUI its best look, but not required.</li>
+    </ul>
+
+    <h2 class="reveal">Shell completions</h2>
+    <p class="reveal">dotstate can emit completions for your shell. Add one of these to your shell init file:</p>
+    <table class="reveal">
+        <thead><tr><th>Shell</th><th>Command</th></tr></thead>
+        <tbody>
+            <tr><td>bash</td><td><code>source &lt;(dotstate completions bash)</code></td></tr>
+            <tr><td>zsh</td><td><code>source &lt;(dotstate completions zsh)</code></td></tr>
+            <tr><td>fish</td><td><code>dotstate completions fish | source</code></td></tr>
+        </tbody>
+    </table>
+    <blockquote class="reveal">
+        Using oh-my-zsh, antigen, or prezto? These frameworks want the fpath approach — write the completion
+        to <code>~/.zsh/completions/_dotstate</code> and add it to your <code>fpath</code> before your framework loads.
+    </blockquote>
+
+    <h2 class="reveal">Next</h2>
+    <p class="reveal">
+        Run <code>dotstate</code> with no arguments to open the TUI and walk through <a href="/setup">first-time setup</a>.
+        Or jump straight to the <a href="/quickstart">quick start</a>.
+    </p>
+</DocsLayout>
