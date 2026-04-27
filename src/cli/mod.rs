@@ -77,6 +77,11 @@ pub enum Commands {
     Activate,
     /// Deactivate symlinks. this might be useful if you are going to uninstall dotstate or you need the original files.
     Deactivate,
+    /// Get or switch the active profile
+    Profile {
+        #[command(subcommand)]
+        command: Option<ProfileCommand>,
+    },
     /// Run diagnostics and optionally fix issues
     Doctor {
         /// Attempt to auto-fix detected issues
@@ -119,6 +124,20 @@ pub enum Commands {
     },
 }
 
+#[derive(Subcommand, Debug, Clone, PartialEq, Eq, Default)]
+pub enum ProfileCommand {
+    #[default]
+    /// Print the current profile
+    Current,
+    /// List all profiles
+    List,
+    /// Switch to a different profile
+    Switch {
+        /// Name of the target profile
+        name: String,
+    },
+}
+
 impl Cli {
     /// Execute the CLI command
     pub fn execute(self) -> Result<()> {
@@ -129,6 +148,7 @@ impl Cli {
             Some(Commands::Remove { path, common }) => files::cmd_remove(path, common),
             Some(Commands::Activate) => profiles::cmd_activate(),
             Some(Commands::Deactivate) => profiles::cmd_deactivate(),
+            Some(Commands::Profile { command }) => profiles::execute(command.unwrap_or_default()),
             Some(Commands::Doctor { fix, verbose, json }) => doctor::execute(fix, verbose, json),
             Some(Commands::Help { command }) => info::cmd_help(command),
             Some(Commands::Logs) => info::cmd_logs(),
