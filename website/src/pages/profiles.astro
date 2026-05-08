@@ -64,6 +64,7 @@ import DocsLayout from '../layouts/DocsLayout.astro';
 
     <h2 class="reveal">Switching profiles</h2>
     <p class="reveal">Open <strong>Manage Profiles</strong> in the TUI, select a profile, and press <kbd>Enter</kbd>. dotstate removes the old symlinks and creates new ones — including any inherited files. Common files stay linked across every switch.</p>
+    <p class="reveal">From the command line, use <code>dotstate profile switch &lt;name&gt;</code> for the same effect — handy in scripts or when you want to bind it to a shell alias. <code>dotstate profile</code> prints the active profile and <code>dotstate profile list</code> shows all of them.</p>
     <p class="reveal">From a fresh shell on a new machine, <code>dotstate activate</code> re-creates the symlinks for the profile recorded in your config — no flags needed.</p>
     <p class="reveal">If activation fails for any reason, the previous profile is restored automatically.</p>
 

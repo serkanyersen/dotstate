@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **CLI**: `dotstate profile` shows the active profile, `dotstate profile list` lists all profiles with active/inactive markers, and `dotstate profile switch <name>` switches and activates a profile from the command line (#50)
+
 ---
 
 ## [0.3.2] - 2026-03-30

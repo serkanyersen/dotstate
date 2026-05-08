@@ -45,6 +45,25 @@ import DocsLayout from '../layouts/DocsLayout.astro';
         </div>
     </div>
 
+    <h2 class="reveal">Profiles</h2>
+    <div class="cmdlist reveal">
+        <div class="grp">
+            <h4>Inspect &amp; switch</h4>
+            <div class="row">
+                <code>dotstate profile</code>
+                <div class="desc">Print the active profile name.</div>
+            </div>
+            <div class="row">
+                <code>dotstate profile list</code>
+                <div class="desc">List all profiles with the active one marked.</div>
+            </div>
+            <div class="row">
+                <code>dotstate profile switch &lt;name&gt;</code>
+                <div class="desc">Switch to another profile and re-create its symlinks. If the new profile has different files, the old symlinks are removed first. Example: <code>dotstate profile switch work</code>.</div>
+            </div>
+        </div>
+    </div>
+
     <h2 class="reveal">Sync</h2>
     <div class="cmdlist reveal">
         <div class="grp">

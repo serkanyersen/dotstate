@@ -1,6 +1,5 @@
 //! Profile activation/deactivation commands.
 
-use super::common::{print_error, print_info};
 use super::ProfileCommand;
 use crate::config::Config;
 use crate::icons::Icons;
@@ -27,14 +26,18 @@ pub fn cmd_current() -> Result<()> {
 fn current_profile_name() -> Result<String> {
     let config_path = crate::utils::get_config_path();
     let config = Config::load_or_create(&config_path).context("Failed to load configuration")?;
+    let icons = Icons::from_config(&config);
 
     if !config.is_repo_configured() {
-        print_error("Repository not configured. Please run 'dotstate' to set up repository.");
+        eprintln!(
+            "{} Repository not configured. Please run 'dotstate' to set up repository.",
+            icons.error()
+        );
         std::process::exit(1);
     }
 
     if config.active_profile.is_empty() {
-        print_error("No active profile is set.");
+        eprintln!("{} No active profile is set.", icons.error());
         std::process::exit(1);
     }
 
@@ -52,13 +55,16 @@ pub fn cmd_list() -> Result<()> {
 fn profile_list_lines() -> Result<Vec<String>> {
     let config_path = crate::utils::get_config_path();
     let config = Config::load_or_create(&config_path).context("Failed to load configuration")?;
+    let icons = Icons::from_config(&config);
 
     if !config.is_repo_configured() {
-        print_error("Repository not configured. Please run 'dotstate' to set up repository.");
+        eprintln!(
+            "{} Repository not configured. Please run 'dotstate' to set up repository.",
+            icons.error()
+        );
         std::process::exit(1);
     }
 
-    let icons = Icons::from_config(&config);
     let profiles = ProfileService::get_profiles(&config.repo_path)?;
 
     if profiles.is_empty() {
@@ -83,13 +89,15 @@ pub fn cmd_switch(name: String) -> Result<()> {
     let config_path = crate::utils::get_config_path();
     let mut config =
         Config::load_or_create(&config_path).context("Failed to load configuration")?;
+    let icons = Icons::from_config(&config);
 
     if !config.is_repo_configured() {
-        print_error("Repository not configured. Please run 'dotstate' to set up repository.");
+        eprintln!(
+            "{} Repository not configured. Please run 'dotstate' to set up repository.",
+            icons.error()
+        );
         std::process::exit(1);
     }
-
-    let icons = Icons::from_config(&config);
 
     let manifest = crate::utils::ProfileManifest::load_or_backfill(&config.repo_path)
         .context("Failed to load profile manifest")?;
@@ -100,7 +108,7 @@ pub fn cmd_switch(name: String) -> Result<()> {
     }
 
     if config.active_profile == name && config.profile_activated {
-        print_info(&format!("Already on profile '{name}'"));
+        println!("{} Already on profile '{name}'", icons.info());
         return Ok(());
     }
 
@@ -383,6 +391,7 @@ mod tests {
         backup: PathBuf,
     }
 
+    #[allow(clippy::struct_field_names)]
     struct EnvGuard {
         old_home: Option<String>,
         old_config: Option<String>,
@@ -537,7 +546,8 @@ mod tests {
 
         let lines = profile_list_lines()?;
 
-        assert_eq!(lines, vec!["ℹ No profiles found.".to_string()]);
+        assert_eq!(lines.len(), 1);
+        assert!(lines[0].contains("No profiles found."));
         Ok(())
     }
 
