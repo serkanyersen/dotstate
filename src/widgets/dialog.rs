@@ -156,11 +156,12 @@ impl<'a> Dialog<'a> {
             // borders (2), and some breathing room (10)
             let suggested_width = title_len.max(footer_len) + 20;
 
-            // Clamp between min and max, and don't exceed available width
-            suggested_width.clamp(
-                self.min_width,
-                self.max_width.min(area.width.saturating_sub(4)),
-            )
+            // Clamp between min and max, and don't exceed available width.
+            // If the terminal is narrower than `min_width`, fall back to the
+            // available width so `clamp` can't be called with `min > max`.
+            let max_allowed = self.max_width.min(area.width.saturating_sub(4));
+            let min_allowed = self.min_width.min(max_allowed);
+            suggested_width.clamp(min_allowed, max_allowed)
         };
 
         // Calculate minimum required height for the modal
@@ -312,5 +313,31 @@ impl<'a> Dialog<'a> {
 impl Widget for Dialog<'_> {
     fn render(self, area: Rect, buf: &mut Buffer) {
         self.render_impl(area, buf);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn render_at(width: u16, height: u16) {
+        let area = Rect::new(0, 0, width, height);
+        let mut buf = Buffer::empty(area);
+        Dialog::new("Sync with Remote", "Pushing changes to origin/main")
+            .footer("Enter: confirm  Esc: cancel")
+            .render(area, &mut buf);
+    }
+
+    #[test]
+    fn renders_in_narrow_terminal_without_panic() {
+        // Regression for GitHub issue #52: clamp(60, 51) used to panic.
+        render_at(55, 24);
+        render_at(40, 20);
+        render_at(10, 10);
+    }
+
+    #[test]
+    fn renders_at_normal_size() {
+        render_at(120, 40);
     }
 }
