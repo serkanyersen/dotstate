@@ -175,6 +175,31 @@ impl PackageInstaller {
         // Track what checks we attempted for better error messages
         let mut check_attempts: Vec<String> = Vec::new();
 
+        // If the user provided an explicit existence_check, treat it as the
+        // canonical check and short-circuit the binary/manager fallbacks.
+        if let Some(existence_check) = package.existence_check.as_ref().map(|s| s.trim()) {
+            if !existence_check.is_empty() {
+                debug!(
+                    "Running user-provided existence_check for package {}",
+                    package.name
+                );
+                let output = std::process::Command::new("sh")
+                    .arg("-c")
+                    .arg(existence_check)
+                    .output()?;
+                let found = output.status.success();
+                let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+                let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+                let combined_output = format!("STDOUT:\n{stdout}\nSTDERR:\n{stderr}");
+                debug!("existence_check for {}: {}", package.name, found);
+                return Ok((
+                    found,
+                    Some(existence_check.to_string()),
+                    Some(combined_output),
+                ));
+            }
+        }
+
         // First, try binary check (no manager required)
         // This works even if package was installed manually
         debug!(
@@ -260,5 +285,67 @@ impl PackageInstaller {
             format!("Checks attempted:\n{}", check_attempts.join("\n"))
         };
         Ok((false, None, Some(output)))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::utils::profile_manifest::{Package, PackageManager};
+
+    fn custom_pkg(name: &str, binary_name: &str, existence_check: Option<&str>) -> Package {
+        Package {
+            name: name.to_string(),
+            description: None,
+            manager: PackageManager::Custom,
+            package_name: None,
+            binary_name: binary_name.to_string(),
+            install_command: Some("echo installed".to_string()),
+            existence_check: existence_check.map(str::to_string),
+            manager_check: None,
+        }
+    }
+
+    #[test]
+    fn existence_check_overrides_failing_binary() {
+        // Issue #51: binary_name is broken, but existence_check succeeds → installed
+        let pkg = custom_pkg("test-pkg", "nonexistent-binary-xyz-9001", Some("true"));
+        let (found, cmd, _) = PackageInstaller::check_exists(&pkg).unwrap();
+        assert!(found, "existence_check `true` should report installed");
+        assert_eq!(cmd.as_deref(), Some("true"));
+    }
+
+    #[test]
+    fn existence_check_overrides_passing_binary() {
+        // Issue #51: binary `sh` exists in PATH, but existence_check fails → not installed
+        let pkg = custom_pkg("fake-pkg", "sh", Some("false"));
+        let (found, cmd, _) = PackageInstaller::check_exists(&pkg).unwrap();
+        assert!(
+            !found,
+            "existence_check `false` should report not installed"
+        );
+        assert_eq!(cmd.as_deref(), Some("false"));
+    }
+
+    #[test]
+    fn empty_existence_check_falls_through_to_binary() {
+        // An empty/whitespace existence_check should not short-circuit.
+        // `sh` is reliably in PATH on Unix; check that binary fallback still runs.
+        let pkg = custom_pkg("sh-pkg", "sh", Some("   "));
+        let (found, _, _) = PackageInstaller::check_exists(&pkg).unwrap();
+        assert!(
+            found,
+            "binary check for `sh` should succeed when existence_check is empty"
+        );
+    }
+
+    #[test]
+    fn none_existence_check_falls_through_to_binary() {
+        let pkg = custom_pkg("missing-pkg", "nonexistent-binary-xyz-9001", None);
+        let (found, _, _) = PackageInstaller::check_exists(&pkg).unwrap();
+        assert!(
+            !found,
+            "no existence_check, no binary, no manager → not installed"
+        );
     }
 }

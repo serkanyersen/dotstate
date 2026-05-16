@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **Dialog Widget**: Prevent panic (`min > max`) when the terminal is narrower than the dialog's `min_width`; auto-width now degrades gracefully to the available width (#52)
+- **Package Check**: Honor the user-provided `existence_check` field on custom packages — previously stored but never evaluated, so packages with a custom check were always reported via the binary/manager fallbacks (#51)
 
 ---
 
