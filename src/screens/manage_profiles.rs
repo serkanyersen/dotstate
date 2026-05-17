@@ -787,13 +787,19 @@ impl ManageProfilesScreen {
             k(crate::keymap::Action::Cancel)
         );
 
-        let result = Popup::new()
+        let Some(result) = Popup::new()
             .width(60)
             .height(55)
+            // Layout sums to 17+ rows for fields, plus borders/title/footer (~5).
+            .min_height(22)
+            .min_width(60)
             .title("Create New Profile")
             .dim_background(true)
             .footer(&footer_text)
-            .render(frame, area);
+            .render(frame, area)
+        else {
+            return Ok(());
+        };
 
         let chunks = Layout::default()
             .direction(Direction::Vertical)
@@ -832,6 +838,7 @@ impl ManageProfilesScreen {
         // Description input
         let widget = TextInputWidget::new(&self.state.create_description_input)
             .title("Description (optional)")
+            .placeholder("e.g., Personal laptop setup")
             .focused(self.state.create_focused_field == CreateField::Description);
         frame.render_text_input_widget(widget, chunks[2]);
 
@@ -1119,13 +1126,19 @@ impl ManageProfilesScreen {
             k(crate::keymap::Action::Cancel)
         );
 
-        let result = Popup::new()
+        let Some(result) = Popup::new()
             .width(60)
             .height(35)
+            // 3 (input) + 1 (err) + borders/title/footer (~5) = 9.
+            .min_height(9)
+            .min_width(50)
             .title(format!("Rename Profile: {profile_name}"))
             .dim_background(true)
             .footer(&footer_text)
-            .render(frame, area);
+            .render(frame, area)
+        else {
+            return Ok(());
+        };
 
         let chunks = Layout::default()
             .direction(Direction::Vertical)

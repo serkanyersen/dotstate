@@ -24,6 +24,7 @@ static THEME: RwLock<Theme> = RwLock::new(Theme {
     text_muted: Color::DarkGray,
     text_dimmed: Color::Cyan,
     text_emphasis: Color::Yellow,
+    text_placeholder: Color::Gray,
     border: Color::DarkGray,
     border_focused: Color::Cyan,
     highlight_bg: Color::DarkGray,
@@ -189,12 +190,15 @@ pub struct Theme {
     // === Text Colors ===
     /// Main text color
     pub text: Color,
-    /// Muted/secondary text
+    /// Muted/secondary text — for genuinely de-emphasized hints, comments
     pub text_muted: Color,
     // Dimmed/less prominent text
     pub text_dimmed: Color,
     /// Emphasized text (commands, code, highlights)
     pub text_emphasis: Color,
+    /// Input placeholder / disabled-input text — must remain readable
+    /// (≥ 3:1 contrast against `background`)
+    pub text_placeholder: Color,
 
     // === UI Colors ===
     /// Default border color
@@ -254,12 +258,13 @@ impl Theme {
 
             // Text colors
             text: Color::Rgb(200, 200, 200),       // Light gray
-            text_muted: Color::Rgb(128, 128, 128), // Gray works on both
+            text_muted: Color::Rgb(170, 170, 170), // ~5.5:1 on #141414 — readable secondary
             text_dimmed: Color::Rgb(100, 100, 100),
             text_emphasis: Color::Rgb(220, 140, 0), // Match warning/orange
+            text_placeholder: Color::Rgb(136, 136, 136), // ~3.7:1 — clearly placeholder, not content
 
             // UI colors
-            border: Color::Rgb(100, 100, 100),       // Dark Gray
+            border: Color::Rgb(136, 136, 136), // ~3.7:1 — block titles inherit this
             border_focused: Color::Rgb(0, 150, 200), // Match primary
             highlight_bg: Color::Rgb(60, 60, 60), // Dark gray for selection (assuming text becomes white-ish or readable)
             background: Color::Rgb(20, 20, 20),
@@ -306,17 +311,18 @@ impl Theme {
             error: Color::Rgb(220, 50, 47),   // Red
 
             // Text colors
-            text: Color::Rgb(131, 148, 150),          // Base0
-            text_muted: Color::Rgb(88, 110, 117),     // Base01
-            text_dimmed: Color::Rgb(7, 54, 66),       // Base02
-            text_emphasis: Color::Rgb(147, 161, 161), // Base1
+            text: Color::Rgb(131, 148, 150),             // Base0
+            text_muted: Color::Rgb(147, 161, 161),       // Base1 — ~6:1, readable label
+            text_dimmed: Color::Rgb(7, 54, 66),          // Base02
+            text_emphasis: Color::Rgb(147, 161, 161),    // Base1
+            text_placeholder: Color::Rgb(101, 123, 131), // Base00 — ~3.7:1, clearly placeholder
 
             // UI colors
-            border: Color::Rgb(88, 110, 117),         // Base01
+            border: Color::Rgb(101, 123, 131), // Base00 — ~3.7:1 (titles inherit this)
             border_focused: Color::Rgb(38, 139, 210), // Blue
-            highlight_bg: Color::Rgb(7, 54, 66),      // Base02
-            background: Color::Rgb(0, 43, 54),        // Base03
-            dim_bg: Color::Rgb(7, 54, 66),            // Base02
+            highlight_bg: Color::Rgb(7, 54, 66), // Base02
+            background: Color::Rgb(0, 43, 54), // Base03
+            dim_bg: Color::Rgb(7, 54, 66),     // Base02
 
             border_type: BorderType::Rounded,
             border_focused_type: BorderType::Thick,
@@ -351,17 +357,18 @@ impl Theme {
             error: Color::Rgb(220, 50, 47),   // Red
 
             // Text colors
-            text: Color::Rgb(101, 123, 131),         // Base00
-            text_muted: Color::Rgb(147, 161, 161),   // Base1
-            text_dimmed: Color::Rgb(238, 232, 213),  // Base2
-            text_emphasis: Color::Rgb(88, 110, 117), // Base01
+            text: Color::Rgb(101, 123, 131),             // Base00
+            text_muted: Color::Rgb(88, 110, 117),        // Base01 — ~5.6:1, readable label
+            text_dimmed: Color::Rgb(238, 232, 213),      // Base2
+            text_emphasis: Color::Rgb(88, 110, 117),     // Base01
+            text_placeholder: Color::Rgb(101, 123, 131), // Base00 — ~3.9:1, clearly placeholder
 
             // UI colors
-            border: Color::Rgb(147, 161, 161),        // Base1
+            border: Color::Rgb(101, 123, 131), // Base00 — ~3.9:1 (titles inherit this)
             border_focused: Color::Rgb(38, 139, 210), // Blue
-            highlight_bg: Color::Rgb(238, 232, 213),  // Base2
-            background: Color::Rgb(253, 246, 227),    // Base3
-            dim_bg: Color::Rgb(238, 232, 213),        // Base2
+            highlight_bg: Color::Rgb(238, 232, 213), // Base2
+            background: Color::Rgb(253, 246, 227), // Base3
+            dim_bg: Color::Rgb(238, 232, 213), // Base2
 
             border_type: BorderType::Rounded,
             border_focused_type: BorderType::Thick,
@@ -389,15 +396,16 @@ impl Theme {
             error: Color::Rgb(204, 36, 29),    // red #cc241d
 
             text: Color::Rgb(235, 219, 178),         // fg1 #ebdbb2
-            text_muted: Color::Rgb(168, 153, 132),   // fg4 #a89984
+            text_muted: Color::Rgb(168, 153, 132),   // fg4 #a89984 — ~5:1
             text_dimmed: Color::Rgb(102, 92, 84),    // bg3 #665c54
             text_emphasis: Color::Rgb(250, 189, 47), // bright yellow #fabd2f
+            text_placeholder: Color::Rgb(146, 131, 116), // gray #928374 — ~3.7:1, clearly placeholder
 
-            border: Color::Rgb(102, 92, 84),          // bg3 #665c54
+            border: Color::Rgb(146, 131, 116), // gray #928374 — ~3.7:1 (titles inherit)
             border_focused: Color::Rgb(215, 153, 33), // yellow #d79921
-            highlight_bg: Color::Rgb(60, 56, 54),     // bg1 #3c3836
-            background: Color::Rgb(40, 40, 40),       // bg0 #282828
-            dim_bg: Color::Rgb(50, 48, 47),           // bg0_s #32302f
+            highlight_bg: Color::Rgb(60, 56, 54), // bg1 #3c3836
+            background: Color::Rgb(40, 40, 40), // bg0 #282828
+            dim_bg: Color::Rgb(50, 48, 47),    // bg0_s #32302f
 
             border_type: BorderType::Rounded,
             border_focused_type: BorderType::Thick,
@@ -422,16 +430,17 @@ impl Theme {
             warning: Color::Rgb(181, 118, 20), // yellow-dark #b57614
             error: Color::Rgb(157, 0, 6),      // red-dark #9d0006
 
-            text: Color::Rgb(60, 56, 54),           // fg1 #3c3836
-            text_muted: Color::Rgb(124, 111, 100),  // fg4 #7c6f64
-            text_dimmed: Color::Rgb(189, 174, 147), // bg3 #bdae93
-            text_emphasis: Color::Rgb(175, 58, 3),  // orange-dark #af3a03
+            text: Color::Rgb(60, 56, 54),                // fg1 #3c3836
+            text_muted: Color::Rgb(124, 111, 100),       // fg4 #7c6f64 — ~4.4:1
+            text_dimmed: Color::Rgb(189, 174, 147),      // bg3 #bdae93
+            text_emphasis: Color::Rgb(175, 58, 3),       // orange-dark #af3a03
+            text_placeholder: Color::Rgb(146, 131, 116), // gray #928374 — ~3.4:1, dimmer than muted
 
-            border: Color::Rgb(189, 174, 147),       // bg3 #bdae93
-            border_focused: Color::Rgb(175, 58, 3),  // orange-dark #af3a03
+            border: Color::Rgb(146, 131, 116), // gray #928374 — ~3.4:1 (titles inherit)
+            border_focused: Color::Rgb(175, 58, 3), // orange-dark #af3a03
             highlight_bg: Color::Rgb(235, 219, 178), // bg1 #ebdbb2
-            background: Color::Rgb(251, 241, 199),   // bg0 #fbf1c7
-            dim_bg: Color::Rgb(242, 229, 188),       // bg0_s #f2e5bc
+            background: Color::Rgb(251, 241, 199), // bg0 #fbf1c7
+            dim_bg: Color::Rgb(242, 229, 188), // bg0_s #f2e5bc
 
             border_type: BorderType::Rounded,
             border_focused_type: BorderType::Thick,
@@ -462,15 +471,16 @@ impl Theme {
             error: Color::Rgb(243, 139, 168),   // Red #f38ba8
 
             text: Color::Rgb(205, 214, 244),          // Text #cdd6f4
-            text_muted: Color::Rgb(108, 112, 134),    // Overlay0 #6c7086
+            text_muted: Color::Rgb(166, 173, 200),    // Subtext0 #a6adc8 — ~6.9:1
             text_dimmed: Color::Rgb(88, 91, 112),     // Surface2 #585b70
             text_emphasis: Color::Rgb(250, 179, 135), // Peach #fab387
+            text_placeholder: Color::Rgb(127, 132, 156), // Overlay1 #7f849c — ~3.7:1
 
-            border: Color::Rgb(69, 71, 90), // Surface1 #45475a
+            border: Color::Rgb(127, 132, 156), // Overlay1 #7f849c — ~3.7:1 (titles inherit)
             border_focused: Color::Rgb(137, 180, 250), // Blue #89b4fa
             highlight_bg: Color::Rgb(49, 50, 68), // Surface0 #313244
             background: Color::Rgb(30, 30, 46), // Base #1e1e2e
-            dim_bg: Color::Rgb(24, 24, 37), // Mantle #181825
+            dim_bg: Color::Rgb(24, 24, 37),    // Mantle #181825
 
             border_type: BorderType::Rounded,
             border_focused_type: BorderType::Thick,
@@ -500,12 +510,13 @@ impl Theme {
             warning: Color::Rgb(223, 142, 29), // Yellow #df8e1d
             error: Color::Rgb(210, 15, 57),    // Red #d20f39
 
-            text: Color::Rgb(76, 79, 105),           // Text #4c4f69
-            text_muted: Color::Rgb(156, 160, 176),   // Overlay0 #9ca0b0
-            text_dimmed: Color::Rgb(188, 192, 204),  // Surface1 #bcc0cc
-            text_emphasis: Color::Rgb(254, 100, 11), // Peach #fe640b
+            text: Color::Rgb(76, 79, 105),               // Text #4c4f69
+            text_muted: Color::Rgb(108, 111, 133),       // Subtext0 #6c6f85 — ~4.9:1
+            text_dimmed: Color::Rgb(188, 192, 204),      // Surface1 #bcc0cc
+            text_emphasis: Color::Rgb(254, 100, 11),     // Peach #fe640b
+            text_placeholder: Color::Rgb(124, 127, 147), // Overlay2 #7c7f93 — ~3.4:1
 
-            border: Color::Rgb(188, 192, 204), // Surface1 #bcc0cc
+            border: Color::Rgb(124, 127, 147), // Overlay2 #7c7f93 — ~3.4:1 (titles inherit)
             border_focused: Color::Rgb(30, 102, 245), // Blue #1e66f5
             highlight_bg: Color::Rgb(204, 208, 218), // Surface0 #ccd0da
             background: Color::Rgb(239, 241, 245), // Base #eff1f5
@@ -537,16 +548,17 @@ impl Theme {
             warning: Color::Rgb(224, 175, 104), // yellow #e0af68
             error: Color::Rgb(247, 118, 142),   // red #f7768e
 
-            text: Color::Rgb(192, 202, 245),          // fg #c0caf5
-            text_muted: Color::Rgb(86, 95, 137),      // comment #565f89
-            text_dimmed: Color::Rgb(65, 72, 104),     // terminal_black #414868
-            text_emphasis: Color::Rgb(255, 158, 100), // orange #ff9e64
+            text: Color::Rgb(192, 202, 245),             // fg #c0caf5
+            text_muted: Color::Rgb(169, 177, 214),       // fg_dark #a9b1d6 — ~6.1:1
+            text_dimmed: Color::Rgb(65, 72, 104),        // terminal_black #414868
+            text_emphasis: Color::Rgb(255, 158, 100),    // orange #ff9e64
+            text_placeholder: Color::Rgb(122, 130, 158), // mid #7a829e — ~3.3:1, clearly placeholder
 
-            border: Color::Rgb(65, 72, 104), // terminal_black #414868
+            border: Color::Rgb(122, 130, 158), // mid #7a829e — ~3.3:1 (titles inherit)
             border_focused: Color::Rgb(122, 162, 247), // blue #7aa2f7
             highlight_bg: Color::Rgb(41, 46, 66), // bg_highlight #292e42
             background: Color::Rgb(36, 40, 59), // bg #24283b
-            dim_bg: Color::Rgb(31, 35, 53),  // bg_dark #1f2335
+            dim_bg: Color::Rgb(31, 35, 53),    // bg_dark #1f2335
 
             border_type: BorderType::Rounded,
             border_focused_type: BorderType::Thick,
@@ -574,11 +586,14 @@ impl Theme {
             error: Color::Rgb(245, 42, 101),   // red #f52a65
 
             text: Color::Rgb(55, 96, 191),          // fg #3760bf
-            text_muted: Color::Rgb(132, 140, 181),  // comment #848cb5
+            text_muted: Color::Rgb(97, 114, 176),   // fg_dark #6172b0 — ~3.6:1
             text_dimmed: Color::Rgb(196, 200, 218), // bg_highlight #c4c8da
             text_emphasis: Color::Rgb(177, 92, 0),  // orange #b15c00
+            // text_placeholder = same as text_muted: TN-Light's palette is
+            // narrow, hierarchy comes from the input's empty/filled state.
+            text_placeholder: Color::Rgb(97, 114, 176),
 
-            border: Color::Rgb(196, 200, 218), // bg_highlight #c4c8da
+            border: Color::Rgb(97, 114, 176), // fg_dark #6172b0 — ~3.6:1 (titles inherit)
             border_focused: Color::Rgb(46, 125, 233), // blue #2e7de9
             highlight_bg: Color::Rgb(196, 200, 218), // bg_highlight #c4c8da
             background: Color::Rgb(225, 226, 231), // bg #e1e2e7
@@ -611,6 +626,7 @@ impl Theme {
             text_muted: Color::DarkGray,
             text_dimmed: Color::Cyan,
             text_emphasis: Color::Yellow,
+            text_placeholder: Color::Gray,
 
             // UI colors
             border: Color::Cyan,
@@ -646,6 +662,7 @@ impl Theme {
             text_muted: Color::DarkGray,
             text_dimmed: Color::Cyan,
             text_emphasis: Color::Blue,
+            text_placeholder: Color::DarkGray,
 
             // UI colors
             border: Color::DarkGray,
@@ -682,6 +699,7 @@ impl Theme {
             text_muted: Color::Reset,
             text_dimmed: Color::Reset,
             text_emphasis: Color::Reset,
+            text_placeholder: Color::Reset,
 
             border: Color::Reset,
             border_focused: Color::Reset,
@@ -724,6 +742,17 @@ impl Theme {
             return Style::default().add_modifier(Modifier::DIM);
         }
         Style::default().fg(self.text_muted)
+    }
+
+    /// Style for input placeholder text and disabled input text — kept
+    /// readable (≥ 3:1 contrast) so the user can always see what they're
+    /// typing into or which field is disabled.
+    #[must_use]
+    pub fn placeholder_style(&self) -> Style {
+        if self.theme_type == ThemeType::NoColor {
+            return Style::default().add_modifier(Modifier::DIM);
+        }
+        Style::default().fg(self.text_placeholder)
     }
 
     /// Style for emphasized text (commands, code)
@@ -916,5 +945,79 @@ mod tests {
         // In no-color mode we rely on modifiers only, not fg/bg.
         assert!(s.fg.is_none());
         assert!(s.bg.is_none());
+    }
+
+    /// WCAG 2.x relative luminance for an sRGB triple.
+    fn relative_luminance(r: u8, g: u8, b: u8) -> f64 {
+        fn channel(c: u8) -> f64 {
+            let n = f64::from(c) / 255.0;
+            if n <= 0.03928 {
+                n / 12.92
+            } else {
+                ((n + 0.055) / 1.055).powf(2.4)
+            }
+        }
+        0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b)
+    }
+
+    fn contrast(fg: (u8, u8, u8), bg: (u8, u8, u8)) -> f64 {
+        let l1 = relative_luminance(fg.0, fg.1, fg.2);
+        let l2 = relative_luminance(bg.0, bg.1, bg.2);
+        let (a, b) = if l1 >= l2 { (l1, l2) } else { (l2, l1) };
+        (a + 0.05) / (b + 0.05)
+    }
+
+    fn rgb(c: Color) -> Option<(u8, u8, u8)> {
+        if let Color::Rgb(r, g, b) = c {
+            Some((r, g, b))
+        } else {
+            None
+        }
+    }
+
+    #[test]
+    fn text_contrast_meets_thresholds_on_rgb_themes() {
+        // GitHub issue #53: text_muted, text_placeholder, and border were
+        // used at near-invisible contrast on TokyoNightDark and friends.
+        // Every theme that pins RGB values must clear these floors:
+        //   - text_muted ≥ 3:1   (used for labels, "(optional)" hints)
+        //   - text_placeholder ≥ 3:1 (used for input placeholders)
+        //   - border ≥ 3:1       (used as decorative line AND inherits as block title color)
+        let presets = [
+            ThemeType::Midnight,
+            ThemeType::SolarizedDark,
+            ThemeType::SolarizedLight,
+            ThemeType::GruvboxDark,
+            ThemeType::GruvboxLight,
+            ThemeType::CatppuccinMocha,
+            ThemeType::CatppuccinLatte,
+            ThemeType::TokyoNightDark,
+            ThemeType::TokyoNightLight,
+        ];
+        for tt in presets {
+            let t = Theme::new(tt);
+            let Some(bg) = rgb(t.background) else {
+                continue;
+            };
+            for (name, fg_color) in [
+                ("text_muted", t.text_muted),
+                ("text_placeholder", t.text_placeholder),
+                ("border", t.border),
+            ] {
+                let Some(fg) = rgb(fg_color) else { continue };
+                let ratio = contrast(fg, bg);
+                assert!(
+                    ratio >= 3.0,
+                    "{tt:?}: {name} contrast {ratio:.2}:1 < 3:1 ({fg:?} on {bg:?})"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn placeholder_style_uses_text_placeholder() {
+        let t = Theme::new(ThemeType::TokyoNightDark);
+        let s = t.placeholder_style();
+        assert_eq!(s.fg, Some(t.text_placeholder));
     }
 }

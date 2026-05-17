@@ -2394,11 +2394,20 @@ impl ManagePackagesScreen {
         let t = theme();
         // Make popup larger to fit all fields, especially for custom packages
         let popup_height = if self.state.add_is_custom { 60 } else { 50 };
-        let result = Popup::new()
+        // Constraint sum: 1(title) + 3(name) + 3(desc) + 4(manager)
+        //   + custom: 3+3+3 = 9, managed: 3+3 = 6
+        //   + 0/2(err) + 0(spacer) + 2(footer) + 2(borders)
+        let min_height = if self.state.add_is_custom { 26 } else { 23 };
+        let Some(result) = Popup::new()
             .width(80)
             .height(popup_height)
+            .min_height(min_height)
+            .min_width(60)
             .dim_background(true)
-            .render(frame, area);
+            .render(frame, area)
+        else {
+            return Ok(());
+        };
         let popup_area = result.content_area;
 
         let title = if self.state.add_editing_index.is_some() {
@@ -2729,11 +2738,17 @@ impl ManagePackagesScreen {
                 ..
             } => {
                 use crate::components::Popup;
-                let result = Popup::new()
+                // 1 + 3 + 10 + 2 + borders 2 = 18.
+                let Some(result) = Popup::new()
                     .width(70)
                     .height(40)
+                    .min_height(18)
+                    .min_width(50)
                     .dim_background(true)
-                    .render(frame, area);
+                    .render(frame, area)
+                else {
+                    return Ok(());
+                };
                 let popup_area = result.content_area;
 
                 let chunks = Layout::default()
@@ -2922,11 +2937,17 @@ impl ManagePackagesScreen {
         let t = theme();
 
         // Create popup
-        let result = Popup::new()
+        // 2(title) + 0/1(tabs) + 10(content) + 2(footer) + borders 2 = 17.
+        let Some(result) = Popup::new()
             .width(70)
             .height(80)
+            .min_height(17)
+            .min_width(60)
             .dim_background(true)
-            .render(frame, area);
+            .render(frame, area)
+        else {
+            return Ok(());
+        };
         let popup_area = result.content_area;
 
         // Determine if we should show tabs

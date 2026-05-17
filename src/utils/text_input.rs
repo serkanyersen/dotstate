@@ -53,10 +53,15 @@ impl TextInput {
         self.text.trim()
     }
 
-    /// Check if the text is empty (ignoring whitespace).
+    /// Check if the text is empty (no characters at all). Matches
+    /// `TextInputWidget::display_text` so the widget styles placeholder
+    /// vs. typed text consistently — typing whitespace renders the
+    /// whitespace rather than staying invisible as a "placeholder".
+    /// For validation that should reject whitespace-only input, callers
+    /// should use `text_trimmed().is_empty()`.
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.text.trim().is_empty()
+        self.text.is_empty()
     }
 
     /// Set the text and move cursor to end.
@@ -522,8 +527,13 @@ mod tests {
 
     #[test]
     fn test_text_input_is_empty_whitespace() {
+        // is_empty is now raw — typed whitespace counts as content so the
+        // TextInputWidget renders it visibly instead of as muted placeholder.
+        // Callers that need "no meaningful content" should use
+        // text_trimmed().is_empty().
         let input = TextInput::with_text("   ");
-        assert!(input.is_empty());
+        assert!(!input.is_empty());
+        assert!(input.text_trimmed().is_empty());
     }
 
     #[test]

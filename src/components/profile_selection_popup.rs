@@ -284,13 +284,20 @@ impl ProfileSelectionPopup {
         );
 
         // Render popup frame
-        let result: PopupRenderResult = Popup::new()
+        // Side-by-side list+preview needs enough rows for the list to be
+        // useful (~8 visible items) plus title/footer/borders.
+        let Some(result): Option<PopupRenderResult> = Popup::new()
             .width(70)
             .height(60)
+            .min_height(14)
+            .min_width(60)
             .title("Select Profile to Activate")
             .dim_background(true)
             .footer(&footer_text)
-            .render(frame, area);
+            .render(frame, area)
+        else {
+            return;
+        };
 
         // Split content: Left (profile list), Right (profile preview)
         let chunks = Layout::default()

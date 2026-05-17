@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Popup**: Form popups (Create/Rename Profile, Add/Edit Package, Import, Profile Selection, File Browser) no longer silently collapse their inner fields when the terminal is too short. Each popup now declares a minimum size and shows a centered "Terminal too small" message when the parent area can't fit it (#53)
+- **Themes**: Recalibrated `text_muted`, `text_placeholder`, and `border` palette values across every theme preset so labels, input placeholders, unfocused borders, and block titles (which inherit the border color) all clear WCAG 3:1 contrast against the popup background. Previously Tokyo Night Dark rendered these at 1.85:1 / 1.4:1 — visible as near-invisible "ghost" elements on Ghostty and other terminals. Visual hierarchy preserved: `text` is brightest, `text_muted` ~5:1, `text_placeholder` ~3.5:1 (clearly subordinate to typed text) (#53)
+- **Themes**: Added a placeholder hint to the Create Profile "Description" field so empty state isn't completely blank
+- **Text Input**: `TextInput::is_empty()` now checks raw emptiness instead of trimmed emptiness, so typed leading whitespace renders visibly rather than as invisible muted placeholder text. Callers needing the old behavior should use `text_trimmed().is_empty()`
+
 ---
 
 ## [0.3.3] - 2026-05-16

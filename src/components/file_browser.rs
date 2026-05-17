@@ -584,12 +584,18 @@ impl FileBrowser {
             k(Action::Cancel)
         );
 
-        let popup_result = Popup::new()
+        // 1(path) + 3(input) + min 8(list+preview) + title/footer/borders ~5.
+        let Some(popup_result) = Popup::new()
             .width(80)
             .height(70)
+            .min_height(17)
+            .min_width(60)
             .title("Select File or Directory")
             .footer(&footer_text)
-            .render(frame, area);
+            .render(frame, area)
+        else {
+            return Ok(());
+        };
 
         let content_area = popup_result.content_area;
 

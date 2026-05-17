@@ -116,13 +116,19 @@ impl ProfileSelectionScreen {
                 .get_key_display_for_action(crate::keymap::Action::Cancel)
         );
 
-        let result = Popup::new()
+        let Some(result) = Popup::new()
             .width(50)
             .height(12)
+            // 3 (input) + borders/title/footer (~5) = 8.
+            .min_height(8)
+            .min_width(40)
             .title("Create New Profile")
             .dim_background(true)
             .footer(&footer_text)
-            .render(frame, area);
+            .render(frame, area)
+        else {
+            return;
+        };
 
         let widget = TextInputWidget::new(&self.state.create_name_input)
             .title("Profile Name")

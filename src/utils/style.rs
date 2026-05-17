@@ -19,10 +19,12 @@ pub fn disabled_border_style() -> Style {
     theme().border_style(false)
 }
 
-/// Get the text style for disabled input
+/// Get the text style for disabled input.
+/// Uses `placeholder_style` so disabled fields stay readable — the focus
+/// indicator and border style are what signal "disabled", not invisibility.
 #[must_use]
 pub fn disabled_text_style() -> Style {
-    theme().disabled_style()
+    theme().placeholder_style()
 }
 
 /// Get the text style for a focused input field
@@ -44,7 +46,7 @@ pub fn input_unfocused_style() -> Style {
 /// Get the text style for placeholder text
 #[must_use]
 pub fn input_placeholder_style() -> Style {
-    theme().muted_style()
+    theme().placeholder_style()
 }
 
 /// Get the text style for normal input text
