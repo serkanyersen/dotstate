@@ -1294,24 +1294,24 @@ impl Screen for ManageProfilesScreen {
         // Right: Profile details
         self.render_profile_details(frame, right_chunk, ctx.config)?;
 
+        // Page footer — always render. When a popup is active the popup's
+        // dim_background overlay dims the footer in place, leaving the page
+        // hotkeys visible-but-receded behind the modal.
+        let k = |a| ctx.config.keymap.get_key_display_for_action(a);
+        let footer_text = format!(
+            "{}: Navigate | {}: Switch Profile | {}: Create | {}: Rename | {}: Delete | {}: Back",
+            ctx.config.keymap.navigation_display(),
+            k(crate::keymap::Action::Confirm),
+            k(crate::keymap::Action::Create),
+            k(crate::keymap::Action::Edit),
+            k(crate::keymap::Action::Delete),
+            k(crate::keymap::Action::Cancel)
+        );
+        Footer::render(frame, footer_chunk, &footer_text)?;
+
         // Render popups on top of the content (not instead of it)
         if self.state.popup_type != ProfilePopupType::None {
             self.render_popup(frame, area, ctx.config)?;
-        }
-
-        // Footer (only show when no popup is active, as popups have their own footers)
-        if self.state.popup_type == ProfilePopupType::None {
-            let k = |a| ctx.config.keymap.get_key_display_for_action(a);
-            let footer_text = format!(
-                "{}: Navigate | {}: Switch Profile | {}: Create | {}: Rename | {}: Delete | {}: Back",
-                ctx.config.keymap.navigation_display(),
-                k(crate::keymap::Action::Confirm),
-                k(crate::keymap::Action::Create),
-                k(crate::keymap::Action::Edit),
-                k(crate::keymap::Action::Delete),
-                k(crate::keymap::Action::Cancel)
-            );
-            Footer::render(frame, footer_chunk, &footer_text)?;
         }
 
         Ok(())
