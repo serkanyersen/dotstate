@@ -22,7 +22,7 @@ ratatui = "0.30"
 crossterm = "0.29"
 
 # Git operations
-git2 = { version = "0.20", features = ["vendored-openssl"] }
+git2 = { version = "0.21", features = ["vendored-openssl"] }
 
 # Configuration
 toml = "1.0"
