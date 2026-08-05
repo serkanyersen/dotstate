@@ -7,6 +7,7 @@ This document outlines the steps to publish DotState to various package managers
 - [ ] Update version in `Cargo.toml`
 - [ ] Update `CHANGELOG.md` with release notes
 - [ ] Update `README.md` if needed
+- [ ] Update Nix lockfiles: `./nix/rebuild.sh`
 - [ ] Run full test suite: `cargo test`
 - [ ] Run clippy: `cargo clippy -- -D warnings`
 - [ ] Check formatting: `cargo fmt -- --check`
@@ -63,6 +64,81 @@ Note: Publishing to crates.io is permanent. Make sure everything is correct!
    ```bash
    brew install serkanyersen/dotstate/dotstate
    ```
+
+## Publishing to Nix
+
+The project provides a Nix flake at the repository root. No separate publishing step is needed — users consume it directly from GitHub:
+
+```bash
+# Run directly
+nix run github:serkanyersen/dotstate
+
+# Build locally
+nix build github:serkanyersen/dotstate
+
+# Install via nix profile
+nix profile install github:serkanyersen/dotstate
+```
+
+### Installing Nix on Any Linux Distro
+
+Nix is **not tied to NixOS** — it works as a package manager on any Linux distribution (Ubuntu, Arch, Fedora, etc.):
+
+1. Install Nix: `sh <(curl -L https://nixos.org/nix/install)`
+2. Enable flakes in `~/.config/nix/nix.conf`:
+   ```
+   experimental-features = nix-command flakes
+   ```
+3. Run the flake: `nix run github:serkanyersen/dotstate`
+
+### Flake Input
+
+```nix
+inputs = {
+  dotstate.url = "github:serkanyersen/dotstate";
+};
+```
+
+### Using the Overlay
+
+```nix
+nixpkgs.overlays = [ inputs.dotstate.overlays.default ];
+environment.systemPackages = [ pkgs.dotstate ];
+```
+
+### Using the Home Manager Module
+
+```nix
+imports = [ inputs.dotstate.homeModules.default ];
+programs.dotstate.enable = true;
+programs.dotstate.settings = {
+  repo_mode = "Local";
+  repo_path = "~/dotfiles";
+};
+```
+
+### Non-Flake Usage
+
+```bash
+nix-build default.nix
+```
+
+### Updating Lockfiles (for maintainers)
+
+After source changes, run this from the repo root to regenerate `Cargo.lock` and `flake.lock`:
+
+```bash
+./nix/rebuild.sh
+```
+
+Then commit:
+
+```bash
+git add Cargo.lock flake.lock
+git commit -m "chore: update lockfiles"
+```
+
+> **Non-NixOS maintainers can still run this** — just install Nix on your distro first (see "Installing Nix on Any Linux Distro" above). The rebuild script only needs `cargo generate-lockfile`, `nix flake update`, and `nix build` — all available once Nix is installed.
 
 ## GitHub Releases
 

@@ -1684,10 +1684,11 @@ mod tests {
     fn test_create_symlink_manager() {
         let temp_dir = TempDir::new().unwrap();
         let repo_path = temp_dir.path().join("dotstate");
+        let config_dir = temp_dir.path().join("config");
         fs::create_dir_all(&repo_path).unwrap();
+        fs::create_dir_all(&config_dir).unwrap();
 
-        // Disable backups to avoid issues with home directory in CI
-        let manager = SymlinkManager::new_with_backup(repo_path.clone(), false);
+        let manager = SymlinkManager::new_with_config_dir(repo_path, false, config_dir);
         assert!(manager.is_ok());
     }
 

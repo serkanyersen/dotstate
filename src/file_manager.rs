@@ -302,6 +302,11 @@ mod tests {
 
     #[test]
     fn test_file_manager_creation() {
+        let home = dirs::home_dir();
+        if home.as_ref().map_or(true, |p| !p.exists()) {
+            eprintln!("skipping: no home directory available");
+            return;
+        }
         let fm = FileManager::new().unwrap();
         assert!(fm.home_dir().exists());
     }
