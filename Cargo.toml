@@ -39,7 +39,7 @@ reqwest = { version = "0.13", default-features = false, features = ["json", "rus
 tokio = { version = "1", features = ["full"] }
 
 # File operations
-dirs = "6"
+dirs = "7"
 
 # Error handling
 anyhow = "1.0"
