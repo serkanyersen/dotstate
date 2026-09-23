@@ -1662,7 +1662,7 @@ impl GitManager {
             .context("Failed to get repository status")?;
 
         let mut changed_files = Vec::new();
-        for entry in statuses.iter() {
+        for entry in &statuses {
             if let Ok(path) = entry.path() {
                 let status = entry.status();
                 let prefix = if status.contains(git2::Status::WT_NEW) {
