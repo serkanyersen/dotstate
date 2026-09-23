@@ -27,8 +27,32 @@ try {
     <div class="release reveal">
         <div class="ver">
             <div class="tag current">v{version}</div>
-            <div class="date">2026-03-30</div>
+            <div class="date">2026-09-22</div>
             <div class="badge">current</div>
+        </div>
+        <div>
+            <h3>Agent skill, Omarchy, and sync fixes</h3>
+            <p>DotState can now teach AI coding agents how to use it, registers itself as a floating app on Omarchy, and fixes several sync failures that could leave the storage repo in a confusing state.</p>
+            <h4>Added</h4>
+            <ul>
+                <li><code>dotstate --skill</code> prints a built-in agent skill; <code>--skill --install</code> installs it to <code>~/.claude/skills/dotstate/</code></li>
+                <li><code>dotstate omarchy --install</code> adds DotState to the Omarchy launcher as a floating window (Omarchy 3 and 4)</li>
+                <li><code>add</code> and <code>remove</code> accept <code>-y, --yes</code> to skip the confirmation prompt</li>
+            </ul>
+            <h4>Fixed</h4>
+            <ul>
+                <li><code>doctor</code> reports tracked symlinks whose storage file is missing</li>
+                <li>Sync no longer fails with "conflicts prevent checkout" when the local branch is ahead of the remote</li>
+                <li>A failed sync no longer leaves the storage repo on a detached HEAD</li>
+                <li>Sync no longer creates empty "Update dotfiles" commits</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="release reveal">
+        <div class="ver">
+            <div class="tag">v0.3.2</div>
+            <div class="date">2026-03-30</div>
         </div>
         <div>
             <h3>Profile inheritance lands</h3>

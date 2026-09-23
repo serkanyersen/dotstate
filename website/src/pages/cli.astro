@@ -28,11 +28,11 @@ import DocsLayout from '../layouts/DocsLayout.astro';
             </div>
             <div class="row">
                 <code>dotstate add &lt;path&gt;</code>
-                <div class="desc">Adopt a file. Moves it into the repo and creates a symlink in its place. Example: <code>dotstate add ~/.zshrc</code>.<span class="flag"><code>--common</code> add as a common file shared across all profiles</span></div>
+                <div class="desc">Adopt a file. Moves it into the repo and creates a symlink in its place. Example: <code>dotstate add ~/.zshrc</code>.<span class="flag"><code>--common</code> add as a common file shared across all profiles &nbsp; <code>-y, --yes</code> skip confirmation</span></div>
             </div>
             <div class="row">
                 <code>dotstate remove &lt;path&gt;</code>
-                <div class="desc">Remove a file from sync. Restores the original and removes the symlink.<span class="flag"><code>--common</code> remove from common files</span></div>
+                <div class="desc">Remove a file from sync. Restores the original and removes the symlink.<span class="flag"><code>--common</code> remove from common files &nbsp; <code>-y, --yes</code> skip confirmation</span></div>
             </div>
             <div class="row">
                 <code>dotstate activate</code>
@@ -133,6 +133,14 @@ import DocsLayout from '../layouts/DocsLayout.astro';
             <div class="row">
                 <code>dotstate completions &lt;shell&gt;</code>
                 <div class="desc">Emit shell completions for bash, zsh, or fish.</div>
+            </div>
+            <div class="row">
+                <code>dotstate --skill</code>
+                <div class="desc">Print a built-in agent skill (<code>SKILL.md</code>) that teaches AI coding agents DotState's concepts and commands.<span class="flag"><code>--install</code> install it to <code>~/.claude/skills/dotstate/</code></span></div>
+            </div>
+            <div class="row">
+                <code>dotstate omarchy</code>
+                <div class="desc">On Omarchy, add DotState to the app launcher as a centered floating window. Works on Omarchy 3 and 4.<span class="flag"><code>--install</code> add launcher entry, icon, and window rule &nbsp; <code>--uninstall</code> remove them</span></div>
             </div>
             <div class="row">
                 <code>dotstate help</code>
