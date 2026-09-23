@@ -196,7 +196,7 @@ impl Widget for TextInputWidget<'_> {
 
             // Set cursor in buffer metadata (Frame will handle actual positioning)
             if let Some(cell) = buf.cell_mut((x, y)) {
-                cell.set_skip(false);
+                cell.set_diff_option(ratatui::buffer::CellDiffOption::None);
             }
         }
     }

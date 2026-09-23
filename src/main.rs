@@ -30,6 +30,10 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
 
     // If a command was provided, execute it and exit (non-TUI mode)
+    if cli.skill {
+        return cli.execute();
+    }
+
     if cli.command.is_some() {
         // Set up logging for CLI mode
         let log_dir = dirs::cache_dir()

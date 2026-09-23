@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **CLI**: `dotstate --skill` prints a built-in agent skill (SKILL.md) that teaches AI agents DotState's concepts and commands. `dotstate --skill --install` installs it to `~/.claude/skills/dotstate/`.
+- **CLI**: `add` and `remove` accept `-y/--yes` to skip the confirmation prompt.
+- **Omarchy**: `dotstate omarchy --install` adds DotState to the Omarchy app launcher with an icon and a floating window. It supports both Omarchy 3 (`hyprland.conf`) and Omarchy 4 Quattro (`hyprland.lua`). `--uninstall` removes everything it added.
+
+### Changed
+
+- **Dependencies**: `dirs` 6 -> 7 (#58). Require ratatui 0.30.2 and replace the deprecated `Cell::set_skip` with `set_diff_option`, which was failing CI under `-D warnings`.
+
+### Fixed
+
+- **Doctor**: Report tracked symlinks whose storage file is missing (#59). Doctor used to compare only the recorded link path, so a dangling `~/.bashrc` showed as healthy. It now follows each link and lists the broken files as errors.
+- **Sync**: Fix "conflicts prevent checkout" failures when the local branch was ahead of the remote. Sync no longer starts a rebase when the remote has nothing new.
+- **Sync**: A failed rebase no longer leaves the storage repo on a detached HEAD.
+- **Sync**: Stop creating empty "Update dotfiles" commits. `dotstate sync` now only commits when there are changes.
+
 ---
 
 ## [0.4.0] - 2026-05-30

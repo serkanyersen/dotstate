@@ -166,7 +166,7 @@ fn print_file_info(
 }
 
 /// Execute the add command.
-pub fn cmd_add(path: PathBuf, common: bool) -> Result<()> {
+pub fn cmd_add(path: PathBuf, common: bool, yes: bool) -> Result<()> {
     let config_path = crate::utils::get_config_path();
     let config = Config::load_or_create(&config_path).context("Failed to load configuration")?;
 
@@ -190,28 +190,30 @@ pub fn cmd_add(path: PathBuf, common: bool) -> Result<()> {
         .map_or_else(|_| resolved_path.clone(), std::path::Path::to_path_buf);
     let relative_str = relative_path.to_string_lossy().to_string();
 
-    // Show confirmation prompt
-    let destination = if common { "common files" } else { "profile" };
-    println!(
-        "⚠️  Warning: This will move the following path to {destination} and replace it with a symlink:"
-    );
-    println!("   {}", resolved_path.display());
-    if common {
-        println!("\n   This file will be shared across ALL profiles.");
-    }
-    println!("\n   Make sure you know what you are doing.");
-    print!("   Continue? [y/N]: ");
-    io::stdout().flush().context("Failed to flush stdout")?;
+    // Show confirmation prompt unless --yes was passed
+    if !yes {
+        let destination = if common { "common files" } else { "profile" };
+        println!(
+            "⚠️  Warning: This will move the following path to {destination} and replace it with a symlink:"
+        );
+        println!("   {}", resolved_path.display());
+        if common {
+            println!("\n   This file will be shared across ALL profiles.");
+        }
+        println!("\n   Make sure you know what you are doing.");
+        print!("   Continue? [y/N]: ");
+        io::stdout().flush().context("Failed to flush stdout")?;
 
-    let mut input = String::new();
-    io::stdin()
-        .read_line(&mut input)
-        .context("Failed to read input")?;
+        let mut input = String::new();
+        io::stdin()
+            .read_line(&mut input)
+            .context("Failed to read input")?;
 
-    let trimmed = input.trim().to_lowercase();
-    if trimmed != "y" && trimmed != "yes" {
-        println!("Cancelled.");
-        return Ok(());
+        let trimmed = input.trim().to_lowercase();
+        if trimmed != "y" && trimmed != "yes" {
+            println!("Cancelled.");
+            return Ok(());
+        }
     }
 
     info!(
@@ -265,25 +267,29 @@ pub fn cmd_add(path: PathBuf, common: bool) -> Result<()> {
 }
 
 /// Execute the remove command.
-pub fn cmd_remove(path: String, common: bool) -> Result<()> {
+pub fn cmd_remove(path: String, common: bool, yes: bool) -> Result<()> {
     let config_path = crate::utils::get_config_path();
     let config = Config::load_or_create(&config_path).context("Failed to load configuration")?;
 
-    // Show confirmation prompt
-    let source = if common { "common files" } else { "profile" };
-    println!("⚠️  Warning: This will remove {path} from {source} and restore the original file.");
-    print!("   Continue? [y/N]: ");
-    io::stdout().flush().context("Failed to flush stdout")?;
+    // Show confirmation prompt unless --yes was passed
+    if !yes {
+        let source = if common { "common files" } else { "profile" };
+        println!(
+            "⚠️  Warning: This will remove {path} from {source} and restore the original file."
+        );
+        print!("   Continue? [y/N]: ");
+        io::stdout().flush().context("Failed to flush stdout")?;
 
-    let mut input = String::new();
-    io::stdin()
-        .read_line(&mut input)
-        .context("Failed to read input")?;
+        let mut input = String::new();
+        io::stdin()
+            .read_line(&mut input)
+            .context("Failed to read input")?;
 
-    let trimmed = input.trim().to_lowercase();
-    if trimmed != "y" && trimmed != "yes" {
-        println!("Cancelled.");
-        return Ok(());
+        let trimmed = input.trim().to_lowercase();
+        if trimmed != "y" && trimmed != "yes" {
+            println!("Cancelled.");
+            return Ok(());
+        }
     }
 
     info!(

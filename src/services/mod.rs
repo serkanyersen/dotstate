@@ -32,6 +32,7 @@
 //! ```
 
 pub mod git_service;
+pub mod omarchy_service;
 pub mod package_service;
 pub mod profile_service;
 pub mod storage_setup_service;
@@ -39,6 +40,7 @@ pub mod sync_service;
 
 // Re-export common types
 pub use git_service::GitService;
+pub use omarchy_service::OmarchyService;
 pub use package_service::{PackageCheckStatus, PackageCreationParams, PackageService};
 pub use profile_service::ProfileService;
 pub use storage_setup_service::{StepHandle, StepResult, StorageSetupService};

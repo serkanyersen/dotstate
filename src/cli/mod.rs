@@ -9,14 +9,17 @@
 //! - `doctor` - Diagnostics
 //! - `info` - Help, logs, config, repository info
 //! - `upgrade` - Update checker
+//! - `skill` - Built-in agent skill (`--skill`)
 
 mod common;
 mod completions;
 mod doctor;
 mod files;
 mod info;
+mod omarchy;
 pub mod packages;
 mod profiles;
+pub mod skill;
 mod sync;
 mod upgrade;
 
@@ -41,6 +44,14 @@ pub struct Cli {
     /// Disable colors in the TUI (also respects `NO_COLOR` env var)
     #[arg(long, global = true)]
     pub no_colors: bool,
+
+    /// Print the built-in agent skill (`SKILL.md`) for AI coding agents, and exit
+    #[arg(long)]
+    pub skill: bool,
+
+    /// With --skill: install the skill to ~/.claude/skills/dotstate/SKILL.md
+    #[arg(long, requires = "skill")]
+    pub install: bool,
 }
 
 #[derive(Subcommand, Debug)]
@@ -64,6 +75,9 @@ pub enum Commands {
         /// Add as a common file (shared across all profiles)
         #[arg(long)]
         common: bool,
+        /// Skip confirmation prompt
+        #[arg(short, long)]
+        yes: bool,
     },
     /// Remove a file from sync
     Remove {
@@ -72,6 +86,9 @@ pub enum Commands {
         /// Remove from common files (shared across all profiles)
         #[arg(long)]
         common: bool,
+        /// Skip confirmation prompt
+        #[arg(short, long)]
+        yes: bool,
     },
     /// Activate the symlinks, restores app state after deactivation.
     Activate,
@@ -116,6 +133,16 @@ pub enum Commands {
         #[command(subcommand)]
         command: PackagesCommand,
     },
+    /// Add a floating launcher app entry on Omarchy
+    #[command(group(clap::ArgGroup::new("action").required(true).args(["install", "uninstall"])))]
+    Omarchy {
+        /// Add the launcher entry, icon, and floating window rule
+        #[arg(long)]
+        install: bool,
+        /// Remove everything --install added
+        #[arg(long)]
+        uninstall: bool,
+    },
     /// Generate command-line completions
     #[clap(alias = "completion")]
     Completions {
@@ -141,11 +168,14 @@ pub enum ProfileCommand {
 impl Cli {
     /// Execute the CLI command
     pub fn execute(self) -> Result<()> {
+        if self.skill {
+            return skill::execute(self.install);
+        }
         match self.command {
             Some(Commands::Sync { message }) => sync::execute(message),
             Some(Commands::List { verbose }) => files::cmd_list(verbose),
-            Some(Commands::Add { path, common }) => files::cmd_add(path, common),
-            Some(Commands::Remove { path, common }) => files::cmd_remove(path, common),
+            Some(Commands::Add { path, common, yes }) => files::cmd_add(path, common, yes),
+            Some(Commands::Remove { path, common, yes }) => files::cmd_remove(path, common, yes),
             Some(Commands::Activate) => profiles::cmd_activate(),
             Some(Commands::Deactivate) => profiles::cmd_deactivate(),
             Some(Commands::Profile { command }) => profiles::execute(command.unwrap_or_default()),
@@ -156,6 +186,7 @@ impl Cli {
             Some(Commands::Repository) => info::cmd_repository(),
             Some(Commands::Upgrade { check }) => upgrade::execute(check),
             Some(Commands::Packages { command }) => packages::execute(command),
+            Some(Commands::Omarchy { install, .. }) => omarchy::execute(install),
             Some(Commands::Completions { shell }) => completions::generate(shell),
             None => {
                 // No command provided, launch TUI

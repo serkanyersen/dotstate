@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use git2::{build::RepoBuilder, Cred, FetchOptions, RemoteCallbacks, Repository, Signature};
 use std::path::Path;
 use std::process::Command;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 /// Redact credentials/tokens from a git URL for safe display/logging.
 ///
@@ -391,7 +391,10 @@ impl GitManager {
     }
 
     /// Add all changes and commit
-    pub fn commit_all(&self, message: &str) -> Result<()> {
+    ///
+    /// Returns `Ok(false)` without committing when the staged tree matches HEAD,
+    /// so callers never create empty commits.
+    pub fn commit_all(&self, message: &str) -> Result<bool> {
         use tracing::info;
         info!("Starting commit: {}", message);
 
@@ -441,6 +444,13 @@ impl GitManager {
             None
         };
 
+        if let Some(parent) = &parent_commit {
+            if parent.tree_id() == tree_id {
+                info!("Nothing to commit, tree matches HEAD");
+                return Ok(false);
+            }
+        }
+
         let parents: Vec<&git2::Commit> = parent_commit.iter().collect();
 
         // For the first commit, create it on "main" branch explicitly
@@ -475,7 +485,7 @@ impl GitManager {
             info!("Created commit: {} ({})", commit_oid, message);
         }
 
-        Ok(())
+        Ok(true)
     }
 
     /// Reset the last commit, keeping changes staged (git reset --soft HEAD~1)
@@ -511,8 +521,6 @@ impl GitManager {
     ///
     /// This ensures the repository is in a clean state after a failed pull/rebase.
     pub fn cleanup_failed_operation(&self, branch: &str) -> Result<()> {
-        use tracing::{info, warn};
-
         // Check if there's a rebase in progress and abort it
         let rebase_merge_dir = self.repo.path().join("rebase-merge");
         let rebase_apply_dir = self.repo.path().join("rebase-apply");
@@ -1062,6 +1070,14 @@ impl GitManager {
                 commit = commit.parent(0)?;
             }
 
+            // If the remote tip is already in our history, there is nothing to replay.
+            // Running repo.rebase() here would check out the older remote tree and report
+            // every differing path as a checkout conflict.
+            if merge_base == fetch_commit_id {
+                debug!("Local branch is ahead of remote, nothing to pull");
+                return Ok(0);
+            }
+
             // Check if local is ahead of merge base (we have local commits to rebase)
             let local_ahead = merge_base != local_commit.id();
 
@@ -1094,10 +1110,15 @@ impl GitManager {
                 .find_annotated_commit(fetch_commit_id)
                 .context("Failed to create annotated commit for upstream")?;
 
-            let branch_annotated = self
-                .repo
-                .find_annotated_commit(local_commit.id())
-                .context("Failed to create annotated commit for branch")?;
+            // Build the branch side from the reference, not a bare commit id, so libgit2
+            // records the branch name and an abort returns HEAD to the branch instead of
+            // leaving it detached.
+            let branch_ref = format!("refs/heads/{branch}");
+            let branch_annotated = match self.repo.find_reference(&branch_ref) {
+                Ok(reference) => self.repo.reference_to_annotated_commit(&reference),
+                Err(_) => self.repo.find_annotated_commit(local_commit.id()),
+            }
+            .context("Failed to create annotated commit for branch")?;
 
             // Start the rebase: rebase local commits onto upstream (remote)
             // branch = our local commits, upstream = remote HEAD, onto = None (use upstream)
@@ -1123,7 +1144,7 @@ impl GitManager {
                         let index = self.repo.index().context("Failed to get index")?;
                         if index.has_conflicts() {
                             // Abort the rebase on conflict
-                            let _ = rebase.abort();
+                            self.abort_rebase(&mut rebase, branch);
                             return Err(anyhow::anyhow!(
                                 "Rebase conflicts detected. Please resolve manually:\n\
                                 1. Run 'git status' to see conflicted files\n\
@@ -1146,13 +1167,13 @@ impl GitManager {
                                     continue;
                                 }
                                 // For other errors, abort and return
-                                let _ = rebase.abort();
+                                self.abort_rebase(&mut rebase, branch);
                                 return Err(anyhow::anyhow!("Failed to commit during rebase: {e}"));
                             }
                         }
                     }
                     Some(Err(e)) => {
-                        let _ = rebase.abort();
+                        self.abort_rebase(&mut rebase, branch);
                         return Err(anyhow::anyhow!("Rebase operation failed: {e}"));
                     }
                     None => {
@@ -1177,7 +1198,6 @@ impl GitManager {
                 .peel_to_commit()
                 .context("Failed to peel HEAD to commit after rebase")?;
 
-            let branch_ref = format!("refs/heads/{branch}");
             self.repo.reference(
                 &branch_ref,
                 head_commit.id(),
@@ -1222,6 +1242,33 @@ impl GitManager {
                 commit = commit.parent(0)?;
             }
             Ok(pulled_count)
+        }
+    }
+
+    /// Abort a rebase and make sure HEAD points at the branch again.
+    ///
+    /// Only HEAD is re-pointed; the working tree is left alone, because storage
+    /// holds the targets of the user's live config symlinks.
+    fn abort_rebase(&self, rebase: &mut git2::Rebase<'_>, branch: &str) {
+        if let Err(e) = rebase.abort() {
+            warn!("Failed to abort rebase: {}", e);
+        }
+        self.reattach_head(branch);
+    }
+
+    /// Point HEAD back at `refs/heads/<branch>` if it is detached.
+    fn reattach_head(&self, branch: &str) {
+        if !self.repo.head_detached().unwrap_or(false) {
+            return;
+        }
+        let branch_ref = format!("refs/heads/{branch}");
+        if self.repo.find_reference(&branch_ref).is_err() {
+            warn!("Cannot reattach HEAD: branch '{}' not found", branch);
+            return;
+        }
+        match self.repo.set_head(&branch_ref) {
+            Ok(()) => info!("Reattached HEAD to {}", branch_ref),
+            Err(e) => warn!("Failed to reattach HEAD to {}: {}", branch_ref, e),
         }
     }
 

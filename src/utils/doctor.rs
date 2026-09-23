@@ -1271,36 +1271,55 @@ impl Doctor {
 
         let mut invalid = Vec::new();
         let mut broken = Vec::new();
+        let mut dangling = Vec::new();
 
         for tracked in &symlink_mgr.tracking.symlinks {
-            // Check if target exists and is a symlink
-            if let Ok(metadata) = tracked.target.symlink_metadata() {
-                if metadata.is_symlink() {
-                    // Verify symlink points to correct source
-                    if let Ok(link_target) = fs::read_link(&tracked.target) {
-                        if link_target != tracked.source {
-                            invalid.push(format!(
-                                "{} -> {} (expected {})",
-                                tracked.target.display(),
-                                link_target.display(),
-                                tracked.source.display()
-                            ));
-                        }
-                    }
-                } else {
-                    // File exists but is not a symlink
-                    invalid.push(format!(
-                        "{} exists but is not a symlink",
-                        tracked.target.display()
-                    ));
-                }
-            } else {
-                // Symlink doesn't exist
-                broken.push(tracked.target.display().to_string());
+            match classify_symlink(tracked) {
+                SymlinkHealth::Ok => {}
+                SymlinkHealth::Missing => broken.push(tracked.target.display().to_string()),
+                SymlinkHealth::NotASymlink => invalid.push(format!(
+                    "{} exists but is not a symlink",
+                    tracked.target.display()
+                )),
+                SymlinkHealth::WrongTarget(link_target) => invalid.push(format!(
+                    "{} -> {} (expected {})",
+                    tracked.target.display(),
+                    link_target.display(),
+                    tracked.source.display()
+                )),
+                SymlinkHealth::Dangling => dangling.push(tracked.target.display().to_string()),
             }
         }
 
-        if invalid.is_empty() && broken.is_empty() {
+        if !dangling.is_empty() {
+            // Name the files in the message itself: these are silent breakages
+            // the user must fix by hand, so they should not need --verbose.
+            let mut names = dangling
+                .iter()
+                .take(3)
+                .cloned()
+                .collect::<Vec<_>>()
+                .join(", ");
+            if dangling.len() > 3 {
+                names.push_str(&format!(" and {} more", dangling.len() - 3));
+            }
+            self.add_result(
+                "Symlinks",
+                "dangling",
+                &format!(
+                    "{} symlinks point to files missing from storage: {names}",
+                    dangling.len()
+                ),
+                ValidationStatus::Error,
+                None,
+                Some(vec![
+                    "Restore the files into storage (see ~/.dotstate-backups) or remove them from tracking".to_string(),
+                ]),
+                Instant::now(),
+            );
+        }
+
+        if invalid.is_empty() && broken.is_empty() && dangling.is_empty() {
             self.add_result(
                 "Symlinks",
                 "validity",
@@ -1754,5 +1773,111 @@ impl Doctor {
                 json_output: false,
             },
         )
+    }
+}
+
+/// Health of one tracked symlink, as seen on disk.
+#[derive(Debug, PartialEq)]
+enum SymlinkHealth {
+    Ok,
+    /// Nothing exists at the tracked home path.
+    Missing,
+    /// A regular file or directory sits where the symlink should be.
+    NotASymlink,
+    /// The symlink points somewhere other than the recorded storage path.
+    WrongTarget(std::path::PathBuf),
+    /// The symlink points to the right path, but that path does not exist.
+    Dangling,
+}
+
+fn classify_symlink(tracked: &crate::utils::symlink_manager::TrackedSymlink) -> SymlinkHealth {
+    let Ok(metadata) = tracked.target.symlink_metadata() else {
+        return SymlinkHealth::Missing;
+    };
+    if !metadata.is_symlink() {
+        return SymlinkHealth::NotASymlink;
+    }
+    if let Ok(link_target) = fs::read_link(&tracked.target) {
+        if link_target != tracked.source {
+            return SymlinkHealth::WrongTarget(link_target);
+        }
+    }
+    // fs::metadata follows the link, so it fails when the storage file is gone.
+    if fs::metadata(&tracked.target).is_err() {
+        return SymlinkHealth::Dangling;
+    }
+    SymlinkHealth::Ok
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::utils::symlink_manager::TrackedSymlink;
+    use std::os::unix::fs::symlink;
+    use tempfile::TempDir;
+
+    fn tracked(target: &std::path::Path, source: &std::path::Path) -> TrackedSymlink {
+        TrackedSymlink {
+            target: target.to_path_buf(),
+            source: source.to_path_buf(),
+            created_at: chrono::Utc::now(),
+            backup: None,
+        }
+    }
+
+    #[test]
+    fn classify_valid_symlink() {
+        let dir = TempDir::new().unwrap();
+        let source = dir.path().join("storage_bashrc");
+        let target = dir.path().join(".bashrc");
+        fs::write(&source, "x").unwrap();
+        symlink(&source, &target).unwrap();
+        assert_eq!(
+            classify_symlink(&tracked(&target, &source)),
+            SymlinkHealth::Ok
+        );
+    }
+
+    #[test]
+    fn classify_dangling_symlink_when_storage_file_is_deleted() {
+        let dir = TempDir::new().unwrap();
+        let source = dir.path().join("storage_bashrc");
+        let target = dir.path().join(".bashrc");
+        fs::write(&source, "x").unwrap();
+        symlink(&source, &target).unwrap();
+        fs::remove_file(&source).unwrap();
+        assert_eq!(
+            classify_symlink(&tracked(&target, &source)),
+            SymlinkHealth::Dangling
+        );
+    }
+
+    #[test]
+    fn classify_missing_wrong_target_and_regular_file() {
+        let dir = TempDir::new().unwrap();
+        let source = dir.path().join("storage_file");
+        let other = dir.path().join("other_file");
+        fs::write(&source, "x").unwrap();
+        fs::write(&other, "y").unwrap();
+
+        let missing = dir.path().join("missing");
+        assert_eq!(
+            classify_symlink(&tracked(&missing, &source)),
+            SymlinkHealth::Missing
+        );
+
+        let wrong = dir.path().join("wrong");
+        symlink(&other, &wrong).unwrap();
+        assert_eq!(
+            classify_symlink(&tracked(&wrong, &source)),
+            SymlinkHealth::WrongTarget(other.clone())
+        );
+
+        let regular = dir.path().join("regular");
+        fs::write(&regular, "z").unwrap();
+        assert_eq!(
+            classify_symlink(&tracked(&regular, &source)),
+            SymlinkHealth::NotASymlink
+        );
     }
 }

@@ -48,15 +48,22 @@ pub fn execute(message: Option<String>) -> Result<()> {
         std::process::exit(1);
     }
 
-    println!("📝 Committing changes...");
-    let commit_msg = message.unwrap_or_else(|| {
-        git_mgr
-            .generate_commit_message()
-            .unwrap_or_else(|_| "Update dotfiles".to_string())
-    });
-    git_mgr
-        .commit_all(&commit_msg)
-        .context("Failed to commit changes")?;
+    if git_mgr.has_uncommitted_changes().unwrap_or(true) {
+        println!("📝 Committing changes...");
+        let commit_msg = message.unwrap_or_else(|| {
+            git_mgr
+                .generate_commit_message()
+                .unwrap_or_else(|_| "Update dotfiles".to_string())
+        });
+        if !git_mgr
+            .commit_all(&commit_msg)
+            .context("Failed to commit changes")?
+        {
+            println!("   Nothing to commit.");
+        }
+    } else {
+        println!("📝 No local changes to commit.");
+    }
 
     println!("📥 Pulling changes from remote...");
     let pulled_count = git_mgr

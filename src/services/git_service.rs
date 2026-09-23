@@ -324,14 +324,16 @@ impl GitService {
                 .generate_commit_message()
                 .unwrap_or_else(|_| "Update dotfiles".to_string());
 
-            if let Err(e) = git_mgr.commit_all(&commit_msg) {
-                return SyncResult {
-                    success: false,
-                    message: Self::format_error_chain("Failed to commit changes", &e),
-                    pulled_count: None,
-                };
+            match git_mgr.commit_all(&commit_msg) {
+                Ok(committed) => made_commit = committed,
+                Err(e) => {
+                    return SyncResult {
+                        success: false,
+                        message: Self::format_error_chain("Failed to commit changes", &e),
+                        pulled_count: None,
+                    };
+                }
             }
-            made_commit = true;
         }
 
         // Step 2: Pull with rebase
