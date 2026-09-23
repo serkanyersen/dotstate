@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+---
+
+## [0.4.1] - 2026-09-22
+
 ### Added
 
 - **CLI**: `dotstate --skill` prints a built-in agent skill (SKILL.md) that teaches AI agents DotState's concepts and commands. `dotstate --skill --install` installs it to `~/.claude/skills/dotstate/`.
@@ -16,13 +20,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **Dependencies**: `dirs` 6 -> 7 (#58). Require ratatui 0.30.2 and replace the deprecated `Cell::set_skip` with `set_diff_option`, which was failing CI under `-D warnings`.
+- **Build**: `Cargo.lock` is now committed, so CI and `cargo install --locked` build with pinned dependency versions.
 
 ### Fixed
 
 - **Doctor**: Report tracked symlinks whose storage file is missing (#59). Doctor used to compare only the recorded link path, so a dangling `~/.bashrc` showed as healthy. It now follows each link and lists the broken files as errors.
-- **Sync**: Fix "conflicts prevent checkout" failures when the local branch was ahead of the remote. Sync no longer starts a rebase when the remote has nothing new.
-- **Sync**: A failed rebase no longer leaves the storage repo on a detached HEAD.
-- **Sync**: Stop creating empty "Update dotfiles" commits. `dotstate sync` now only commits when there are changes.
+- **Sync**: Fixed sync reliability with the git rebase workflow. Sync no longer fails with "conflicts prevent checkout" when the local branch is ahead of the remote, a failed rebase no longer leaves the storage repo on a detached HEAD, and sync no longer creates empty "Update dotfiles" commits.
 
 ---
 
