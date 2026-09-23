@@ -4,7 +4,6 @@
   "outputDirectory": "dist",
   "installCommand": "npm install",
   "framework": "astro",
-  "public": true,
   "rewrites": [
     {
       "source": "/install.sh",
