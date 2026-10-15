@@ -11,6 +11,7 @@ pub mod package_manager;
 pub mod path;
 pub mod profile_manifest;
 pub mod profile_validation;
+pub mod spinner;
 pub mod style;
 pub mod symlink_manager;
 pub mod sync_validation;
@@ -33,6 +34,7 @@ pub use path::{
 };
 pub use profile_manifest::{ProfileInfo, ProfileManifest, ResolvedFile};
 pub use profile_validation::{sanitize_profile_name, validate_profile_name};
+pub use spinner::spinner_frame;
 pub use style::{
     disabled_border_style, disabled_text_style, focused_border_style, input_placeholder_style,
     input_text_style, unfocused_border_style,

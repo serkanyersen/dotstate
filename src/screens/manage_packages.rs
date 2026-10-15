@@ -13,7 +13,8 @@ use crate::utils::package_installer::PackageInstaller;
 use crate::utils::package_manager::PackageManagerImpl;
 use crate::utils::profile_manifest::{Package, PackageManager};
 use crate::utils::{
-    create_standard_layout, focused_border_style, unfocused_border_style, MouseRegions,
+    create_standard_layout, focused_border_style, spinner_frame, unfocused_border_style,
+    MouseRegions,
 };
 use crate::widgets::{TextInputWidget, TextInputWidgetExt};
 use anyhow::Result;
@@ -3096,8 +3097,7 @@ impl ManagePackagesScreen {
 
         if self.state.import_loading {
             // Show loading spinner
-            let spinner_frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
-            let spinner = spinner_frames[self.state.import_spinner_tick % spinner_frames.len()];
+            let spinner = spinner_frame(self.state.import_spinner_tick);
 
             let center_y = area.y + area.height / 2 - 1;
             let centered_area = Rect::new(area.x, center_y, area.width, 3);

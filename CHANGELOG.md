@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Sync with Remote**: Show an animated loading spinner dialog while syncing, so large payloads and slow connections give visible feedback instead of a frozen screen. Sync now runs on a background thread with the result polled via `tick()`, and both screens share one spinner frame table.
+
+### Fixed
+
+- **Sync with Remote**: Removed the write-only `sync_progress` state (replaced by the spinner).
+
 ---
 
 ## [0.4.1] - 2026-09-22

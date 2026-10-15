@@ -41,6 +41,8 @@ pub struct SyncWithRemoteScreen {
     list_pane_area: Option<Rect>,
     /// Stored preview pane area for mouse hit-testing
     preview_pane_area: Option<Rect>,
+    /// Receiver for async sync result (thread + channel so UI stays responsive)
+    sync_rx: Option<std::sync::mpsc::Receiver<crate::services::git_service::SyncResult>>,
 }
 
 impl SyncWithRemoteScreen {
@@ -52,6 +54,7 @@ impl SyncWithRemoteScreen {
             focus: SyncFocus::FilesList,
             list_pane_area: None,
             preview_pane_area: None,
+            sync_rx: None,
         }
     }
 
@@ -72,6 +75,7 @@ impl SyncWithRemoteScreen {
         self.focus = SyncFocus::FilesList;
         self.list_pane_area = None;
         self.preview_pane_area = None;
+        self.sync_rx = None;
     }
 
     /// Load changed files from git repository
@@ -106,29 +110,79 @@ impl SyncWithRemoteScreen {
         }
     }
 
-    /// Start syncing changes (push/pull)
+    /// Start syncing changes (push/pull) on a background thread.
+    ///
+    /// Returns immediately so the loading spinner can render while
+    /// `GitService::sync()` blocks on network I/O. Completion is
+    /// polled via `tick()`.
     fn start_sync(&mut self, ctx: &ScreenContext) -> Result<()> {
         use crate::services::GitService;
         use tracing::info;
 
         info!("Starting sync operation");
 
-        // Mark as syncing
+        // Mark as syncing and spawn background thread
         self.state.is_syncing = true;
-        self.state.sync_progress = Some("Syncing...".to_string());
+        self.state.spinner_tick = 0;
 
-        // Perform sync using service
-        let result = GitService::sync(ctx.config);
-
-        // Update state with result
-        self.state.is_syncing = false;
-        self.state.sync_progress = None;
-        self.state.sync_result = Some(result.message);
-        self.state.pulled_changes_count = result.pulled_count;
-        self.state.show_result_popup = true;
-        self.state.result_scroll = 0; // Reset scroll for new result
+        let config = ctx.config.clone();
+        let (tx, rx) = std::sync::mpsc::channel();
+        self.sync_rx = Some(rx);
+        std::thread::spawn(move || {
+            let result = GitService::sync(&config);
+            let _ = tx.send(result);
+        });
 
         Ok(())
+    }
+
+    /// Whether a sync is currently running (spinner visible, input blocked).
+    #[must_use]
+    pub fn is_syncing(&self) -> bool {
+        self.state.is_syncing
+    }
+
+    /// Poll async sync completion and advance the spinner animation.
+    ///
+    /// Called from the app event loop. Returns `ScreenAction::Refresh`
+    /// when a redraw is needed.
+    pub fn tick(&mut self) -> Result<ScreenAction> {
+        use crate::screens::screen_trait::ScreenAction;
+
+        if !self.state.is_syncing {
+            return Ok(ScreenAction::None);
+        }
+
+        // Advance spinner animation while waiting
+        self.state.spinner_tick = self.state.spinner_tick.wrapping_add(1);
+
+        // Poll for completion without blocking
+        if let Some(rx) = &self.sync_rx {
+            match rx.try_recv() {
+                Ok(result) => {
+                    self.finish_sync(result.message, result.pulled_count);
+                }
+                Err(std::sync::mpsc::TryRecvError::Empty) => {}
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    self.finish_sync(
+                        "Error: Sync task ended unexpectedly.\n\nPlease try again.".to_string(),
+                        None,
+                    );
+                }
+            }
+        }
+
+        Ok(ScreenAction::Refresh)
+    }
+
+    /// Settle an in-flight sync: clear sync state and surface the result.
+    fn finish_sync(&mut self, message: String, pulled_count: Option<usize>) {
+        self.sync_rx = None;
+        self.state.is_syncing = false;
+        self.state.sync_result = Some(message);
+        self.state.pulled_changes_count = pulled_count;
+        self.state.show_result_popup = true;
+        self.state.result_scroll = 0; // Reset scroll for new result
     }
 
     /// Render the result popup
@@ -177,28 +231,21 @@ impl SyncWithRemoteScreen {
         Ok(())
     }
 
-    /// Render the syncing progress indicator
-    fn render_progress(&self, frame: &mut Frame, content_chunk: Rect) {
-        let t = ui_theme();
-        let progress_text = self
-            .state
-            .sync_progress
-            .as_deref()
-            .unwrap_or("Processing...");
-        let progress_para = Paragraph::new(progress_text)
-            .style(Style::default().fg(t.warning))
-            .alignment(Alignment::Center)
-            .wrap(Wrap { trim: true })
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .border_type(ui_theme().border_type(false))
-                    .title(" Progress ")
-                    .title_alignment(Alignment::Center)
-                    .border_style(focused_border_style())
-                    .padding(ratatui::widgets::Padding::new(2, 2, 2, 2)),
-            );
-        frame.render_widget(progress_para, content_chunk);
+    /// Render the syncing progress indicator (animated spinner dialog)
+    fn render_progress(&self, frame: &mut Frame, area: Rect) {
+        use crate::utils::spinner_frame;
+        use crate::widgets::{Dialog, DialogVariant};
+
+        let spinner = spinner_frame(self.state.spinner_tick);
+        let text = format!(
+            "{spinner} Syncing with remote...\n\nThis may take a moment on large repos or slow connections"
+        );
+
+        let dialog = Dialog::new("Syncing with Remote", &text)
+            .height(30)
+            .variant(DialogVariant::Default)
+            .footer("Please wait...");
+        frame.render_widget(dialog, area);
     }
 
     /// Render the changed files list and diff preview
@@ -408,10 +455,9 @@ impl Screen for SyncWithRemoteScreen {
         )?;
 
         // Always render main content first
+        self.render_changes_list(frame, content_chunk, ctx)?;
         if self.state.is_syncing {
-            self.render_progress(frame, content_chunk);
-        } else {
-            self.render_changes_list(frame, content_chunk, ctx)?;
+            self.render_progress(frame, area);
         }
 
         // Render popups on top of the content (not instead of it)
@@ -511,6 +557,12 @@ impl Screen for SyncWithRemoteScreen {
                 }
                 _ => return Ok(ScreenAction::None),
             }
+        }
+
+        // Block all input while syncing (git ops are not safely cancellable).
+        // tick() polls completion and drives the spinner animation.
+        if self.state.is_syncing {
+            return Ok(ScreenAction::None);
         }
 
         // Normal mode: handle based on focus
@@ -706,5 +758,65 @@ mod tests {
         screen.state.is_syncing = true;
         screen.reset_state();
         assert!(!screen.state.is_syncing);
+        assert!(screen.sync_rx.is_none());
+    }
+
+    #[test]
+    fn test_tick_when_idle_returns_none() {
+        use crate::screens::screen_trait::ScreenAction;
+        let mut screen = SyncWithRemoteScreen::new();
+        let action = screen.tick().unwrap();
+        assert!(matches!(action, ScreenAction::None));
+    }
+
+    #[test]
+    fn test_tick_advances_spinner_while_pending() {
+        use crate::screens::screen_trait::ScreenAction;
+        let mut screen = SyncWithRemoteScreen::new();
+        screen.state.is_syncing = true;
+        screen.state.spinner_tick = 0;
+        // A live receiver with no message yet: still pending, still syncing.
+        let (_tx, rx) = std::sync::mpsc::channel();
+        screen.sync_rx = Some(rx);
+        let action = screen.tick().unwrap();
+        assert!(matches!(action, ScreenAction::Refresh));
+        assert!(screen.state.is_syncing);
+        assert_eq!(screen.state.spinner_tick, 1);
+    }
+
+    #[test]
+    fn test_tick_completes_sync_with_result_popup() {
+        use crate::screens::screen_trait::ScreenAction;
+        use crate::services::git_service::SyncResult;
+        let mut screen = SyncWithRemoteScreen::new();
+        screen.state.is_syncing = true;
+        let (tx, rx) = std::sync::mpsc::channel();
+        screen.sync_rx = Some(rx);
+        tx.send(SyncResult {
+            success: true,
+            message: "✓ Successfully synced with remote!".to_string(),
+            pulled_count: Some(0),
+        })
+        .unwrap();
+        let action = screen.tick().unwrap();
+        assert!(matches!(action, ScreenAction::Refresh));
+        assert!(!screen.state.is_syncing);
+        assert!(screen.state.show_result_popup);
+        assert!(screen.sync_rx.is_none());
+    }
+
+    #[test]
+    fn test_tick_channel_lost_shows_error() {
+        use crate::screens::screen_trait::ScreenAction;
+        let mut screen = SyncWithRemoteScreen::new();
+        screen.state.is_syncing = true;
+        let (tx, rx) = std::sync::mpsc::channel();
+        screen.sync_rx = Some(rx);
+        drop(tx); // Thread died without sending
+        let action = screen.tick().unwrap();
+        assert!(matches!(action, ScreenAction::Refresh));
+        assert!(!screen.state.is_syncing);
+        assert!(screen.state.show_result_popup);
+        assert!(screen.sync_rx.is_none());
     }
 }

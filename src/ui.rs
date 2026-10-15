@@ -153,9 +153,8 @@ impl Default for GitHubAuthState {
 pub struct SyncWithRemoteState {
     pub changed_files: Vec<String>,
     pub is_syncing: bool,
-    pub sync_progress: Option<String>, // Current progress message (e.g., "Committing...", "Pulling...", "Pushing...")
-    pub sync_result: Option<String>,   // Final result message
-    pub show_result_popup: bool,       // Whether to show result popup
+    pub sync_result: Option<String>,         // Final result message
+    pub show_result_popup: bool,             // Whether to show result popup
     pub pulled_changes_count: Option<usize>, // Number of changes pulled from remote
     pub list_state: ListState,
     pub scrollbar_state: ScrollbarState,
@@ -163,6 +162,7 @@ pub struct SyncWithRemoteState {
     pub preview_scroll: usize,        // Scroll state for preview
     pub result_scroll: u16,           // Scroll state for result popup
     pub git_status: Option<crate::services::git_service::GitStatus>, // Detailed git status
+    pub spinner_tick: usize,          // Animation frame for sync loading spinner
 }
 
 impl Default for SyncWithRemoteState {
@@ -170,7 +170,6 @@ impl Default for SyncWithRemoteState {
         Self {
             changed_files: Vec::new(),
             is_syncing: false,
-            sync_progress: None,
             sync_result: None,
             show_result_popup: false,
             pulled_changes_count: None,
@@ -180,6 +179,7 @@ impl Default for SyncWithRemoteState {
             preview_scroll: 0,
             result_scroll: 0,
             git_status: None,
+            spinner_tick: 0,
         }
     }
 }

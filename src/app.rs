@@ -280,7 +280,7 @@ impl App {
 
             // Process package checking and installation (managed by screen)
             // We call tick() on the manage_packages_screen to handle background tasks
-            let needs_fast_refresh = match self.manage_packages_screen.tick() {
+            let mut needs_fast_refresh = match self.manage_packages_screen.tick() {
                 Ok(crate::screens::ScreenAction::Refresh) => true,
                 Ok(action) => {
                     self.process_screen_action(action)?;
@@ -292,10 +292,20 @@ impl App {
                 }
             };
 
+            // Poll async sync-with-remote completion + spinner animation.
+            if self.sync_with_remote_screen.is_syncing() {
+                match self.sync_with_remote_screen.tick() {
+                    Ok(crate::screens::ScreenAction::Refresh) => needs_fast_refresh = true,
+                    Ok(action) => self.process_screen_action(action)?,
+                    Err(e) => error!("Error in sync tick: {}", e),
+                }
+            }
+
             // Poll for events - use short timeout during active operations for responsive UI
             let poll_timeout = if needs_fast_refresh
                 || self.setup_step_handle.is_some()
                 || self.manage_packages_screen.get_state_mut().is_checking
+                || self.sync_with_remote_screen.is_syncing()
             {
                 Duration::from_millis(50) // Fast refresh for active operations
             } else {
