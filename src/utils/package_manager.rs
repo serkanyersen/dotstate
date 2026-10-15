@@ -92,6 +92,7 @@ impl PackageManagerImpl {
             PackageManager::Snap => "snap",
             PackageManager::Cargo => "cargo",
             PackageManager::Npm => "npm",
+            PackageManager::Bun => "bun",
             PackageManager::Pip => "pip",
             PackageManager::Pip3 => "pip3",
             PackageManager::Gem => "gem",
@@ -150,6 +151,11 @@ impl PackageManagerImpl {
             PackageManager::Npm => {
                 let mut cmd = Command::new("npm");
                 cmd.arg("install").arg("-g").arg(package_name);
+                cmd
+            }
+            PackageManager::Bun => {
+                let mut cmd = Command::new("bun");
+                cmd.arg("add").arg("-g").arg(package_name);
                 cmd
             }
             PackageManager::Pip => {
@@ -237,8 +243,8 @@ impl PackageManagerImpl {
                 cmd.arg("list").arg(package_name);
                 Some(cmd)
             }
-            PackageManager::Cargo => {
-                // Cargo doesn't have a native list command, use binary check
+            PackageManager::Cargo | PackageManager::Bun => {
+                // Cargo and Bun don't have a reliable single-package query, use binary check
                 None
             }
             PackageManager::Npm => {
@@ -326,6 +332,9 @@ impl PackageManagerImpl {
         if Self::is_manager_installed(&PackageManager::Npm) {
             available.push(PackageManager::Npm);
         }
+        if Self::is_manager_installed(&PackageManager::Bun) {
+            available.push(PackageManager::Bun);
+        }
         if Self::is_manager_installed(&PackageManager::Pip) {
             available.push(PackageManager::Pip);
         }
@@ -364,6 +373,7 @@ impl PackageManagerImpl {
             PackageManager::Snap => "Install snapd: sudo apt-get install snapd (Debian/Ubuntu)".to_string(),
             PackageManager::Cargo => "Install Rust: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh".to_string(),
             PackageManager::Npm => "Install Node.js: https://nodejs.org/".to_string(),
+            PackageManager::Bun => "Install Bun: curl -fsSL https://bun.sh/install | bash".to_string(),
             PackageManager::Pip => "pip usually comes with Python".to_string(),
             PackageManager::Pip3 => "pip3 usually comes with Python 3".to_string(),
             PackageManager::Gem => "gem comes with Ruby".to_string(),

@@ -37,7 +37,7 @@ Do not run bare `dotstate` with no arguments. That launches the interactive TUI,
 
 **Activation.** When a profile is active, its symlinks exist in the home directory. `dotstate deactivate` replaces every managed symlink with a real copy of the file, so the user's configs keep working without DotState. `dotstate activate` recreates the symlinks.
 
-**Packages.** Each profile can list packages it needs (for example `ripgrep` from `brew`). DotState checks whether each package's binary exists and can install the missing ones. Supported managers: `brew`, `apt`, `yum`, `dnf`, `pacman`, `snap`, `cargo`, `npm`, `pip`, `pip3`, `gem`, and `custom` (a user-supplied install command).
+**Packages.** Each profile can list packages it needs (for example `ripgrep` from `brew`). DotState checks whether each package's binary exists and can install the missing ones. Supported managers: `brew`, `apt`, `yum`, `dnf`, `pacman`, `snap`, `cargo`, `npm`, `bun`, `pip`, `pip3`, `gem`, and `custom` (a user-supplied install command).
 
 **Repository modes.** In GitHub mode, DotState manages a `dotstate-storage` repository and authenticates with a token from `DOTSTATE_GITHUB_TOKEN` or the config file. In Local mode, the user brings any git repository, and DotState uses their existing git credentials (SSH keys work).
 

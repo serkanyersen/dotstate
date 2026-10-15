@@ -35,6 +35,7 @@ pub enum DiscoverySource {
     Snap,
     Cargo,
     Npm,
+    Bun,
     Pip,
     Pip3,
     Gem,
@@ -53,6 +54,7 @@ impl DiscoverySource {
             DiscoverySource::Snap => "Snap",
             DiscoverySource::Cargo => "Cargo",
             DiscoverySource::Npm => "NPM",
+            DiscoverySource::Bun => "Bun",
             DiscoverySource::Pip => "pip",
             DiscoverySource::Pip3 => "pip3",
             DiscoverySource::Gem => "Gem",
@@ -72,6 +74,7 @@ impl DiscoverySource {
             DiscoverySource::Snap => PackageManager::Snap,
             DiscoverySource::Cargo => PackageManager::Cargo,
             DiscoverySource::Npm => PackageManager::Npm,
+            DiscoverySource::Bun => PackageManager::Bun,
             DiscoverySource::Pip => PackageManager::Pip,
             DiscoverySource::Pip3 => PackageManager::Pip3,
             DiscoverySource::Gem => PackageManager::Gem,
@@ -94,6 +97,7 @@ impl DiscoverySource {
             PackageManager::Snap => Some(DiscoverySource::Snap),
             PackageManager::Cargo => Some(DiscoverySource::Cargo),
             PackageManager::Npm => Some(DiscoverySource::Npm),
+            PackageManager::Bun => Some(DiscoverySource::Bun),
             PackageManager::Pip => Some(DiscoverySource::Pip),
             PackageManager::Pip3 => Some(DiscoverySource::Pip3),
             PackageManager::Gem => Some(DiscoverySource::Gem),
@@ -114,6 +118,7 @@ impl DiscoverySource {
             | DiscoverySource::Snap
             | DiscoverySource::Cargo
             | DiscoverySource::Npm
+            | DiscoverySource::Bun
             | DiscoverySource::Pip
             | DiscoverySource::Pip3
             | DiscoverySource::Gem => true,
@@ -655,16 +660,27 @@ impl PackageDiscoverer for CargoDiscoverer {
     }
 }
 
+/// Probe whether a binary responds successfully to a version flag.
+/// Shared by discoverers whose availability check is just `<bin> <version-arg>`.
+fn binary_available(binary: &str, version_arg: &str) -> bool {
+    Command::new(binary)
+        .arg(version_arg)
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
+/// Default binary-name mapping: the binary name matches the package name.
+fn identity_binary(package_name: &str) -> Option<String> {
+    Some(package_name.to_string())
+}
+
 /// NPM package discoverer.
 pub struct NpmDiscoverer;
 
 impl PackageDiscoverer for NpmDiscoverer {
     fn is_available(&self) -> bool {
-        Command::new("npm")
-            .arg("--version")
-            .output()
-            .map(|o| o.status.success())
-            .unwrap_or(false)
+        binary_available("npm", "--version")
     }
 
     fn source(&self) -> DiscoverySource {
@@ -722,7 +738,92 @@ impl PackageDiscoverer for NpmDiscoverer {
     }
 
     fn detect_binary_name(&self, package_name: &str) -> Option<String> {
-        Some(package_name.to_string())
+        identity_binary(package_name)
+    }
+}
+
+/// Bun package discoverer.
+pub struct BunDiscoverer;
+
+impl PackageDiscoverer for BunDiscoverer {
+    fn is_available(&self) -> bool {
+        binary_available("bun", "--version")
+    }
+
+    fn source(&self) -> DiscoverySource {
+        DiscoverySource::Bun
+    }
+
+    fn discover_packages(&self) -> Result<Vec<DiscoveredPackage>> {
+        info!("Discovering Bun packages...");
+
+        let output = Command::new("bun")
+            .args(["pm", "ls", "-g"])
+            .output()
+            .context("Failed to run bun pm ls -g")?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            anyhow::bail!("bun pm ls -g failed: {}", stderr.trim());
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let packages = self.parse_pm_ls_output(&stdout);
+
+        info!("Discovered {} Bun packages", packages.len());
+        Ok(packages)
+    }
+
+    fn detect_binary_name(&self, package_name: &str) -> Option<String> {
+        identity_binary(package_name)
+    }
+}
+
+impl BunDiscoverer {
+    /// Parse `bun pm ls -g` tree output (e.g. `├── pkg@1.0`, `└── @scope/pkg@1.0`).
+    fn parse_pm_ls_output(&self, stdout: &str) -> Vec<DiscoveredPackage> {
+        let mut packages = Vec::new();
+        // Single push site: binary name matches the package name.
+        let mut push = |name: &str| {
+            if !name.is_empty() {
+                packages.push(DiscoveredPackage {
+                    package_name: name.to_string(),
+                    binary_name: Some(name.to_string()),
+                    description: None,
+                    manager: DiscoverySource::Bun,
+                });
+            }
+        };
+
+        for line in stdout.lines() {
+            let trimmed = line.trim();
+            // First line is a summary header (`... node_modules (N installed)`), not a package.
+            if trimmed.is_empty() || trimmed.contains("node_modules") {
+                continue;
+            }
+            // Strip tree-drawing characters, keeping `@scope/...` intact.
+            let token = trimmed
+                .trim_start_matches(['├', '└', '│', '─', ' ', '\t', '+', '-', '*'])
+                .split_whitespace()
+                .next()
+                .unwrap_or("");
+            if token.is_empty() {
+                continue;
+            }
+            // Strip trailing `@version`, preserving a leading scope:
+            // `@scope/pkg@1.0` -> `@scope/pkg`, `pkg@1.0` -> `pkg`.
+            let name = if let Some(stripped) = token.strip_prefix('@') {
+                match stripped.rfind('@') {
+                    Some(idx) => &token[..=idx],
+                    None => token,
+                }
+            } else {
+                token.split('@').next().unwrap_or(token)
+            };
+            push(name);
+        }
+
+        packages
     }
 }
 
@@ -908,6 +1009,7 @@ impl PackageDiscoveryService {
             Box::new(SnapDiscoverer),
             Box::new(CargoDiscoverer),
             Box::new(NpmDiscoverer),
+            Box::new(BunDiscoverer),
             Box::new(PipDiscoverer),
             Box::new(Pip3Discoverer),
             Box::new(GemDiscoverer),
@@ -1043,5 +1145,52 @@ mod tests {
         let service = PackageDiscoveryService::new();
         // Just verify it doesn't panic
         let _ = service.available_sources();
+    }
+
+    #[test]
+    fn test_bun_parse_tree_output() {
+        let sample = "/home/username/.bun/install/global node_modules (1105 installed)\n\
+            ├── @antfu/ni@30.6.0\n\
+            ├── ast-grep@0.1.0\n\
+            ├── oxfmt@0.72.0\n\
+            ├── pnpm@12.10.1\n\
+            ├── rimraf@6.1.3\n\
+            ├── typescript@7.0.2\n\
+            └── vscode-langservers-extracted@4.10.0\n";
+        let discoverer = BunDiscoverer;
+        let packages = discoverer.parse_pm_ls_output(sample);
+        let names: Vec<&str> = packages.iter().map(|p| p.package_name.as_str()).collect();
+        assert_eq!(packages.len(), 7);
+        assert!(names.contains(&"@antfu/ni"));
+        assert!(names.contains(&"ast-grep"));
+        assert!(names.contains(&"oxfmt"));
+        assert!(names.contains(&"pnpm"));
+        assert!(names.contains(&"rimraf"));
+        assert!(names.contains(&"typescript"));
+        assert!(names.contains(&"vscode-langservers-extracted"));
+    }
+
+    #[test]
+    fn test_bun_parse_empty_and_header_only() {
+        let discoverer = BunDiscoverer;
+        assert!(discoverer.parse_pm_ls_output("").is_empty());
+        assert!(discoverer.parse_pm_ls_output("\n  \n").is_empty());
+        let header_only = "/home/username/.bun/install/global node_modules (0 installed)\n";
+        assert!(discoverer.parse_pm_ls_output(header_only).is_empty());
+    }
+
+    #[test]
+    fn test_bun_parse_versionless_and_malformed() {
+        let discoverer = BunDiscoverer;
+        let sample = "/home/username/.bun/install/global node_modules (3 installed)\n\
+            ├── typescript\n\
+            ├── @scope/pkg\n\
+            └──   \n\
+            not-a-package-line-without-version-separator-should-still-count\n";
+        let packages = discoverer.parse_pm_ls_output(sample);
+        let names: Vec<&str> = packages.iter().map(|p| p.package_name.as_str()).collect();
+        assert!(names.contains(&"typescript"));
+        assert!(names.contains(&"@scope/pkg"));
+        assert_eq!(packages.len(), 3);
     }
 }

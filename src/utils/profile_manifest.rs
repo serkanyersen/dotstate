@@ -46,6 +46,7 @@ pub enum PackageManager {
     Snap,   // Snap packages
     Cargo,  // Rust packages
     Npm,    // Node.js packages
+    Bun,    // Bun packages (bun add -g)
     Pip,    // Python packages (pip)
     Pip3,   // Python packages (pip3)
     Gem,    // Ruby gems

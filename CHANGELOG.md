@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Packages**: Added `bun` package manager support (`bun add -g` for install, `bun pm ls -g` for discovery, `curl -fsSL https://bun.sh/install | bash` install hint).
 - **Sync with Remote**: Show an animated loading spinner dialog while syncing, so large payloads and slow connections give visible feedback instead of a frozen screen. Sync now runs on a background thread with the result polled via `tick()`, and both screens share one spinner frame table.
 
 ### Fixed
