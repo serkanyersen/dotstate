@@ -171,8 +171,8 @@ Use imperative mood ("Add" not "Added", "Fix" not "Fixed").
 ## Questions?
 
 If you have questions about contributing:
-- Open a [GitHub Discussion](https://github.com/serkanyersen/dotstate/discussions)
-- Check existing issues and discussions
+- Open a [GitHub Issue](https://github.com/serkanyersen/dotstate/issues)
+- Check existing issues
 - Reach out to maintainers
 
 Thank you for contributing to DotState! 🎉
